@@ -483,41 +483,44 @@ def init_db():
     if cursor.fetchone()[0] == 0:
         seed_sample_products(cursor)
 
-    cursor.execute("SELECT COUNT(*) FROM users")
-    if cursor.fetchone()[0] == 0:
-        seed_demo_users(cursor)
+    # Always ensure demo accounts exist for testing and hackathon evaluations
+    seed_demo_users(cursor)
 
     conn.commit()
     conn.close()
 
 
 def seed_demo_users(cursor):
-    cursor.executemany(
-        """
-        INSERT INTO users (name, email, password, role, phone, city, language)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        [
-            (
-                'Aarav Sharma',
-                'demo@kalakriti.in',
-                'demo123',
-                'buyer',
-                '+919800112233',
-                'Bhopal, Madhya Pradesh',
-                'en',
-            ),
-            (
-                'Seema Devi',
-                'artisan@kalakriti.in',
-                'artisan123',
-                'artisan',
-                '+919876543210',
-                'Madhubani, Bihar',
-                'hi',
-            ),
-        ],
-    )
+    demo_users = [
+        (
+            'Aarav Sharma',
+            'demo@kalakriti.in',
+            'demo123',
+            'buyer',
+            '+919800112233',
+            'Bhopal, Madhya Pradesh',
+            'en',
+        ),
+        (
+            'Seema Devi',
+            'artisan@kalakriti.in',
+            'artisan123',
+            'artisan',
+            '+919876543210',
+            'Madhubani, Bihar',
+            'hi',
+        ),
+    ]
+    for user in demo_users:
+        cursor.execute("SELECT id FROM users WHERE lower(email) = ?", (user[1].lower(),))
+        if not cursor.fetchone():
+            cursor.execute(
+                """
+                INSERT INTO users (name, email, password, role, phone, city, language)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                user,
+            )
 
 
 def seed_sample_products(cursor):

@@ -676,57 +676,377 @@ function renderAccountShell() {
   if (state.currentUser) renderAccountView(state.accountView);
 }
 
-async function loginAccount(event) {
-  event.preventDefault();
-  const status = document.getElementById('loginStatus');
-  const email = document.getElementById('loginEmail').value.trim();
-  const password = document.getElementById('loginPassword').value;
+// Authentication State & Mode Controller
+state.authMode = 'signin';
+state.authMethod = 'phone';
+state.pendingPhone = '';
+state.lastOtp = '123456';
+
+function showAuthStatus(message, isError = true) {
+  const box = document.getElementById('authStatusBox');
+  if (!box) return;
+  box.textContent = message;
+  box.className = isError
+    ? 'mt-4 p-3.5 rounded-xl text-xs font-bold leading-relaxed border bg-red-50 text-red-700 border-red-200'
+    : 'mt-4 p-3.5 rounded-xl text-xs font-bold leading-relaxed border bg-emerald-50 text-emerald-800 border-emerald-200';
+  box.classList.remove('hidden');
+}
+
+function clearAuthStatus() {
+  const box = document.getElementById('authStatusBox');
+  if (box) {
+    box.textContent = '';
+    box.classList.add('hidden');
+  }
+}
+
+function switchAuthMode(mode) {
+  state.authMode = mode;
+  clearAuthStatus();
+
+  const signInBtn = document.getElementById('authModeSignInBtn');
+  const signUpBtn = document.getElementById('authModeSignUpBtn');
+  const phoneSignUpFields = document.getElementById('phoneSignUpFields');
+  const emailSignUpFields = document.getElementById('emailSignUpFields');
+  const title = document.getElementById('authCardTitle');
+  const subtitle = document.getElementById('authCardSubtitle');
+  const sendOtpBtnText = document.getElementById('sendOtpBtnText');
+  const emailSubmitBtnText = document.getElementById('emailSubmitBtnText');
+  const emailInputLabel = document.getElementById('emailInputLabel');
+  const emailDemoPills = document.getElementById('emailDemoPills');
+
+  if (mode === 'signup') {
+    if (signInBtn) {
+      signInBtn.className = 'flex-1 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all text-slate-500 hover:text-slate-900 cursor-pointer';
+    }
+    if (signUpBtn) {
+      signUpBtn.className = 'flex-1 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all bg-white text-slate-900 shadow-sm cursor-pointer';
+    }
+    if (phoneSignUpFields) phoneSignUpFields.classList.remove('hidden');
+    if (emailSignUpFields) emailSignUpFields.classList.remove('hidden');
+    if (title) title.textContent = 'Create your KalaSetu account';
+    if (subtitle) subtitle.textContent = 'Join thousands of Indian artisans and verified handicraft buyers';
+    if (sendOtpBtnText) sendOtpBtnText.textContent = 'Create Account with Mobile OTP';
+    if (emailSubmitBtnText) emailSubmitBtnText.textContent = 'Create Account & Sign In';
+    if (emailInputLabel) emailInputLabel.textContent = 'Email Address';
+    if (emailDemoPills) emailDemoPills.classList.add('hidden');
+  } else {
+    if (signInBtn) {
+      signInBtn.className = 'flex-1 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all bg-white text-slate-900 shadow-sm cursor-pointer';
+    }
+    if (signUpBtn) {
+      signUpBtn.className = 'flex-1 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all text-slate-500 hover:text-slate-900 cursor-pointer';
+    }
+    if (phoneSignUpFields) phoneSignUpFields.classList.add('hidden');
+    if (emailSignUpFields) emailSignUpFields.classList.add('hidden');
+    if (title) title.textContent = 'Sign in to KalaSetu';
+    if (subtitle) subtitle.textContent = 'Access your artisan studio or buyer marketplace';
+    if (sendOtpBtnText) sendOtpBtnText.textContent = 'Send Verification Code (OTP)';
+    if (emailSubmitBtnText) emailSubmitBtnText.textContent = 'Sign In';
+    if (emailInputLabel) emailInputLabel.textContent = 'Email Address or Mobile Number';
+    if (emailDemoPills) emailDemoPills.classList.remove('hidden');
+  }
+}
+
+function switchAuthMethod(method) {
+  state.authMethod = method;
+  clearAuthStatus();
+
+  const phoneBtn = document.getElementById('authMethodPhoneBtn');
+  const emailBtn = document.getElementById('authMethodEmailBtn');
+  const phoneContainer = document.getElementById('authPhoneContainer');
+  const emailContainer = document.getElementById('authEmailContainer');
+
+  if (method === 'email') {
+    if (emailBtn) {
+      emailBtn.className = 'flex-1 pb-3 text-orange-600 border-b-2 border-orange-600 flex items-center justify-center gap-2 transition-all cursor-pointer';
+    }
+    if (phoneBtn) {
+      phoneBtn.className = 'flex-1 pb-3 text-slate-400 border-b-2 border-transparent hover:text-slate-600 flex items-center justify-center gap-2 transition-all cursor-pointer';
+    }
+    if (phoneContainer) phoneContainer.classList.add('hidden');
+    if (emailContainer) emailContainer.classList.remove('hidden');
+  } else {
+    if (phoneBtn) {
+      phoneBtn.className = 'flex-1 pb-3 text-orange-600 border-b-2 border-orange-600 flex items-center justify-center gap-2 transition-all cursor-pointer';
+    }
+    if (emailBtn) {
+      emailBtn.className = 'flex-1 pb-3 text-slate-400 border-b-2 border-transparent hover:text-slate-600 flex items-center justify-center gap-2 transition-all cursor-pointer';
+    }
+    if (phoneContainer) phoneContainer.classList.remove('hidden');
+    if (emailContainer) emailContainer.classList.add('hidden');
+  }
+}
+
+function quickFillPhone(number) {
+  const input = document.getElementById('authPhoneInput');
+  if (input) {
+    input.value = number.replace(/^\+91/, '').replace(/\D/g, '');
+    input.focus();
+  }
+}
+
+function quickFillEmail(email, password) {
+  const emailInput = document.getElementById('loginEmail');
+  const pwdInput = document.getElementById('loginPassword');
+  if (emailInput) emailInput.value = email;
+  if (pwdInput) pwdInput.value = password;
+}
+
+async function handleSendOtp(event) {
+  if (event) event.preventDefault();
+  clearAuthStatus();
+
+  const phoneInput = document.getElementById('authPhoneInput');
+  const rawPhone = phoneInput ? phoneInput.value.trim() : '';
+  const digits = rawPhone.replace(/\D/g, '');
+
+  if (digits.length < 10) {
+    showAuthStatus('Please enter a valid 10-digit Indian mobile number.', true);
+    return;
+  }
+
+  const sendBtn = document.getElementById('sendOtpBtn');
+  if (sendBtn) {
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<span>⏳ Sending OTP...</span>';
+  }
+
   try {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+    const res = await fetch('/api/auth/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: `+91${digits.slice(-10)}` }),
     });
-    if (!response.ok) throw new Error('Invalid email or password');
-    const data = await response.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Could not send verification code');
+
+    state.pendingPhone = data.phone || `+91${digits.slice(-10)}`;
+    state.lastOtp = data.otp || '123456';
+
+    const reqForm = document.getElementById('phoneRequestForm');
+    const verifyForm = document.getElementById('phoneVerifyForm');
+    const targetDisplay = document.getElementById('otpTargetDisplay');
+    const demoBadge = document.getElementById('demoOtpBadge');
+
+    if (targetDisplay) targetDisplay.textContent = state.pendingPhone;
+    if (demoBadge) demoBadge.textContent = state.lastOtp;
+    if (reqForm) reqForm.classList.add('hidden');
+    if (verifyForm) verifyForm.classList.remove('hidden');
+
+    const otpInput = document.getElementById('authOtpInput');
+    if (otpInput) {
+      otpInput.value = '';
+      otpInput.focus();
+    }
+
+    showAuthStatus(`✅ OTP sent successfully to ${state.pendingPhone}. Use code ${state.lastOtp} to verify.`, false);
+  } catch (err) {
+    showAuthStatus(err.message || 'Failed to send OTP code. Please try again.', true);
+  } finally {
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      const text = state.authMode === 'signup' ? 'Create Account with Mobile OTP' : 'Send Verification Code (OTP)';
+      sendBtn.innerHTML = `<span>📲</span><span>${text}</span>`;
+    }
+  }
+}
+
+function autoFillDemoOtp() {
+  const otpInput = document.getElementById('authOtpInput');
+  if (otpInput) {
+    otpInput.value = state.lastOtp || '123456';
+    otpInput.focus();
+  }
+}
+
+function cancelOtpStep() {
+  clearAuthStatus();
+  const reqForm = document.getElementById('phoneRequestForm');
+  const verifyForm = document.getElementById('phoneVerifyForm');
+  if (verifyForm) verifyForm.classList.add('hidden');
+  if (reqForm) reqForm.classList.remove('hidden');
+}
+
+function resendOtp() {
+  handleSendOtp(null);
+}
+
+async function handleVerifyOtp(event) {
+  if (event) event.preventDefault();
+  clearAuthStatus();
+
+  const otpInput = document.getElementById('authOtpInput');
+  const otp = otpInput ? otpInput.value.trim() : '';
+  if (!otp || otp.length < 4) {
+    showAuthStatus('Please enter the 6-digit verification code.', true);
+    return;
+  }
+
+  let name = '';
+  let role = 'artisan';
+  if (state.authMode === 'signup') {
+    const nameInput = document.getElementById('phoneRegisterName');
+    name = nameInput ? nameInput.value.trim() : '';
+    const roleRadio = document.querySelector('input[name="phoneRole"]:checked');
+    if (roleRadio) role = roleRadio.value;
+  }
+
+  const verifyBtn = document.getElementById('verifyOtpBtn');
+  if (verifyBtn) {
+    verifyBtn.disabled = true;
+    verifyBtn.innerHTML = '<span>⏳ Verifying Code...</span>';
+  }
+
+  try {
+    const res = await fetch('/api/auth/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone: state.pendingPhone,
+        otp: otp,
+        name: name || 'Artisan',
+        role: role,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'OTP verification failed');
+
     state.currentUser = data.user;
     localStorage.setItem('kalakriti_user', JSON.stringify(state.currentUser));
 
     try {
       await loadAccountData();
     } catch (loadErr) {
-      console.warn('Account data load skipped after login:', loadErr);
+      console.warn('Account activity sync delayed:', loadErr);
     }
 
     switchTab('home');
-    const userName = state.currentUser?.name || state.currentUser?.email || email || 'Artisan';
+    const userName = state.currentUser?.name || state.currentUser?.phone || 'Artisan';
     showToast(`Logged in as ${userName}`);
 
-    // Trigger interactive welcome popup
     showInteractiveModal({
       type: 'welcome',
       title: `Welcome, ${userName}! 🎉`,
-      subtitle: 'Logged in to KalaSetu AI Studio',
+      subtitle: data.is_new ? 'Account Created Successfully' : 'Logged in to KalaSetu AI Studio',
+      message: `Your account (${state.currentUser?.phone || state.currentUser?.email}) is active. Your artisan catalog and market linkage tools are ready.`,
+      primaryText: '✨ Explore Marketplace',
+      onPrimary: () => switchTab('marketplace'),
+      secondaryText: '🎨 Open AI Studio',
+      onSecondary: () => switchTab('studio'),
+    });
+  } catch (err) {
+    showAuthStatus(err.message || 'Invalid or expired OTP. Please try again.', true);
+    showInteractiveModal({
+      type: 'error',
+      title: 'Verification Failed',
+      subtitle: 'OTP Error',
+      message: err.message || 'Please check the OTP verification code and try again.',
+      primaryText: 'OK',
+    });
+  } finally {
+    if (verifyBtn) {
+      verifyBtn.disabled = false;
+      verifyBtn.innerHTML = '<span>✅</span><span>Verify OTP & Access Workspace</span>';
+    }
+  }
+}
+
+async function handleEmailAuth(event) {
+  if (event) event.preventDefault();
+  clearAuthStatus();
+
+  const emailInput = document.getElementById('loginEmail');
+  const passwordInput = document.getElementById('loginPassword');
+  const email = emailInput ? emailInput.value.trim() : '';
+  const password = passwordInput ? passwordInput.value : '';
+
+  if (!email || !password) {
+    showAuthStatus('Please enter your email/phone and password.', true);
+    return;
+  }
+
+  const submitBtn = document.getElementById('emailSubmitBtn');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>⏳ Authenticating...</span>';
+  }
+
+  try {
+    let endpoint = '/api/auth/login';
+    let payload = { email, password };
+
+    if (state.authMode === 'signup') {
+      endpoint = '/api/auth/register';
+      const nameInput = document.getElementById('emailRegisterName');
+      const phoneInput = document.getElementById('emailRegisterPhone');
+      const roleRadio = document.querySelector('input[name="emailRole"]:checked');
+      const name = nameInput ? nameInput.value.trim() : 'User';
+      const phone = phoneInput ? phoneInput.value.trim() : '';
+      const role = roleRadio ? roleRadio.value : 'artisan';
+      payload = { name, email, password, role, phone };
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || (state.authMode === 'signup' ? 'Registration failed' : 'Invalid email or password'));
+    }
+
+    // Auto log in with newly registered or authenticated profile
+    state.currentUser = data.user || {
+      id: data.user_id,
+      name: payload.name || 'User',
+      email: email,
+      role: payload.role || 'buyer',
+    };
+    localStorage.setItem('kalakriti_user', JSON.stringify(state.currentUser));
+
+    try {
+      await loadAccountData();
+    } catch (loadErr) {
+      console.warn('Account data load skipped after auth:', loadErr);
+    }
+
+    switchTab('home');
+    const userName = state.currentUser?.name || state.currentUser?.email || 'User';
+    showToast(`Logged in as ${userName}`);
+
+    showInteractiveModal({
+      type: 'welcome',
+      title: `Welcome, ${userName}! 🎉`,
+      subtitle: state.authMode === 'signup' ? 'Account Created Successfully' : 'Logged in to KalaSetu AI Studio',
       message: `Your account (${state.currentUser?.email || email}) is successfully active. Your smart craft studio and direct marketplace orders are ready.`,
       primaryText: '✨ Explore Marketplace',
       onPrimary: () => switchTab('marketplace'),
       secondaryText: '🎨 Open AI Studio',
-      onSecondary: () => switchTab('studio')
+      onSecondary: () => switchTab('studio'),
     });
   } catch (error) {
-    if (status) {
-      status.textContent = 'Sign in failed. Demo buyer: demo@kalakriti.in / demo123';
-      status.className = 'mt-4 text-sm font-semibold text-red-700';
-      status.classList.remove('hidden');
-    }
+    showAuthStatus(error.message || 'Authentication failed. Please verify your credentials or sign up.', true);
     showInteractiveModal({
       type: 'error',
-      title: 'Sign-In Failed',
-      subtitle: 'Authentication Error',
-      message: error.message || 'Please check your email and password.',
-      primaryText: 'OK'
+      title: state.authMode === 'signup' ? 'Registration Failed' : 'Sign-In Failed',
+      subtitle: 'Authentication Notice',
+      message: error.message || 'Please check your credentials or click "Create Account" if you do not have an account yet.',
+      primaryText: 'OK',
     });
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      const text = state.authMode === 'signup' ? 'Create Account & Sign In' : 'Sign In';
+      submitBtn.innerHTML = `<span>${text}</span>`;
+    }
   }
 }
+
+// Legacy alias
+const loginAccount = handleEmailAuth;
 
 function logoutAccount() {
   state.currentUser = null;

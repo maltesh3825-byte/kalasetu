@@ -172,3 +172,11 @@ VALUES
     12
 )
 ON CONFLICT DO NOTHING;
+ 
+-- 8. SEED DEMO ACCOUNTS
+INSERT INTO users (name, email, password, role, phone, city, language)
+VALUES
+    ('Aarav Sharma', 'demo@kalakriti.in', 'demo123', 'buyer', '+919800112233', 'Bhopal, Madhya Pradesh', 'en'),
+    ('Seema Devi', 'artisan@kalakriti.in', 'artisan123', 'artisan', '+919876543210', 'Madhubani, Bihar', 'hi')
+ON CONFLICT (email) DO NOTHING;
+
