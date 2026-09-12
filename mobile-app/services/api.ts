@@ -327,41 +327,227 @@ export async function publishProductToApi(product: Omit<CraftProduct, 'id'>): Pr
   }
 }
 
-export async function loginUser(email: string, password: string, role: UserRole = 'buyer'): Promise<AppUser | null> {
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 12000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const payload = { email, password, role };
-    const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal
     });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.user) {
-        return data.user as AppUser;
-      }
+    return res;
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      throw new Error('Server took too long to respond. The free cloud backend may be waking up from sleep, please try again.');
     }
-
-    // Reject unauthenticated access. Never auto-authenticate with mock credentials in production.
-    throw new Error('Invalid email or password.');
-  } catch (err) {
-    console.error('Authentication request failed:', err);
-    throw (err instanceof Error) ? err : new Error('Unable to connect to authentication server. Please check your network connection.');
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-export async function loginWithPhone(phone: string, pin: string): Promise<AppUser> {
-  const res = await fetch(`${BACKEND_URL}/api/auth/phone-login`, {
+export interface SendOtpResponse {
+  status: string;
+  message: string;
+  target?: string;
+  target_type?: 'email' | 'phone';
+  sent_via_smtp?: boolean;
+  sent_via_sms?: boolean;
+  dev_otp?: string;
+  notice?: string;
+  expires_in?: number;
+}
+
+export async function sendOtpApi(identifier: string, name: string = ''): Promise<SendOtpResponse> {
+  const isEmail = identifier.includes('@');
+  const payload = isEmail ? { email: identifier.trim().toLowerCase(), name } : { phone: identifier.trim(), name };
+  try {
+    const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/send-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }, 12000);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.detail || 'Could not send verification code.');
+    }
+    return data as SendOtpResponse;
+  } catch (err: any) {
+    if (err.message?.includes('Not Found') || err.message?.includes('404')) {
+      throw new Error('OTP service is updating. Please sign in or register directly using your password/PIN.');
+    }
+    throw err;
+  }
+}
+
+export async function verifyOtpApi(
+  target: string,
+  otp: string,
+  password: string = '1234',
+  name: string = 'Artisan',
+  role: UserRole = 'artisan'
+): Promise<AppUser> {
+  const isEmail = target.includes('@');
+  const payload = {
+    email: isEmail ? target.trim().toLowerCase() : '',
+    phone: isEmail ? '' : target.trim(),
+    otp: otp.trim(),
+    password,
+    name,
+    role
+  };
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/verify-otp`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone, password: pin })
-  });
+    body: JSON.stringify(payload)
+  }, 10000);
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.user) {
-    throw new Error(data.detail || 'Invalid phone number or PIN');
+    throw new Error(data.detail || 'Invalid or expired verification code.');
   }
   return data.user as AppUser;
+}
+
+export async function registerUser(params: {
+  name: string;
+  email: string;
+  password: string;
+  role?: UserRole;
+  phone?: string;
+  city?: string;
+  language?: string;
+}): Promise<AppUser> {
+  const payload = {
+    name: params.name.trim(),
+    email: params.email.trim().toLowerCase(),
+    password: params.password,
+    role: params.role || 'buyer',
+    phone: params.phone ? params.phone.trim() : '',
+    city: params.city ? params.city.trim() : '',
+    language: params.language || 'en'
+  };
+
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }, 12000);
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.detail || 'Registration failed. Please check your information.');
+  }
+
+  // After registration, log the user in immediately to get the complete AppUser profile
+  const loggedIn = await loginUser(payload.email, payload.password, payload.role as UserRole);
+  if (loggedIn) return loggedIn;
+
+  return {
+    id: data.user_id || Date.now(),
+    name: payload.name,
+    email: payload.email,
+    role: payload.role as UserRole,
+    phone: payload.phone,
+    city: payload.city,
+    language: (payload.language as any) || 'en'
+  };
+}
+
+export async function loginUser(email: string, password: string, role: UserRole = 'buyer'): Promise<AppUser | null> {
+  const cleanInput = email.trim();
+  const isEmail = cleanInput.includes('@');
+  const digits = cleanInput.replace(/\D/g, '').slice(-10);
+
+  // Candidates to try (primary email, phone number variants, synthetic emails from web registrations)
+  const candidates = [cleanInput];
+  if (!isEmail && digits.length >= 8) {
+    candidates.push(`+91${digits}`);
+    candidates.push(digits);
+    candidates.push(`artisan_${digits}@kalakriti.in`);
+    candidates.push(`buyer_${digits}@kalakriti.in`);
+    candidates.push(`${digits}@kalakriti.in`);
+  }
+
+  let lastError = 'Invalid email or password.';
+
+  for (const candidate of candidates) {
+    try {
+      const payload = { email: candidate, password, role };
+      const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }, 10000);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.user) {
+          return data.user as AppUser;
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.detail && typeof errData.detail === 'string') {
+          lastError = errData.detail;
+        }
+      }
+    } catch (err: any) {
+      if (err.message && err.message.includes('Server took too long')) {
+        throw err;
+      }
+      lastError = err.message || 'Network error during login.';
+    }
+  }
+
+  throw new Error(lastError || 'Invalid email or password.');
+}
+
+export async function loginWithPhone(phone: string, pin: string): Promise<AppUser> {
+  const clean = phone.trim();
+  const digits = clean.replace(/\D/g, '').slice(-10);
+
+  // 1. Try dedicated phone-login endpoint first
+  try {
+    const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/phone-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: clean, password: pin })
+    }, 8000);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.user) return data.user as AppUser;
+    }
+  } catch (err: any) {
+    // If phone-login returned 404 or timed out, continue to fallback
+  }
+
+  // 2. Try standard /api/auth/login with normalized phone or synthetic email
+  const candidates = [
+    clean,
+    `+91${digits}`,
+    digits,
+    `artisan_${digits}@kalakriti.in`,
+    `buyer_${digits}@kalakriti.in`,
+    `${digits}@kalakriti.in`
+  ];
+
+  for (const emailCandidate of candidates) {
+    try {
+      const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailCandidate, password: pin })
+      }, 7000);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.user) return data.user as AppUser;
+      }
+    } catch (err) {
+      // Continue to next candidate
+    }
+  }
+
+  throw new Error('Invalid mobile number or PIN. If you are a new user, please use "Create Account".');
 }
 
 export async function registerWithPhone(params: {
@@ -372,23 +558,42 @@ export async function registerWithPhone(params: {
   city?: string;
   language?: string;
 }): Promise<AppUser> {
-  const res = await fetch(`${BACKEND_URL}/api/auth/phone-register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      phone: params.phone,
-      password: params.pin,
-      name: params.name,
-      role: params.role || 'artisan',
-      city: params.city || '',
-      language: params.language || 'hi'
-    })
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.user) {
-    throw new Error(data.detail || 'Phone registration failed');
+  const cleanPhone = params.phone.trim();
+  const digits = cleanPhone.replace(/\D/g, '').slice(-10);
+
+  // 1. Try phone-register endpoint
+  try {
+    const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/phone-register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone: cleanPhone,
+        password: params.pin,
+        name: params.name,
+        role: params.role || 'artisan',
+        city: params.city || '',
+        language: params.language || 'hi'
+      })
+    }, 8000);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.user) return data.user as AppUser;
+    }
+  } catch (err) {
+    // Continue to standard register fallback
   }
-  return data.user as AppUser;
+
+  // 2. Fallback to standard /api/auth/register (supported on all backend versions)
+  const syntheticEmail = `${params.role === 'buyer' ? 'buyer' : 'artisan'}_${digits}@kalakriti.in`;
+  return await registerUser({
+    name: params.name,
+    email: syntheticEmail,
+    password: params.pin,
+    role: params.role || 'artisan',
+    phone: cleanPhone,
+    city: params.city,
+    language: params.language || 'hi'
+  });
 }
 
 export async function loginAdmin(email: string, password: string): Promise<string> {

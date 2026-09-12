@@ -58,6 +58,10 @@ import {
   loginUser,
   loginWithPhone,
   registerWithPhone,
+  registerUser,
+  sendOtpApi,
+  verifyOtpApi,
+  SendOtpResponse,
   createOrder,
   fetchOrdersForUser,
   cancelOrderApi,
@@ -386,6 +390,12 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState('1234');
   const [authName, setAuthName] = useState('Aarav Sharma');
   const [authRole, setAuthRole] = useState<UserRole>('buyer');
+  const [authCity, setAuthCity] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authOtp, setAuthOtp] = useState('');
+  const [showOtpSection, setShowOtpSection] = useState(false);
+  const [devOtpNotice, setDevOtpNotice] = useState('');
+  const [authErrorNotice, setAuthErrorNotice] = useState('');
   const [bulkNeed, setBulkNeed] = useState('');
   const [bulkBuyerType, setBulkBuyerType] = useState('Retail / Institutional Buyer');
   const [bulkCategory, setBulkCategory] = useState('Handloom & Textiles');
@@ -674,51 +684,101 @@ export default function App() {
     }
   };
 
-  const handleGuestLogin = async () => {
+  const handleAuthSubmit = async () => {
+    if (authLoading) return;
+    setAuthLoading(true);
+    setAuthErrorNotice('');
+
     try {
       let user: AppUser | null = null;
-      if (authMethod === 'phone') {
-        user = await loginWithPhone(authPhone.trim(), authPassword);
+
+      if (authMode === 'register') {
+        if (!authName.trim()) {
+          throw new Error(lang === 'hi' ? 'कृपया अपना पूरा नाम दर्ज करें।' : 'Please enter your full name.');
+        }
+
+        if (authMethod === 'phone') {
+          const cleanDigits = authPhone.trim().replace(/\D/g, '').slice(-10);
+          if (cleanDigits.length < 8) {
+            throw new Error(lang === 'hi' ? 'कृपया एक वैध 10-अंकीय मोबाइल नंबर दर्ज करें।' : 'Please enter a valid 10-digit mobile number.');
+          }
+          if (!authPassword.trim()) {
+            throw new Error(lang === 'hi' ? 'कृपया एक 4-अंकीय पिन या पासवर्ड सेट करें।' : 'Please set a PIN or password.');
+          }
+          user = await registerWithPhone({
+            phone: authPhone.trim(),
+            pin: authPassword.trim(),
+            name: authName.trim(),
+            role: authRole,
+            city: authCity.trim() || 'India',
+            language: lang
+          });
+        } else {
+          if (!authEmail.trim() || !authEmail.includes('@')) {
+            throw new Error(lang === 'hi' ? 'कृपया एक वैध ईमेल पता दर्ज करें।' : 'Please enter a valid email address.');
+          }
+          if (!authPassword.trim()) {
+            throw new Error(lang === 'hi' ? 'कृपया एक पासवर्ड सेट करें।' : 'Please set a password.');
+          }
+          user = await registerUser({
+            name: authName.trim(),
+            email: authEmail.trim(),
+            password: authPassword.trim(),
+            role: authRole,
+            phone: authPhone.trim(),
+            city: authCity.trim() || 'India',
+            language: lang
+          });
+        }
       } else {
-        user = await loginUser(authEmail.trim(), authPassword, authRole);
+        if (authMethod === 'phone') {
+          if (!authPhone.trim()) {
+            throw new Error(lang === 'hi' ? 'कृपया अपना मोबाइल नंबर दर्ज करें।' : 'Please enter your mobile number.');
+          }
+          user = await loginWithPhone(authPhone.trim(), authPassword.trim());
+        } else {
+          if (!authEmail.trim()) {
+            throw new Error(lang === 'hi' ? 'कृपया अपना ईमेल पता दर्ज करें।' : 'Please enter your email address.');
+          }
+          user = await loginUser(authEmail.trim(), authPassword.trim(), authRole);
+        }
       }
+
       if (!user) {
-        showCustomPopup({
-          type: 'error',
-          title: lang === 'hi' ? 'लॉगिन त्रुटि' : 'Login Error',
-          subtitle: 'Invalid Credentials',
-          message: lang === 'hi' ? 'अमान्य क्रेडेंशियल्स या सर्वर से संपर्क नहीं हो सका।' : 'Invalid credentials or unable to reach backend server.',
-          primaryText: 'OK',
-          primaryAction: hideCustomPopup
-        });
-        return;
+        throw new Error(
+          authMode === 'register'
+            ? (lang === 'hi' ? 'खाता निर्माण विफल रहा।' : 'Account creation failed. Please try again.')
+            : (lang === 'hi' ? 'अमान्य क्रेडेंशियल्स। यदि आपके पास खाता नहीं है, तो "साइन अप" चुनें।' : 'Invalid credentials. If you do not have an account, tap "Create Account".')
+        );
       }
+
       setCurrentUser(user);
       if (user.phone) setArtisanPhone(user.phone);
       if (user.name) setArtisanName(user.name);
       if (user.city) setArtisanLocation(user.city);
       setIsLoggedIn(true);
-      setAuthMode('login');
       setActiveTab('home');
 
-      // Trigger interactive celebration / welcome popup!
       showCustomPopup({
         type: 'welcome',
-        title: lang === 'hi' ? `नमस्ते, ${user.name || 'कारीगर'}!` : `Welcome, ${user.name || 'Artisan'}! 🎉`,
-        subtitle: lang === 'hi' ? 'कलासेतु में आपका स्वागत है' : 'Logged in to Kalasetu AI Studio',
-        message: lang === 'hi'
-          ? `आपका खाता (${user.phone || user.email}) सफलतापूर्वक सक्रिय हो गया है। आपका शिल्प कैटलॉग और खरीदार संपर्क तैयार हैं।`
-          : `You are logged in as ${user.phone || user.email}. Your artisan craft studio, smart cataloging, and direct buyer orders are ready.`,
-        primaryText: lang === 'hi' ? '🎨 शिल्प स्टूडियो' : '🎨 Open AI Studio',
+        title: authMode === 'register'
+          ? (lang === 'hi' ? `बधाई हो, ${user.name}! 🎉` : `Account Created! Welcome, ${user.name}! 🎉`)
+          : (lang === 'hi' ? `नमस्ते, ${user.name || 'कारीगर'}!` : `Welcome back, ${user.name || 'Artisan'}! 🎉`),
+        subtitle: lang === 'hi' ? 'कलासेतु में आपका स्वागत है' : 'KalaSetu AI Studio',
+        message: authMode === 'register'
+          ? (lang === 'hi'
+              ? `आपका खाता (${user.phone || user.email}) सफलतापूर्वक बन गया है। अब आप शिल्प कैटलॉग जोड़ सकते हैं।`
+              : `Your account (${user.phone || user.email}) has been created successfully. Your craft catalog and buyer tools are ready.`)
+          : (lang === 'hi'
+              ? `आपका खाता (${user.phone || user.email}) सफलतापूर्वक सक्रिय हो गया है।`
+              : `Logged in as ${user.phone || user.email}.`),
+        primaryText: user.role === 'buyer' ? (lang === 'hi' ? '🛍️ बाज़ार देखें' : '🛍️ Explore Market') : (lang === 'hi' ? '🎨 शिल्प स्टूडियो' : '🎨 Open AI Studio'),
         primaryAction: () => {
           hideCustomPopup();
-          setActiveTab('studio');
+          setActiveTab(user.role === 'buyer' ? 'market' : 'studio');
         },
-        secondaryText: lang === 'hi' ? '🛍️ बाज़ार देखें' : '🛍️ Explore Market',
-        secondaryAction: () => {
-          hideCustomPopup();
-          setActiveTab('market');
-        }
+        secondaryText: 'OK',
+        secondaryAction: hideCustomPopup
       });
 
       try {
@@ -727,14 +787,68 @@ export default function App() {
         console.warn('Account activity unavailable:', error);
       }
     } catch (err: any) {
+      const errMsg = err?.message || 'Authentication error';
+      setAuthErrorNotice(errMsg);
       showCustomPopup({
         type: 'error',
-        title: lang === 'hi' ? 'साइन-इन विफल' : 'Sign-In Failed',
-        subtitle: 'Authentication Error',
-        message: err?.message || 'Please check your phone number and password.',
+        title: authMode === 'register' ? (lang === 'hi' ? 'साइन अप विफल' : 'Sign Up Failed') : (lang === 'hi' ? 'साइन-इन विफल' : 'Sign-In Failed'),
+        subtitle: authMode === 'register' ? 'Registration Error' : 'Invalid Credentials',
+        message: errMsg,
         primaryText: 'OK',
         primaryAction: hideCustomPopup
       });
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSendOtp = async () => {
+    const target = authMethod === 'phone' ? authPhone.trim() : authEmail.trim();
+    if (!target) {
+      Alert.alert('Required', authMethod === 'phone' ? 'Please enter your mobile number' : 'Please enter your Gmail / email');
+      return;
+    }
+    setAuthLoading(true);
+    setDevOtpNotice('');
+    try {
+      const res = await sendOtpApi(target, authName);
+      setShowOtpSection(true);
+      if (res.dev_otp) {
+        setDevOtpNotice(`Test OTP: ${res.dev_otp}`);
+      }
+      Alert.alert(
+        'Code Dispatched',
+        res.sent_via_smtp
+          ? `Verification code sent to ${target}. Please check your inbox or spam folder.`
+          : (res.dev_otp ? `Verification code generated: ${res.dev_otp}` : `Code dispatched for ${target}`)
+      );
+    } catch (err: any) {
+      Alert.alert('Notice', err?.message || 'Could not dispatch OTP.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    const target = authMethod === 'phone' ? authPhone.trim() : authEmail.trim();
+    if (!authOtp.trim()) {
+      Alert.alert('Required', 'Please enter the 6-digit OTP');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const user = await verifyOtpApi(target, authOtp.trim(), authPassword.trim() || '1234', authName.trim(), authRole);
+      setCurrentUser(user);
+      if (user.phone) setArtisanPhone(user.phone);
+      if (user.name) setArtisanName(user.name);
+      if (user.city) setArtisanLocation(user.city);
+      setIsLoggedIn(true);
+      setActiveTab('home');
+      Alert.alert('Success', `Verified and logged in as ${user.name}!`);
+    } catch (err: any) {
+      Alert.alert('Verification Failed', err?.message || 'Invalid or expired OTP');
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -1600,12 +1714,40 @@ export default function App() {
           <View style={styles.marketContainer}>
             {!isLoggedIn ? (
               <View style={styles.authCard}>
-                <Text style={styles.marketHeroTitle}>{t.loginTitle}</Text>
-                <Text style={styles.authSubtitle}>{t.loginSubtitle}</Text>
+                {/* Auth Mode Toggle: Sign In vs Create Account */}
+                <View style={{ flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 12, padding: 4, marginBottom: 16 }}>
+                  <TouchableOpacity
+                    style={[{ flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 9 }, authMode === 'login' && { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 }]}
+                    onPress={() => { setAuthMode('login'); setAuthErrorNotice(''); }}
+                  >
+                    <Text style={{ fontWeight: '700', fontSize: 13, color: authMode === 'login' ? Colors.primary : Colors.textSecondary }}>
+                      🔑 {lang === 'hi' ? 'साइन इन' : 'Sign In'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[{ flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 9 }, authMode === 'register' && { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 }]}
+                    onPress={() => { setAuthMode('register'); setAuthErrorNotice(''); }}
+                  >
+                    <Text style={{ fontWeight: '700', fontSize: 13, color: authMode === 'register' ? Colors.primary : Colors.textSecondary }}>
+                      ✨ {lang === 'hi' ? 'साइन अप (खाता बनाएं)' : 'Create Account'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.marketHeroTitle}>
+                  {authMode === 'register' ? (lang === 'hi' ? 'कलासेतु में शामिल हों' : 'Join KalaSetu') : t.loginTitle}
+                </Text>
+                <Text style={styles.authSubtitle}>
+                  {authMode === 'register'
+                    ? (lang === 'hi' ? 'शिल्पकारों और खरीदारों के लिए निःशुल्क पंजीकरण' : 'Free account for artisans and buyers')
+                    : t.loginSubtitle}
+                </Text>
+
+                {/* Channel Toggle: Mobile Number vs Gmail / Email */}
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
                   <TouchableOpacity
                     style={[styles.accountSubnavButton, authMethod === 'phone' && styles.accountSubnavButtonActive, { flex: 1, alignItems: 'center' }]}
-                    onPress={() => setAuthMethod('phone')}
+                    onPress={() => { setAuthMethod('phone'); setDevOtpNotice(''); }}
                   >
                     <Text style={[styles.accountSubnavText, authMethod === 'phone' && styles.accountSubnavTextActive]}>
                       📱 Mobile Number
@@ -1613,13 +1755,65 @@ export default function App() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.accountSubnavButton, authMethod === 'email' && styles.accountSubnavButtonActive, { flex: 1, alignItems: 'center' }]}
-                    onPress={() => setAuthMethod('email')}
+                    onPress={() => { setAuthMethod('email'); setDevOtpNotice(''); }}
                   >
                     <Text style={[styles.accountSubnavText, authMethod === 'email' && styles.accountSubnavTextActive]}>
-                      ✉️ Email
+                      ✉️ Gmail / Email
                     </Text>
                   </TouchableOpacity>
                 </View>
+
+                {/* Sign-Up Extra Fields: Name, Role & Location */}
+                {authMode === 'register' && (
+                  <View style={{ marginBottom: 4 }}>
+                    <TextInput
+                      style={styles.searchBar}
+                      value={authName}
+                      onChangeText={setAuthName}
+                      placeholder={lang === 'hi' ? 'आपका पूरा नाम (उदा. रामेश्वर प्रजापति)' : 'Full Name (e.g. Rameshwar Prajapati)'}
+                      placeholderTextColor={Colors.placeholder}
+                    />
+
+                    {/* Role Selector Chips */}
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.textSecondary, marginBottom: 6, marginTop: 4 }}>
+                      {lang === 'hi' ? 'आपकी भूमिका चुनें:' : 'Select Your Role:'}
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                      <TouchableOpacity
+                        style={[
+                          styles.roleChip,
+                          authRole === 'artisan' && { backgroundColor: Colors.primary, borderColor: Colors.primary }
+                        ]}
+                        onPress={() => setAuthRole('artisan')}
+                      >
+                        <Text style={[styles.roleChipText, authRole === 'artisan' && { color: '#FFFFFF', fontWeight: 'bold' }]}>
+                          🎨 {lang === 'hi' ? 'कारीगर (विक्रेता)' : 'Artisan / Seller'}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.roleChip,
+                          authRole === 'buyer' && { backgroundColor: Colors.secondary, borderColor: Colors.secondary }
+                        ]}
+                        onPress={() => setAuthRole('buyer')}
+                      >
+                        <Text style={[styles.roleChipText, authRole === 'buyer' && { color: '#FFFFFF', fontWeight: 'bold' }]}>
+                          🛍️ {lang === 'hi' ? 'खरीदार (ग्राहक)' : 'Buyer / Customer'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <TextInput
+                      style={styles.searchBar}
+                      value={authCity}
+                      onChangeText={setAuthCity}
+                      placeholder={lang === 'hi' ? 'शहर / राज्य (उदा. गोरखपुर, उत्तर प्रदेश)' : 'City / State (e.g. Gorakhpur, UP)'}
+                      placeholderTextColor={Colors.placeholder}
+                    />
+                  </View>
+                )}
+
+                {/* Identifier Input */}
                 {authMethod === 'phone' ? (
                   <TextInput
                     style={styles.searchBar}
@@ -1634,23 +1828,136 @@ export default function App() {
                     style={styles.searchBar}
                     value={authEmail}
                     onChangeText={setAuthEmail}
-                    placeholder={t.email}
+                    placeholder="Gmail / Email address"
                     keyboardType="email-address"
                     autoCapitalize="none"
                     placeholderTextColor={Colors.placeholder}
                   />
                 )}
+
+                {/* Password / PIN Input */}
                 <TextInput
                   style={styles.searchBar}
                   value={authPassword}
                   onChangeText={setAuthPassword}
-                  placeholder={authMethod === 'phone' ? "PIN or Password (e.g. 1234)" : t.password}
+                  placeholder={authMethod === 'phone' ? "PIN or Password (e.g. 1234)" : (authMode === 'register' ? "Create Password" : t.password)}
                   secureTextEntry
                   placeholderTextColor={Colors.placeholder}
                 />
-                <TouchableOpacity style={styles.primaryAction} onPress={handleGuestLogin}>
-                  <Text style={styles.primaryActionText}>{t.signIn}</Text>
+
+                {/* Inline Error Notice */}
+                {authErrorNotice ? (
+                  <View style={{ backgroundColor: '#FEE2E2', padding: 10, borderRadius: 8, marginBottom: 10 }}>
+                    <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '600' }}>⚠️ {authErrorNotice}</Text>
+                  </View>
+                ) : null}
+
+                {/* Primary Action Button */}
+                <TouchableOpacity
+                  style={[styles.primaryAction, authLoading && { opacity: 0.7 }]}
+                  onPress={handleAuthSubmit}
+                  disabled={authLoading}
+                >
+                  {authLoading ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                      <Text style={styles.primaryActionText}>
+                        {authMode === 'register' ? 'Creating Account...' : 'Signing In...'}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.primaryActionText}>
+                      {authMode === 'register'
+                        ? (lang === 'hi' ? '✨ खाता बनाएं (साइन अप)' : '✨ Create Account')
+                        : (lang === 'hi' ? '🔑 साइन इन करें' : '🔑 Sign In')}
+                    </Text>
+                  )}
                 </TouchableOpacity>
+
+                {/* OTP Option Accordion */}
+                <View style={{ marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 }}
+                    onPress={() => setShowOtpSection(!showOtpSection)}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.primaryDark }}>
+                      📩 {lang === 'hi' ? 'ओटीपी द्वारा लॉगिन या सत्यापन' : 'Or Verify / Login with OTP'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: Colors.textSecondary }}>
+                      {showOtpSection ? '▲ Hide' : '▼ Expand'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showOtpSection && (
+                    <View style={{ marginTop: 8, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 10 }}>
+                      <TouchableOpacity
+                        style={[styles.secondaryButton, { marginBottom: 8, paddingVertical: 8 }]}
+                        onPress={handleSendOtp}
+                        disabled={authLoading}
+                      >
+                        <Text style={styles.secondaryButtonText}>
+                          {authLoading ? 'Sending...' : `Send OTP to ${authMethod === 'phone' ? 'Mobile' : 'Gmail'}`}
+                        </Text>
+                      </TouchableOpacity>
+
+                      {devOtpNotice ? (
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#FEF3C7', padding: 8, borderRadius: 6, marginBottom: 8 }}
+                          onPress={() => {
+                            const match = devOtpNotice.match(/\d{6}/);
+                            if (match) setAuthOtp(match[0]);
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, color: '#B45309', fontWeight: 'bold' }}>
+                            {devOtpNotice} (Tap to auto-fill)
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+
+                      <TextInput
+                        style={[styles.searchBar, { backgroundColor: '#FFFFFF', marginBottom: 8 }]}
+                        value={authOtp}
+                        onChangeText={setAuthOtp}
+                        placeholder="Enter 6-digit OTP"
+                        keyboardType="numeric"
+                        maxLength={6}
+                        placeholderTextColor={Colors.placeholder}
+                      />
+
+                      <TouchableOpacity
+                        style={[styles.primaryAction, { paddingVertical: 10 }]}
+                        onPress={handleVerifyOtp}
+                        disabled={authLoading}
+                      >
+                        <Text style={styles.primaryActionText}>Verify OTP & Enter</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
+                {/* Switch Mode Prompt */}
+                <TouchableOpacity
+                  style={{ marginTop: 14, alignItems: 'center', paddingVertical: 4 }}
+                  onPress={() => {
+                    setAuthMode(authMode === 'login' ? 'register' : 'login');
+                    setAuthErrorNotice('');
+                  }}
+                >
+                  <Text style={{ fontSize: 12, color: Colors.textSecondary }}>
+                    {authMode === 'login' ? (
+                      <>Don't have an account? <Text style={{ color: Colors.primary, fontWeight: 'bold' }}>Create Account</Text></>
+                    ) : (
+                      <>Already have an account? <Text style={{ color: Colors.primary, fontWeight: 'bold' }}>Sign In</Text></>
+                    )}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Demo Credentials Hint */}
+                <View style={{ marginTop: 12, backgroundColor: '#F1F5F9', padding: 10, borderRadius: 8 }}>
+                  <Text style={{ fontSize: 11, color: Colors.textSecondary, textAlign: 'center' }}>
+                    💡 <Text style={{ fontWeight: 'bold' }}>Demo Credentials:</Text> Email: <Text style={{ color: Colors.primary }}>demo@kalakriti.in</Text> | Pass: <Text style={{ color: Colors.primary }}>demo123</Text>
+                  </Text>
+                </View>
               </View>
             ) : (
               <View style={styles.profileCard}>
