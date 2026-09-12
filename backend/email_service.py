@@ -257,8 +257,24 @@ Ministry of Social Justice & Empowerment (MoSJE)
 
     subject_text = f"🔐 {otp_code} is your KalaSetu Verification Code"
 
+    brevo_attempted_err = None
+    # Method 1: If Brevo HTTPS Email API is configured, use it first (delivers to ANY recipient without domain verification)
+    if cfg.get("brevo_key"):
+        print(f"[EMAIL] Attempting delivery to {target} via Brevo HTTPS API (Port 443)... KeyLen={len(cfg['brevo_key'])}")
+        brevo_res = _send_via_brevo(cfg["brevo_key"], from_addr, target, subject_text, text_body, html_body)
+        if brevo_res.get("success"):
+            print(f"[EMAIL SUCCESS] Delivered to {target} via Brevo API!")
+            return {
+                "success": True,
+                "message": f"Verification code successfully delivered to {target}",
+                "error": None
+            }
+        else:
+            brevo_attempted_err = brevo_res.get("error")
+            print(f"[EMAIL WARNING] Brevo delivery failed: {brevo_attempted_err}")
+
     resend_attempted_err = None
-    # Method 1: If HTTPS Email API is configured, use it (works reliably on Render cloud without port blocks)
+    # Method 2: If Resend HTTPS Email API is configured, use it (delivers to account owner)
     if cfg.get("resend_key"):
         print(f"[EMAIL] Attempting delivery to {target} via Resend HTTPS API (Port 443)... KeyLen={len(cfg['resend_key'])}")
         resend_res = _send_via_resend(cfg["resend_key"], target, subject_text, text_body, html_body)
@@ -273,23 +289,7 @@ Ministry of Social Justice & Empowerment (MoSJE)
             resend_attempted_err = resend_res.get("error")
             print(f"[EMAIL WARNING] Resend failed: {resend_attempted_err}")
 
-    brevo_attempted_err = None
-    if cfg.get("brevo_key"):
-        print(f"[EMAIL] Attempting delivery to {target} via Brevo HTTPS API (Port 443)...")
-        brevo_res = _send_via_brevo(cfg["brevo_key"], from_addr, target, subject_text, text_body, html_body)
-        if brevo_res.get("success"):
-            print(f"[EMAIL SUCCESS] Delivered to {target} via Brevo API!")
-            return {
-                "success": True,
-                "message": f"Verification code successfully delivered to {target}",
-                "error": None
-            }
-        else:
-            brevo_attempted_err = brevo_res.get("error")
-            print(f"[EMAIL WARNING] Brevo delivery failed: {brevo_attempted_err}")
-
-
-    # Method 2: Standard raw SMTP sockets (for localhost and unblocked servers)
+    # Method 3: Standard raw SMTP sockets (for localhost and unblocked servers)
     preferred_port = cfg.get("port") or 587
     fallback_port = 465 if preferred_port != 465 else 587
     ports_to_try = [preferred_port, fallback_port]
@@ -336,16 +336,16 @@ Ministry of Social Justice & Empowerment (MoSJE)
     err_str = f"{type(last_error).__name__}: {str(last_error)}" if last_error else "Unknown SMTP error"
     print(f"[SMTP ERROR] All delivery attempts failed for {target}: {err_str}")
 
-    if resend_attempted_err and "403" in str(resend_attempted_err):
+    if brevo_attempted_err:
+        friendly_error = f"Brevo API Error: {brevo_attempted_err}"
+    elif resend_attempted_err and "403" in str(resend_attempted_err):
         friendly_error = (
             "Resend sandbox allows direct delivery to your registered email (maltesh3825@gmail.com). "
-            "To send to other emails without a custom domain, set BREVO_API_KEY in Render, "
+            "To send to other emails without a custom domain, check BREVO_API_KEY in Render, "
             "or use the 1-click test code below."
         )
     elif resend_attempted_err:
         friendly_error = f"Resend API: {resend_attempted_err}"
-    elif brevo_attempted_err:
-        friendly_error = f"Brevo API: {brevo_attempted_err}"
     elif "101" in err_str or "unreachable" in err_str.lower() or "timed out" in err_str.lower():
         friendly_error = (
             "Render cloud firewall blocks raw SMTP ports (587/465). "
@@ -353,6 +353,7 @@ Ministry of Social Justice & Empowerment (MoSJE)
         )
     else:
         friendly_error = err_str
+
 
 
 

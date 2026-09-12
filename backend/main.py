@@ -481,6 +481,40 @@ def test_resend_api(to: str = "maltesh3825@gmail.com"):
     }
 
 
+@app.get("/api/auth/brevo-test")
+def test_brevo_api(to: str = "maltesh3825@gmail.com"):
+    """
+    Test direct Brevo dispatch to see Brevo's exact response or HTTP error.
+    """
+    from backend.email_service import get_smtp_config, _send_via_brevo
+    cfg = get_smtp_config()
+    api_key = cfg.get("brevo_key")
+    if not api_key:
+        return {
+            "status": "error",
+            "message": "No BREVO_API_KEY detected in environment.",
+            "detected_env_keys": [k for k in os.environ.keys() if any(term in k.upper() for term in ["SMTP", "GMAIL", "RESEND", "BREVO", "MAIL", "EMAIL"])]
+        }
+
+    from_addr = cfg.get("from") or cfg.get("user") or "maltesh3825@gmail.com"
+    res = _send_via_brevo(
+        api_key=api_key,
+        from_addr=from_addr,
+        target=to,
+        subject="KalaSetu Brevo Verification Test",
+        text="Test email from KalaSetu via Brevo API",
+        html="<p>Test email from KalaSetu via Brevo API</p>"
+    )
+    return {
+        "brevo_result": res,
+        "from_used": from_addr,
+        "target": to,
+        "key_length": len(api_key),
+        "key_prefix": api_key[:8] if len(api_key) > 8 else ""
+    }
+
+
+
 @app.get("/api/auth/smtp-test")
 def test_smtp_connectivity():
     """
