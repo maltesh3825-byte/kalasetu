@@ -131,15 +131,69 @@ def get_db_connection():
     return conn
 
 
+def safe_execute(cursor, query, vars=None, conn=None):
+    """Safely execute a DDL query without raising fatal exceptions on existing constraints or lock timeouts."""
+    try:
+        cursor.execute(query, vars)
+        if conn:
+            conn.commit()
+    except Exception as err:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        print(f"[DATABASE NOTICE] Query skipped: {err}")
+
+
+def safe_add_column_pg(cursor, conn, table_name, column_name, column_def):
+    """
+    Safely adds a column to a PostgreSQL table without locking timeouts or crashing.
+    1. Checks information_schema.columns first (instant read lock, never blocked).
+    2. Only runs ALTER TABLE if the column is truly missing.
+    3. Sets a 2-second lock_timeout so it never blocks web startup if another transaction holds locks.
+    """
+    try:
+        cursor.execute(
+            """
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = %s AND column_name = %s;
+            """,
+            (table_name, column_name),
+        )
+        if cursor.fetchone():
+            return  # Column already exists! No need for ALTER TABLE.
+        
+        try:
+            cursor.execute("SET lock_timeout = '2s';")
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_name} {column_def};")
+            cursor.execute("SET lock_timeout = '0';")
+            conn.commit()
+        except Exception as alter_err:
+            conn.rollback()
+            print(f"[DATABASE NOTICE] Column migration '{table_name}.{column_name}' skipped: {alter_err}")
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        print(f"[DATABASE NOTICE] Check for column '{table_name}.{column_name}' failed: {e}")
+
+
 def init_db():
-    """Initialize database tables and seed sample data if empty."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    is_pg = getattr(conn, "_is_pg", False)
+    """Initialize database tables and seed sample data if empty, with crash protection."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        is_pg = getattr(conn, "_is_pg", False)
+    except Exception as e:
+        print(f"[DATABASE WARNING] Could not establish connection for init_db: {e}")
+        return
 
     if is_pg:
         # PostgreSQL (Supabase) Table Initialization
-        cursor.execute(
+        safe_execute(
+            cursor,
             """
             CREATE TABLE IF NOT EXISTS products (
                 id SERIAL PRIMARY KEY,
@@ -164,14 +218,16 @@ def init_db():
                 quantity INTEGER NOT NULL DEFAULT 10,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
-            """
+            """,
+            conn=conn,
         )
-        cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 10;")
-        cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_gallery TEXT DEFAULT '[]';")
-        cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS rating REAL DEFAULT 4.5;")
-        cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS reviews TEXT DEFAULT '[]';")
+        safe_add_column_pg(cursor, conn, "products", "quantity", "INTEGER NOT NULL DEFAULT 10")
+        safe_add_column_pg(cursor, conn, "products", "image_gallery", "TEXT DEFAULT '[]'")
+        safe_add_column_pg(cursor, conn, "products", "rating", "REAL DEFAULT 4.5")
+        safe_add_column_pg(cursor, conn, "products", "reviews", "TEXT DEFAULT '[]'")
 
-        cursor.execute(
+        safe_execute(
+            cursor,
             """
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -190,16 +246,18 @@ def init_db():
                 profile_completion REAL DEFAULT 0.25,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
-            """
+            """,
+            conn=conn,
         )
-        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS business_name TEXT;")
-        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS gst_number TEXT;")
-        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS udyam_number TEXT;")
-        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS document_verification_status TEXT DEFAULT 'pending';")
-        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_status TEXT DEFAULT 'not_uploaded';")
-        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_completion REAL DEFAULT 0.25;")
+        safe_add_column_pg(cursor, conn, "users", "business_name", "TEXT")
+        safe_add_column_pg(cursor, conn, "users", "gst_number", "TEXT")
+        safe_add_column_pg(cursor, conn, "users", "udyam_number", "TEXT")
+        safe_add_column_pg(cursor, conn, "users", "document_verification_status", "TEXT DEFAULT 'pending'")
+        safe_add_column_pg(cursor, conn, "users", "bank_status", "TEXT DEFAULT 'not_uploaded'")
+        safe_add_column_pg(cursor, conn, "users", "profile_completion", "REAL DEFAULT 0.25")
 
-        cursor.execute(
+        safe_execute(
+            cursor,
             """
             CREATE TABLE IF NOT EXISTS wishlist (
                 id SERIAL PRIMARY KEY,
@@ -208,10 +266,12 @@ def init_db():
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id, product_id)
             );
-            """
+            """,
+            conn=conn,
         )
 
-        cursor.execute(
+        safe_execute(
+            cursor,
             """
             CREATE TABLE IF NOT EXISTS orders (
                 id SERIAL PRIMARY KEY,
@@ -232,18 +292,20 @@ def init_db():
                 pincode TEXT DEFAULT '',
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
-            """
+            """,
+            conn=conn,
         )
-        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancel_reason TEXT DEFAULT '';")
-        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ NULL;")
-        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_name TEXT DEFAULT '';")
-        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_phone TEXT DEFAULT '';")
-        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS address_line TEXT DEFAULT '';")
-        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS city TEXT DEFAULT '';")
-        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS state TEXT DEFAULT '';")
-        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS pincode TEXT DEFAULT '';")
+        safe_add_column_pg(cursor, conn, "orders", "cancel_reason", "TEXT DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "orders", "cancelled_at", "TIMESTAMPTZ NULL")
+        safe_add_column_pg(cursor, conn, "orders", "recipient_name", "TEXT DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "orders", "recipient_phone", "TEXT DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "orders", "address_line", "TEXT DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "orders", "city", "TEXT DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "orders", "state", "TEXT DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "orders", "pincode", "TEXT DEFAULT ''")
 
-        cursor.execute(
+        safe_execute(
+            cursor,
             """
             CREATE TABLE IF NOT EXISTS institutional_requests (
                 id SERIAL PRIMARY KEY,
@@ -264,15 +326,17 @@ def init_db():
                 admin_notes TEXT DEFAULT '',
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
-            """
+            """,
+            conn=conn,
         )
-        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN IF NOT EXISTS quality_flags TEXT DEFAULT '';")
-        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN IF NOT EXISTS admin_notes TEXT DEFAULT '';")
-        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN IF NOT EXISTS unit_price REAL DEFAULT 0;")
-        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN IF NOT EXISTS lead_time TEXT;")
-        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN IF NOT EXISTS target_buyer TEXT DEFAULT 'Open to all';")
+        safe_add_column_pg(cursor, conn, "institutional_requests", "quality_flags", "TEXT DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "institutional_requests", "admin_notes", "TEXT DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "institutional_requests", "unit_price", "REAL DEFAULT 0")
+        safe_add_column_pg(cursor, conn, "institutional_requests", "lead_time", "TEXT")
+        safe_add_column_pg(cursor, conn, "institutional_requests", "target_buyer", "TEXT DEFAULT 'Open to all'")
 
-        cursor.execute(
+        safe_execute(
+            cursor,
             """
             CREATE TABLE IF NOT EXISTS notifications (
                 id SERIAL PRIMARY KEY,
@@ -284,7 +348,8 @@ def init_db():
                 is_read INTEGER DEFAULT 0,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
-            """
+            """,
+            conn=conn,
         )
     else:
         # SQLite Table Initialization
@@ -461,33 +526,49 @@ def init_db():
         )
 
     # Common backfill and seeding
-    cursor.execute(
-        """
-        UPDATE products
-        SET quantity = GREATEST(
-            0,
-            10 - COALESCE((SELECT SUM(quantity) FROM orders WHERE orders.product_id = products.id), 0)
+    try:
+        cursor.execute(
+            """
+            UPDATE products
+            SET quantity = GREATEST(
+                0,
+                10 - COALESCE((SELECT SUM(quantity) FROM orders WHERE orders.product_id = products.id), 0)
+            )
+            WHERE id <= 6
+            """ if is_pg else """
+            UPDATE products
+            SET quantity = MAX(
+                0,
+                10 - COALESCE((SELECT SUM(quantity) FROM orders WHERE orders.product_id = products.id), 0)
+            )
+            WHERE id <= 6
+            """
         )
-        WHERE id <= 6
-        """ if is_pg else """
-        UPDATE products
-        SET quantity = MAX(
-            0,
-            10 - COALESCE((SELECT SUM(quantity) FROM orders WHERE orders.product_id = products.id), 0)
-        )
-        WHERE id <= 6
-        """
-    )
+    except Exception as update_err:
+        print(f"[DATABASE NOTICE] Product quantity backfill skipped: {update_err}")
 
-    cursor.execute("SELECT COUNT(*) FROM products")
-    if cursor.fetchone()[0] == 0:
-        seed_sample_products(cursor)
+    try:
+        cursor.execute("SELECT COUNT(*) FROM products")
+        row = cursor.fetchone()
+        if row and row[0] == 0:
+            seed_sample_products(cursor)
+    except Exception as count_err:
+        print(f"[DATABASE NOTICE] Product count/seed check skipped: {count_err}")
 
     # Always ensure demo accounts exist for testing and hackathon evaluations
-    seed_demo_users(cursor)
+    try:
+        seed_demo_users(cursor)
+    except Exception as seed_err:
+        print(f"[DATABASE NOTICE] Demo user seeding skipped: {seed_err}")
 
-    conn.commit()
-    conn.close()
+    try:
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.close()
+    except Exception:
+        pass
 
 
 def seed_demo_users(cursor):

@@ -25,8 +25,11 @@ from backend.config import STATIC_DIR, UPLOAD_DIR, GEMINI_API_KEY, HOST, PORT, A
 from backend.database import get_db_connection, init_db
 from backend.email_service import is_smtp_configured, send_otp_email
 
-# Initialize DB on start
-init_db()
+# Initialize DB on start safely
+try:
+    init_db()
+except Exception as e:
+    print(f"[STARTUP WARNING] Database initialization encountered an error: {e}")
 
 app = FastAPI(
     title="KalaSetu - AI Smart Cataloging & Market Linkage",
