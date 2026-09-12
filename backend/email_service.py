@@ -10,11 +10,22 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 
+def _get_env_non_empty(*keys, default: str = "") -> str:
+    """Return first non-empty environment variable value, stripped of whitespace and quotes."""
+    for k in keys:
+        v = os.getenv(k)
+        if v is not None:
+            cleaned = v.strip().strip("\"'")
+            if cleaned:
+                return cleaned
+    return default
+
+
 def get_smtp_config():
     """
     Dynamically get current SMTP settings directly from system environment.
     Guarantees Render dashboard environment variables take precedence (override=False),
-    and strips any accidental spaces or quotes (e.g. 'cczi zkjs kiab isjo' -> 'cczizkjskiabisjo').
+    prioritizes GMAIL_USER and GMAIL_APP_PASSWORD, and strips any accidental spaces or quotes.
     """
     try:
         from pathlib import Path
@@ -25,18 +36,20 @@ def get_smtp_config():
     except Exception:
         pass
 
-    host = os.getenv("SMTP_HOST", os.getenv("SMTP_SERVER", "smtp.gmail.com")).strip()
+    host = _get_env_non_empty("SMTP_HOST", "SMTP_SERVER", default="smtp.gmail.com")
+    raw_port = _get_env_non_empty("SMTP_PORT", default="587")
     try:
-        port = int(os.getenv("SMTP_PORT", "587"))
+        port = int(raw_port)
     except (ValueError, TypeError):
         port = 587
 
-    user = os.getenv("SMTP_USER", os.getenv("SMTP_USERNAME", os.getenv("GMAIL_USER", ""))).strip().strip("\"'")
-    raw_pass = os.getenv("SMTP_PASS", os.getenv("SMTP_PASSWORD", os.getenv("GMAIL_APP_PASSWORD", ""))).strip().strip("\"'")
-    # Remove any spaces that user might have copied from Google's 4-group app password display
+    # Prioritize GMAIL_USER / GMAIL_APP_PASSWORD, then SMTP_* aliases
+    user = _get_env_non_empty("GMAIL_USER", "SMTP_USER", "SMTP_USERNAME", "MAIL_USERNAME", "EMAIL_USER")
+    raw_pass = _get_env_non_empty("GMAIL_APP_PASSWORD", "SMTP_PASS", "SMTP_PASSWORD", "MAIL_PASSWORD", "EMAIL_PASS")
+    # Remove all spaces (Google displays app passwords in 4 groups e.g. 'cczi zkjs kiab isjo')
     password = re.sub(r"\s+", "", raw_pass)
 
-    from_email = os.getenv("EMAIL_FROM", user or "noreply@kalasetu.in").strip().strip("\"'")
+    from_email = _get_env_non_empty("EMAIL_FROM", default=user or "noreply@kalasetu.in")
     return {
         "host": host,
         "port": port,
@@ -50,6 +63,7 @@ def is_smtp_configured() -> bool:
     """Check whether real SMTP credentials are provided in the environment."""
     cfg = get_smtp_config()
     return bool(cfg["user"] and cfg["pass"])
+
 
 
 def send_otp_email(target_email: str, otp_code: str, user_name: str = "") -> dict:
@@ -77,6 +91,7 @@ def send_otp_email(target_email: str, otp_code: str, user_name: str = "") -> dic
 
     msg = MIMEMultipart("alternative")
     from_addr = cfg.get("from") or cfg.get("user") or "noreply@kalasetu.in"
+    msg["Subject"] = f"🔐 {otp_code} is your KalaSetu Verification Code"
     msg["From"] = f"KalaSetu AI Studio <{from_addr}>"
     msg["To"] = target
 
@@ -150,25 +165,55 @@ Ministry of Social Justice & Empowerment (MoSJE)
     msg.attach(MIMEText(text_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    try:
-        if cfg["port"] == 465:
-            server = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=12)
-        else:
-            server = smtplib.SMTP(cfg["host"], cfg["port"], timeout=12)
-            server.starttls()
+    # Connection logic with dual-port fallback (e.g. tries 587 then 465, or 465 then 587)
+    preferred_port = cfg.get("port") or 587
+    fallback_port = 465 if preferred_port != 465 else 587
+    ports_to_try = [preferred_port, fallback_port]
 
-        server.login(cfg["user"], cfg["pass"])
-        server.sendmail(cfg["from"], [target], msg.as_string())
-        server.quit()
+    last_error = None
+    masked_user = f"{cfg['user'][:3]}***@{cfg['user'].split('@')[-1]}" if "@" in cfg["user"] else cfg["user"][:3] + "***"
+    print(f"[SMTP] Preparing OTP dispatch to {target} | Host={cfg['host']} | User={masked_user} | PassLen={len(cfg['pass'])}")
 
-        return {
-            "success": True,
-            "message": f"Verification code successfully delivered to {target}",
-            "error": None
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"Failed to send email via SMTP ({str(e)})",
-            "error": str(e)
-        }
+    for port in ports_to_try:
+        server = None
+        try:
+            print(f"[SMTP] Connecting to {cfg['host']}:{port}...")
+            if port == 465:
+                server = smtplib.SMTP_SSL(cfg["host"], port, timeout=12)
+            else:
+                server = smtplib.SMTP(cfg["host"], port, timeout=12)
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+
+            server.login(cfg["user"], cfg["pass"])
+            server.sendmail(from_addr, [target], msg.as_string())
+            try:
+                server.quit()
+            except Exception:
+                pass
+
+            print(f"[SMTP SUCCESS] Verification email delivered to {target} via port {port}!")
+            return {
+                "success": True,
+                "message": f"Verification code successfully delivered to {target}",
+                "error": None
+            }
+        except Exception as e:
+            last_error = e
+            print(f"[SMTP WARNING] Port {port} failed: {type(e).__name__}: {e}")
+            if server:
+                try:
+                    server.close()
+                except Exception:
+                    pass
+            continue
+
+    err_str = f"{type(last_error).__name__}: {str(last_error)}" if last_error else "Unknown SMTP error"
+    print(f"[SMTP ERROR] All delivery attempts failed for {target}: {err_str}")
+    return {
+        "success": False,
+        "message": f"Failed to send email via SMTP ({err_str})",
+        "error": err_str
+    }
+

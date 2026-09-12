@@ -949,11 +949,13 @@ async function handleSendGmailOtp(event) {
       if (badgeWrapper) badgeWrapper.classList.add('hidden');
       showAuthStatus(`✅ Verification code sent directly to ${state.pendingGmail}! Check your inbox (or spam folder).`, false);
     } else {
-      // SMTP not configured yet; show dev code so user can proceed
+      // Direct SMTP email delivery failed or not configured; provide dev code so user is not blocked
       if (badgeWrapper) badgeWrapper.classList.remove('hidden');
       if (codeDisplay) codeDisplay.textContent = state.lastGmailOtp;
-      showAuthStatus(`ℹ️ SMTP not configured in .env. Test code: ${state.lastGmailOtp}. Set GMAIL_USER and GMAIL_APP_PASSWORD in .env for direct inbox delivery.`, false);
+      const detailNotice = data.notice || (data.smtp_configured ? `SMTP delivery issue (${data.error_details || 'Check logs'})` : 'GMAIL_USER or GMAIL_APP_PASSWORD not set in Render');
+      showAuthStatus(`ℹ️ ${detailNotice}. Test code: ${state.lastGmailOtp}`, false);
     }
+
 
     const otpInput = document.getElementById('authGmailOtpInput');
     if (otpInput) {

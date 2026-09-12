@@ -358,11 +358,14 @@ def send_otp(payload: SendOtpRequest):
                 "expires_in": 600,
             }
         else:
-            smtp_hint = (
-                "Set GMAIL_USER and GMAIL_APP_PASSWORD in .env for direct inbox delivery."
-                if not is_smtp_configured()
-                else email_res.get("error")
-            )
+            smtp_configured = is_smtp_configured()
+            err_msg = email_res.get("error") or "Unknown error"
+            if not smtp_configured:
+                smtp_hint = "GMAIL_USER and GMAIL_APP_PASSWORD are not detected in Render Environment Variables."
+            else:
+                smtp_hint = f"SMTP Delivery Failed: {err_msg}"
+
+            logger.warning(f"[AUTH OTP] Email delivery fallback triggered for {target_email}: {smtp_hint}")
             return {
                 "status": "success",
                 "message": f"Verification code generated for {target_email}",
@@ -370,7 +373,9 @@ def send_otp(payload: SendOtpRequest):
                 "target_type": "email",
                 "sent_via_smtp": False,
                 "dev_otp": code,
-                "notice": f"SMTP Gateway: {smtp_hint}",
+                "notice": smtp_hint,
+                "error_details": err_msg,
+                "smtp_configured": smtp_configured,
                 "expires_in": 600,
             }
 
@@ -398,6 +403,28 @@ def send_otp(payload: SendOtpRequest):
             "notice": "SMS delivery to Indian mobiles requires an active telecom gateway (Twilio/Fast2SMS). Use Gmail OTP for direct inbox delivery.",
             "expires_in": 600,
         }
+
+
+@app.get("/api/auth/smtp-status")
+def get_smtp_status():
+    """
+    Public diagnostic check for SMTP configuration.
+    Confirms whether SMTP credentials are detected in the environment without exposing secrets.
+    """
+    from backend.email_service import get_smtp_config, is_smtp_configured
+    cfg = get_smtp_config()
+    user = cfg.get("user") or ""
+    masked_user = f"{user[:3]}***@{user.split('@')[-1]}" if "@" in user else (user[:3] + "***" if user else "")
+    return {
+        "configured": is_smtp_configured(),
+        "host": cfg.get("host"),
+        "port": cfg.get("port"),
+        "user_masked": masked_user,
+        "pass_set": bool(cfg.get("pass")),
+        "pass_length": len(cfg.get("pass", "")),
+        "from_address": cfg.get("from"),
+    }
+
 
 
 @app.post("/api/auth/verify-otp")

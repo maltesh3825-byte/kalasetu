@@ -70,13 +70,25 @@ if not ADMIN_PASSWORD:
     ADMIN_PASSWORD = secrets.token_urlsafe(16)
     print(f"[SECURITY WARNING] No ADMIN_PASSWORD set in .env! Temporary generated admin password: {ADMIN_PASSWORD}")
 
+def _get_env_non_empty(*keys, default: str = "") -> str:
+    """Return first non-empty environment variable value, stripped of whitespace and quotes."""
+    for k in keys:
+        v = os.getenv(k)
+        if v is not None:
+            cleaned = v.strip().strip("\"'")
+            if cleaned:
+                return cleaned
+    return default
+
+
 # SMTP Email Configuration (for Real Gmail / Email OTP Delivery)
-SMTP_HOST = os.getenv("SMTP_HOST", os.getenv("SMTP_SERVER", "smtp.gmail.com")).strip()
+SMTP_HOST = _get_env_non_empty("SMTP_HOST", "SMTP_SERVER", default="smtp.gmail.com")
 try:
-    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_PORT = int(_get_env_non_empty("SMTP_PORT", default="587"))
 except (ValueError, TypeError):
     SMTP_PORT = 587
-SMTP_USER = os.getenv("SMTP_USER", os.getenv("SMTP_USERNAME", os.getenv("GMAIL_USER", ""))).strip().strip("\"'")
-_raw_pass = os.getenv("SMTP_PASS", os.getenv("SMTP_PASSWORD", os.getenv("GMAIL_APP_PASSWORD", ""))).strip().strip("\"'")
+SMTP_USER = _get_env_non_empty("GMAIL_USER", "SMTP_USER", "SMTP_USERNAME", "MAIL_USERNAME", "EMAIL_USER")
+_raw_pass = _get_env_non_empty("GMAIL_APP_PASSWORD", "SMTP_PASS", "SMTP_PASSWORD", "MAIL_PASSWORD", "EMAIL_PASS")
 SMTP_PASS = re.sub(r"\s+", "", _raw_pass)
-EMAIL_FROM = os.getenv("EMAIL_FROM", SMTP_USER or "noreply@kalasetu.in").strip().strip("\"'")
+EMAIL_FROM = _get_env_non_empty("EMAIL_FROM", default=SMTP_USER or "noreply@kalasetu.in")
+
