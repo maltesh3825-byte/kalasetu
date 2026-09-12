@@ -41,12 +41,12 @@ function dismissSplashScreen() {
   }, 520);
 }
 
-// Auto dismiss splash screen after animation completes (~3.1 seconds)
+// Auto dismiss splash screen after animation completes (~2.2 seconds)
 if (typeof window !== 'undefined') {
   window.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
       dismissSplashScreen();
-    }, 3100);
+    }, 2200);
   });
 }
 

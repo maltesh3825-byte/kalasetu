@@ -31,6 +31,7 @@ import Svg, {
   LinearGradient as SvgGradient,
   Stop
 } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import * as Speech from 'expo-speech';
@@ -85,11 +86,9 @@ type BrowserSpeechRecognition = {
 
 type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
 
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-
 interface InteractivePopupConfig {
   visible: boolean;
-  type: 'network' | 'welcome' | 'success' | 'alert' | 'error';
+  type?: 'network' | 'welcome' | 'success' | 'alert' | 'error';
   title: string;
   subtitle?: string;
   message: string;
@@ -101,96 +100,55 @@ interface InteractivePopupConfig {
 
 function SplashScreenView({ onFinish }: { onFinish: () => void }) {
   const fadeAnim = useRef(new Animated.Value(1)).current;
-  const strokeDanda = useRef(new Animated.Value(0)).current;
-  const strokeLeft = useRef(new Animated.Value(0)).current;
-  const strokeRight = useRef(new Animated.Value(0)).current;
-  const strokeShiro = useRef(new Animated.Value(0)).current;
+  const scaleLogo = useRef(new Animated.Value(0.72)).current;
+  const logoOpacity = useRef(new Animated.Value(0)).current;
   const brandAnim = useRef(new Animated.Value(0)).current;
   const subtitleAnim = useRef(new Animated.Value(0)).current;
-  const scaleLogo = useRef(new Animated.Value(0.85)).current;
 
   useEffect(() => {
-    // Sequential stroke-by-stroke drawing of Devanagari Hindi character 'क'
+    // Clean, high-end reveal of the Kalasetu brand logo icon followed by typography
     Animated.sequence([
-      // 1. Danda (vertical spine straight down)
-      Animated.timing(strokeDanda, {
-        toValue: 1,
-        duration: 480,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-      // 2. Left closed belly loop
-      Animated.timing(strokeLeft, {
-        toValue: 1,
-        duration: 520,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-      // 3. Right open hook curving downward
-      Animated.timing(strokeRight, {
-        toValue: 1,
-        duration: 520,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-      // 4. Shirorekha (top header bar sweeping across)
-      Animated.timing(strokeShiro, {
-        toValue: 1,
-        duration: 400,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: false,
-      }),
-      // Logo bounce and Brand title reveal: "Kalasetu"
+      // 1. Icon Pop & Spring In
       Animated.parallel([
         Animated.spring(scaleLogo, {
           toValue: 1,
-          friction: 6,
-          tension: 40,
+          friction: 5.5,
+          tension: 50,
           useNativeDriver: true,
         }),
-        Animated.timing(brandAnim, {
+        Animated.timing(logoOpacity, {
           toValue: 1,
-          duration: 500,
-          easing: Easing.out(Easing.back(1.5)),
+          duration: 380,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
       ]),
-      // Subtitle reveal: "Ai studio and market linkage"
-      Animated.timing(subtitleAnim, {
+      // 2. Brand Title reveal: "Kalasetu"
+      Animated.timing(brandAnim, {
         toValue: 1,
         duration: 450,
+        easing: Easing.out(Easing.back(1.4)),
+        useNativeDriver: true,
+      }),
+      // 3. Subtitle reveal: "Ai studio and market linkage"
+      Animated.timing(subtitleAnim, {
+        toValue: 1,
+        duration: 400,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
       }),
-      // Pause so user sees the completed animation
-      Animated.delay(700),
-      // Smooth fade transition into main home interface
+      // 4. Pause so user comfortably sees the logo and branding
+      Animated.delay(1000),
+      // 5. Smooth fade transition into main home interface
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 400,
+        duration: 380,
         useNativeDriver: true,
       }),
     ]).start(() => {
       onFinish();
     });
   }, []);
-
-  const dandaOffset = strokeDanda.interpolate({
-    inputRange: [0, 1],
-    outputRange: [120, 0],
-  });
-  const leftOffset = strokeLeft.interpolate({
-    inputRange: [0, 1],
-    outputRange: [180, 0],
-  });
-  const rightOffset = strokeRight.interpolate({
-    inputRange: [0, 1],
-    outputRange: [160, 0],
-  });
-  const shiroOffset = strokeShiro.interpolate({
-    inputRange: [0, 1],
-    outputRange: [130, 0],
-  });
 
   return (
     <Animated.View style={[splashStyles.container, { opacity: fadeAnim }]}>
@@ -202,61 +160,24 @@ function SplashScreenView({ onFinish }: { onFinish: () => void }) {
       </TouchableOpacity>
 
       <View style={splashStyles.centerContent}>
-        {/* Animated Drawing Canvas for Hindi letter 'क' */}
-        <Animated.View style={[splashStyles.logoWrapper, { transform: [{ scale: scaleLogo }] }]}>
-          <Svg width={200} height={200} viewBox="0 0 200 200">
-            <Defs>
-              <SvgGradient id="splashGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <Stop offset="0%" stopColor="#FB923C" />
-                <Stop offset="50%" stopColor="#EA580C" />
-                <Stop offset="100%" stopColor="#C2410C" />
-              </SvgGradient>
-            </Defs>
-
-            {/* 1. Danda (Vertical Spine) */}
-            <AnimatedPath
-              d="M 100 42 L 100 162"
-              stroke="url(#splashGrad)"
-              strokeWidth={12}
-              strokeLinecap="round"
-              fill="none"
-              strokeDasharray={[120, 120]}
-              strokeDashoffset={dandaOffset}
-            />
-
-            {/* 2. Left Belly Loop */}
-            <AnimatedPath
-              d="M 100 78 C 65 78 48 93 48 110 C 48 127 65 142 100 142"
-              stroke="url(#splashGrad)"
-              strokeWidth={12}
-              strokeLinecap="round"
-              fill="none"
-              strokeDasharray={[180, 180]}
-              strokeDashoffset={leftOffset}
-            />
-
-            {/* 3. Right Hook */}
-            <AnimatedPath
-              d="M 100 84 C 135 84 152 98 152 116 C 152 134 142 148 128 156"
-              stroke="url(#splashGrad)"
-              strokeWidth={12}
-              strokeLinecap="round"
-              fill="none"
-              strokeDasharray={[160, 160]}
-              strokeDashoffset={rightOffset}
-            />
-
-            {/* 4. Top Shirorekha Bar */}
-            <AnimatedPath
-              d="M 36 42 L 164 42"
-              stroke="url(#splashGrad)"
-              strokeWidth={12}
-              strokeLinecap="round"
-              fill="none"
-              strokeDasharray={[130, 130]}
-              strokeDashoffset={shiroOffset}
-            />
-          </Svg>
+        {/* Styled Kalasetu Brand Logo Icon (No stroke drawing) */}
+        <Animated.View
+          style={[
+            splashStyles.logoWrapper,
+            {
+              opacity: logoOpacity,
+              transform: [{ scale: scaleLogo }],
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={['#FB923C', '#EA580C', '#C2410C']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={splashStyles.iconBadge}
+          >
+            <Text style={splashStyles.iconGlyph}>क</Text>
+          </LinearGradient>
         </Animated.View>
 
         {/* Brand App Name: Kalasetu */}
@@ -363,6 +284,8 @@ function InteractiveModal({
     error: '#EF4444',
   };
 
+  const modalType = config.type || 'alert';
+
   return (
     <Modal visible={config.visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={modalStyles.backdrop}>
@@ -380,12 +303,12 @@ function InteractiveModal({
             style={[
               modalStyles.iconBadge,
               {
-                backgroundColor: badgeBgByType[config.type] || '#FFF7ED',
-                borderColor: badgeBorderByType[config.type] || '#EA580C',
+                backgroundColor: badgeBgByType[modalType] || '#FFF7ED',
+                borderColor: badgeBorderByType[modalType] || '#EA580C',
               },
             ]}
           >
-            <Text style={modalStyles.iconText}>{iconByType[config.type] || '💡'}</Text>
+            <Text style={modalStyles.iconText}>{iconByType[modalType] || '💡'}</Text>
           </View>
 
           {/* Title & Subtitle */}
@@ -3797,19 +3720,29 @@ const splashStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   logoWrapper: {
-    width: 200,
-    height: 200,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(234, 88, 12, 0.08)',
-    borderRadius: 100,
-    borderWidth: 1,
-    borderColor: 'rgba(234, 88, 12, 0.25)',
     shadowColor: '#EA580C',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.4,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.5,
     shadowRadius: 28,
-    elevation: 8,
+    elevation: 12,
+  },
+  iconBadge: {
+    width: 116,
+    height: 116,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(254, 215, 170, 0.4)',
+  },
+  iconGlyph: {
+    fontSize: 66,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   brandTitle: {
     fontSize: 40,

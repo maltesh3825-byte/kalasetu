@@ -891,62 +891,36 @@ body {
   content: '';
 }
 
-/* Fullscreen Launch Splash Screen & Drawing Animation for Hindi 'क' */
-.web-stroke-danda {
-  stroke-dasharray: 120;
-  stroke-dashoffset: 120;
-  animation: webDrawStroke 0.48s cubic-bezier(0.25, 1, 0.5, 1) forwards 0.2s;
+/* Fullscreen Launch Splash Screen with Kalasetu Brand Logo Icon */
+.splash-logo-icon {
+  animation: splashIconPop 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.web-stroke-left {
-  stroke-dasharray: 180;
-  stroke-dashoffset: 180;
-  animation: webDrawStroke 0.55s cubic-bezier(0.25, 1, 0.5, 1) forwards 0.68s;
-}
-
-.web-stroke-right {
-  stroke-dasharray: 160;
-  stroke-dashoffset: 160;
-  animation: webDrawStroke 0.55s cubic-bezier(0.25, 1, 0.5, 1) forwards 1.2s;
-}
-
-.web-stroke-shiro {
-  stroke-dasharray: 130;
-  stroke-dashoffset: 130;
-  animation: webDrawStroke 0.4s ease-out forwards 1.75s;
-}
-
-@keyframes webDrawStroke {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-.splash-halo {
-  animation: haloPulse 2.4s ease-in-out infinite alternate;
-}
-
-@keyframes haloPulse {
+@keyframes splashIconPop {
   0% {
-    transform: scale(0.96);
-    box-shadow: 0 0 25px rgba(234, 88, 12, 0.25);
+    transform: scale(0.65);
+    opacity: 0;
+  }
+  65% {
+    transform: scale(1.05);
+    opacity: 1;
   }
   100% {
-    transform: scale(1.02);
-    box-shadow: 0 0 55px rgba(234, 88, 12, 0.45);
+    transform: scale(1);
+    opacity: 1;
   }
 }
 
 .splash-brand-title {
   opacity: 0;
-  transform: translateY(16px);
-  animation: splashFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards 2.15s;
+  transform: translateY(14px);
+  animation: splashFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards 0.35s;
 }
 
 .splash-brand-subtitle {
   opacity: 0;
-  transform: translateY(12px);
-  animation: splashFadeUp 0.5s ease-out forwards 2.45s;
+  transform: translateY(10px);
+  animation: splashFadeUp 0.5s ease-out forwards 0.6s;
 }
 
 @keyframes splashFadeUp {
