@@ -16,11 +16,19 @@ import urllib.error
 
 
 def _get_env_non_empty(*keys, default: str = "") -> str:
-    """Return first non-empty environment variable value, stripped of whitespace and quotes."""
+    """Return first non-empty environment variable value, stripped of whitespace and quotes. Supports case-insensitivity on Linux."""
     for k in keys:
         v = os.getenv(k)
         if v is not None:
             cleaned = v.strip().strip("\"'")
+            if cleaned:
+                return cleaned
+
+    # Check case-insensitive match in os.environ (Linux is case-sensitive, but users may type lower/mixed case)
+    lower_target_keys = [k.lower() for k in keys]
+    for env_k, env_v in os.environ.items():
+        if env_k.lower() in lower_target_keys and env_v:
+            cleaned = str(env_v).strip().strip("\"'")
             if cleaned:
                 return cleaned
     return default
@@ -54,8 +62,9 @@ def get_smtp_config():
     # Remove all spaces (Google displays app passwords in 4 groups e.g. 'cczi zkjs kiab isjo')
     password = re.sub(r"\s+", "", raw_pass)
 
-    resend_key = _get_env_non_empty("RESEND_API_KEY", "RESEND_KEY")
-    brevo_key = _get_env_non_empty("BREVO_API_KEY", "SENDINBLUE_API_KEY")
+    resend_key = _get_env_non_empty("RESEND_API_KEY", "RESEND_KEY", "RESEND_TOKEN", "RESEND_API", "RESEND")
+    brevo_key = _get_env_non_empty("BREVO_API_KEY", "SENDINBLUE_API_KEY", "BREVO_KEY")
+
 
     from_email = _get_env_non_empty("EMAIL_FROM", default=user or "noreply@kalasetu.in")
     return {
@@ -96,9 +105,19 @@ def _send_via_resend(api_key: str, target: str, subject: str, text: str, html: s
         with urllib.request.urlopen(req, timeout=8) as resp:
             body = json.loads(resp.read().decode("utf-8"))
             return {"success": True, "id": body.get("id")}
+    except urllib.error.HTTPError as e:
+        err_body = ""
+        try:
+            err_body = e.read().decode("utf-8")
+        except Exception:
+            pass
+        err_msg = f"Resend HTTP {e.code}: {err_body or e.reason}"
+        print(f"[RESEND HTTP ERROR] {err_msg}")
+        return {"success": False, "error": err_msg}
     except Exception as e:
         print(f"[RESEND ERROR] Failed: {e}")
         return {"success": False, "error": str(e)}
+
 
 
 def _send_via_brevo(api_key: str, target: str, subject: str, text: str, html: str) -> dict:
@@ -227,9 +246,10 @@ Ministry of Social Justice & Empowerment (MoSJE)
 
     subject_text = f"🔐 {otp_code} is your KalaSetu Verification Code"
 
+    resend_attempted_err = None
     # Method 1: If HTTPS Email API is configured, use it (works reliably on Render cloud without port blocks)
     if cfg.get("resend_key"):
-        print(f"[EMAIL] Attempting delivery to {target} via Resend HTTPS API (Port 443)...")
+        print(f"[EMAIL] Attempting delivery to {target} via Resend HTTPS API (Port 443)... KeyLen={len(cfg['resend_key'])}")
         resend_res = _send_via_resend(cfg["resend_key"], target, subject_text, text_body, html_body)
         if resend_res.get("success"):
             print(f"[EMAIL SUCCESS] Delivered to {target} via Resend API!")
@@ -238,6 +258,9 @@ Ministry of Social Justice & Empowerment (MoSJE)
                 "message": f"Verification code successfully delivered to {target}",
                 "error": None
             }
+        else:
+            resend_attempted_err = resend_res.get("error")
+            print(f"[EMAIL WARNING] Resend failed: {resend_attempted_err}")
 
     if cfg.get("brevo_key"):
         print(f"[EMAIL] Attempting delivery to {target} via Brevo HTTPS API (Port 443)...")
@@ -297,13 +320,16 @@ Ministry of Social Justice & Empowerment (MoSJE)
     err_str = f"{type(last_error).__name__}: {str(last_error)}" if last_error else "Unknown SMTP error"
     print(f"[SMTP ERROR] All delivery attempts failed for {target}: {err_str}")
 
-    if "101" in err_str or "unreachable" in err_str.lower() or "timed out" in err_str.lower():
+    if resend_attempted_err:
+        friendly_error = f"Resend API Error: {resend_attempted_err}"
+    elif "101" in err_str or "unreachable" in err_str.lower() or "timed out" in err_str.lower():
         friendly_error = (
             "Render cloud firewall blocks raw SMTP ports (587/465). "
             "Use the verification code below to log in, or set RESEND_API_KEY in Render to enable cloud delivery."
         )
     else:
         friendly_error = err_str
+
 
     return {
         "success": False,

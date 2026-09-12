@@ -427,6 +427,15 @@ def get_smtp_status():
     cfg = get_smtp_config()
     user = cfg.get("user") or ""
     masked_user = f"{user[:3]}***@{user.split('@')[-1]}" if "@" in user else (user[:3] + "***" if user else "")
+    resend_key = cfg.get("resend_key") or ""
+    masked_resend = f"{resend_key[:6]}...{resend_key[-3:]}" if len(resend_key) > 8 else ("set" if resend_key else "not_set")
+
+    # List all email-related environment variable keys detected in os.environ (keys only, no secrets!)
+    detected_keys = [
+        k for k in os.environ.keys()
+        if any(term in k.upper() for term in ["SMTP", "GMAIL", "RESEND", "BREVO", "MAIL", "EMAIL"])
+    ]
+
     return {
         "configured": is_smtp_configured(),
         "host": cfg.get("host"),
@@ -434,7 +443,41 @@ def get_smtp_status():
         "user_masked": masked_user,
         "pass_set": bool(cfg.get("pass")),
         "pass_length": len(cfg.get("pass", "")),
+        "resend_detected": bool(resend_key),
+        "resend_masked": masked_resend,
+        "resend_length": len(resend_key),
+        "detected_env_keys": detected_keys,
         "from_address": cfg.get("from"),
+    }
+
+
+@app.get("/api/auth/resend-test")
+def test_resend_api(to: str = "maltesh3825@gmail.com"):
+    """
+    Test direct Resend dispatch to see Resend's exact response or HTTP error.
+    """
+    from backend.email_service import get_smtp_config, _send_via_resend
+    cfg = get_smtp_config()
+    api_key = cfg.get("resend_key")
+    if not api_key:
+        return {
+            "status": "error",
+            "message": "No RESEND_API_KEY detected in environment.",
+            "detected_env_keys": [k for k in os.environ.keys() if any(term in k.upper() for term in ["SMTP", "GMAIL", "RESEND", "BREVO", "MAIL", "EMAIL"])]
+        }
+
+    res = _send_via_resend(
+        api_key=api_key,
+        target=to,
+        subject="KalaSetu Resend Verification Test",
+        text="Test email from KalaSetu via Resend API",
+        html="<p>Test email from KalaSetu via Resend API</p>"
+    )
+    return {
+        "resend_result": res,
+        "target": to,
+        "key_length": len(api_key),
+        "key_prefix": api_key[:6] if len(api_key) > 6 else ""
     }
 
 
@@ -463,6 +506,7 @@ def test_smtp_connectivity():
                 "status": "BLOCKED_OR_TIMEOUT",
                 "error": f"{type(e).__name__}: {str(e)}"
             }
+
     return results
 
 
