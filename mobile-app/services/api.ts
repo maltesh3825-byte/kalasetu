@@ -96,10 +96,17 @@ export interface OrderRecord {
   productName: string;
   price: number;
   quantity: number;
-  status: 'Confirmed' | 'Packed' | 'In Transit' | 'Delivered' | 'Cancelled';
+  status: string;
   eta: string;
   customerName: string;
+  customerPhone?: string;
+  buyerEmail?: string;
   deliveryAddress?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  cancelReason?: string;
+  createdAt?: string;
 }
 
 export interface CancelOrderResponse {
@@ -583,4 +590,53 @@ export async function loginAdmin(email: string, password: string): Promise<strin
       }
       throw err instanceof Error ? err : new Error('Order cancellation failed');
     }
+  }
+
+  export async function fetchIncomingOrders(userId: number): Promise<OrderRecord[]> {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/orders/${userId}/incoming`, { method: 'GET' });
+      if (!res.ok) {
+        throw new Error('Incoming orders unavailable');
+      }
+      const data = await res.json();
+      return (data.orders || []).map((row: any) => ({
+        id: row.id,
+        productId: row.product_id,
+        productName: row.product_name,
+        price: Number(row.total || row.price || 0),
+        quantity: Number(row.quantity || 1),
+        status: String(row.status || 'Confirmed'),
+        eta: row.eta || '2-4 working days',
+        customerName: row.recipient_name || row.buyer_name || 'Verified Buyer',
+        customerPhone: row.recipient_phone || row.buyer_phone || '',
+        buyerEmail: row.buyer_email || '',
+        deliveryAddress: row.address_line || '',
+        city: row.city || '',
+        state: row.state || '',
+        pincode: row.pincode || '',
+        cancelReason: row.cancel_reason || '',
+        createdAt: row.created_at || ''
+      }));
+    } catch (err) {
+      console.warn('Could not load incoming orders:', err);
+      return [];
+    }
+  }
+
+  export async function updateOrderStatusApi(
+    orderId: number,
+    userId: number,
+    status: 'Accepted' | 'Rejected' | 'Dispatched' | 'Delivered',
+    note: string = ''
+  ): Promise<{ status: string; order_id: number; new_status: string }> {
+    const res = await fetch(`${BACKEND_URL}/api/orders/${orderId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, status, note })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || 'Could not update order status');
+    }
+    return await res.json();
   }

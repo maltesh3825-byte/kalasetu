@@ -163,6 +163,12 @@ class AdminRequestUpdate(BaseModel):
     admin_notes: str = ""
 
 
+class OrderStatusUpdate(BaseModel):
+    user_id: int
+    status: str
+    note: Optional[str] = ""
+
+
 class OfflineSyncRequest(BaseModel):
     drafts: List[InstitutionalRequestCreate] = []
 
@@ -510,16 +516,38 @@ def get_incoming_orders(user_id: int):
     """Orders placed by buyers for products belonging to this artisan."""
     conn = get_db_connection()
     cursor = conn.cursor()
+    user_row = cursor.execute("SELECT name, phone FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user_row:
+        conn.close()
+        return {"orders": []}
+
+    user_name = (user_row[0] or "").strip()
+    user_phone = (user_row[1] or "").strip()
+    norm_phone = user_phone.replace("+91", "").replace(" ", "").replace("-", "")
+
     cursor.execute(
         """
-        SELECT orders.*, users.name AS buyer_name, users.email AS buyer_email
+        SELECT orders.*, 
+               COALESCE(NULLIF(orders.recipient_name, ''), users.name, 'Verified Buyer') AS buyer_name,
+               COALESCE(NULLIF(orders.recipient_phone, ''), users.phone, '') AS buyer_phone,
+               users.email AS buyer_email
         FROM orders
         JOIN products ON products.id = orders.product_id
         LEFT JOIN users ON users.id = orders.user_id
-        WHERE lower(products.artisan_name) = lower((SELECT name FROM users WHERE id = ?))
+        WHERE (
+            lower(products.artisan_name) = lower(?)
+            OR (
+                ? != '' 
+                AND products.artisan_phone IS NOT NULL 
+                AND (
+                    products.artisan_phone = ? 
+                    OR replace(replace(replace(products.artisan_phone, '+91', ''), ' ', ''), '-', '') = ?
+                )
+            )
+        )
         ORDER BY orders.id DESC
         """,
-        (user_id,),
+        (user_name, norm_phone, user_phone, norm_phone),
     )
     rows = cursor.fetchall()
     conn.close()
@@ -528,18 +556,36 @@ def get_incoming_orders(user_id: int):
 
 @app.get("/api/products/{user_id}/published")
 def get_published_products(user_id: int):
-    """Return marketplace listings published under the signed-in artisan's name."""
+    """Return marketplace listings published under the signed-in artisan's name or phone."""
     conn = get_db_connection()
     cursor = conn.cursor()
+    user_row = cursor.execute("SELECT name, phone FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user_row:
+        conn.close()
+        return {"products": []}
+
+    user_name = (user_row[0] or "").strip()
+    user_phone = (user_row[1] or "").strip()
+    norm_phone = user_phone.replace("+91", "").replace(" ", "").replace("-", "")
+
     cursor.execute(
         """
         SELECT products.*
         FROM products
-        JOIN users ON lower(products.artisan_name) = lower(users.name)
-        WHERE users.id = ?
+        WHERE (
+            lower(products.artisan_name) = lower(?)
+            OR (
+                ? != '' 
+                AND products.artisan_phone IS NOT NULL 
+                AND (
+                    products.artisan_phone = ? 
+                    OR replace(replace(replace(products.artisan_phone, '+91', ''), ' ', ''), '-', '') = ?
+                )
+            )
+        )
         ORDER BY products.id DESC
         """,
-        (user_id,),
+        (user_name, norm_phone, user_phone, norm_phone),
     )
     rows = cursor.fetchall()
     conn.close()
@@ -663,7 +709,7 @@ def delete_product(product_id: int, payload: ProductDeleteRequest):
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT p.artisan_name, u.name
+        SELECT p.artisan_name, p.artisan_phone, u.name, u.phone
         FROM products p
         JOIN users u ON u.id = ?
         WHERE p.id = ?
@@ -674,7 +720,13 @@ def delete_product(product_id: int, payload: ProductDeleteRequest):
     if not row:
         conn.close()
         raise HTTPException(status_code=404, detail="Product not found")
-    if row["artisan_name"].strip().lower() != row["name"].strip().lower():
+
+    name_match = (row["artisan_name"] or "").strip().lower() == (row["name"] or "").strip().lower()
+    p_phone = (row["artisan_phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
+    u_phone = (row["phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
+    phone_match = bool(p_phone and u_phone and p_phone == u_phone)
+
+    if not (name_match or phone_match):
         conn.close()
         raise HTTPException(status_code=403, detail="Only the seller who posted this product can delete it")
     cursor.execute("DELETE FROM wishlist WHERE product_id = ?", (product_id,))
@@ -682,6 +734,90 @@ def delete_product(product_id: int, payload: ProductDeleteRequest):
     conn.commit()
     conn.close()
     return {"status": "success", "product_id": product_id}
+
+
+@app.post("/api/orders/{order_id}/status")
+def update_order_status(order_id: int, payload: OrderStatusUpdate):
+    """Allows an artisan to Accept or Reject an incoming order, or mark it Dispatched/Delivered."""
+    valid_statuses = {"Accepted", "Rejected", "Dispatched", "Delivered", "Cancelled"}
+    target_status = payload.status.strip().title()
+    if target_status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Allowed: {', '.join(sorted(valid_statuses))}")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT o.id, o.user_id, o.product_id, o.product_name, o.quantity, o.status,
+               p.artisan_name, p.artisan_phone
+        FROM orders o
+        JOIN products p ON p.id = o.product_id
+        WHERE o.id = ?
+        """,
+        (order_id,),
+    )
+    order_row = cursor.fetchone()
+    if not order_row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order = dict(order_row)
+    current_status = str(order["status"]).title()
+
+    user_row = cursor.execute("SELECT id, name, phone, role FROM users WHERE id = ?", (payload.user_id,)).fetchone()
+    if not user_row:
+        conn.close()
+        raise HTTPException(status_code=403, detail="User not recognized")
+
+    user_dict = dict(user_row)
+    p_phone = (order["artisan_phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
+    u_phone = (user_dict.get("phone") or "").replace("+91", "").replace(" ", "").replace("-", "")
+    phone_match = bool(p_phone and u_phone and p_phone == u_phone)
+    name_match = bool(order["artisan_name"] and user_dict["name"] and order["artisan_name"].strip().lower() == user_dict["name"].strip().lower())
+
+    is_artisan = (user_dict.get("role") == "artisan" or name_match or phone_match)
+    is_buyer = (order["user_id"] == payload.user_id)
+    is_admin = (user_dict.get("role") == "admin")
+
+    if not (is_artisan or is_buyer or is_admin):
+        conn.close()
+        raise HTTPException(status_code=403, detail="You are not authorized to update this order")
+
+    # If rejected or cancelled, restore the quantity to the product listing
+    if target_status in ("Rejected", "Cancelled") and current_status not in ("Rejected", "Cancelled"):
+        cursor.execute(
+            "UPDATE products SET quantity = quantity + ? WHERE id = ?",
+            (int(order["quantity"]), int(order["product_id"])),
+        )
+
+    now_str = datetime.now(timezone.utc).isoformat()
+    note = payload.note.strip() if payload.note else ""
+    cursor.execute(
+        """
+        UPDATE orders
+        SET status = ?,
+            cancel_reason = CASE WHEN ? != '' THEN ? ELSE cancel_reason END,
+            cancelled_at = CASE WHEN ? IN ('Rejected', 'Cancelled') THEN ? ELSE cancelled_at END
+        WHERE id = ?
+        """,
+        (target_status, note, note, target_status, now_str, order_id),
+    )
+
+    buyer_id = order["user_id"]
+    if buyer_id:
+        title = f"Order #{order_id} {target_status}"
+        msg = f"Your order for {order['product_name']} ({order['quantity']} unit(s)) has been marked as '{target_status}'."
+        if note:
+            msg += f" Note: {note}"
+        cursor.execute(
+            "INSERT INTO notifications (user_id, kind, title, message, related_id) VALUES (?, ?, ?, ?, ?)",
+            (buyer_id, f"order_{target_status.lower()}", title, msg, order_id),
+        )
+
+    conn.commit()
+    conn.close()
+    return {"status": "success", "order_id": order_id, "new_status": target_status}
 
 
 @app.post("/api/orders/{order_id}/cancel")

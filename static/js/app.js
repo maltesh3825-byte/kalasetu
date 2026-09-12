@@ -710,7 +710,31 @@ function renderOrdersView(content) {
             </div>
           </div>
         </div>`
-      : `<div class="account-row incoming-order"><strong>${escapeHtml(order.product_name)}</strong><span>${escapeHtml(order.buyer_name || 'Buyer')} · ${escapeHtml(order.quantity || 1)} unit(s) · ₹${escapeHtml(order.total)} · ${escapeHtml(order.status || 'Confirmed')}</span></div>`).join('')
+      : `<div class="account-row incoming-order">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <strong>${escapeHtml(order.product_name)}</strong>
+              <span class="block text-xs mt-1 text-slate-600">
+                Buyer: <strong>${escapeHtml(order.buyer_name || 'Buyer')}</strong>
+                ${order.buyer_phone ? ` · 📱 ${escapeHtml(order.buyer_phone)}` : ''}
+                · Qty ${escapeHtml(order.quantity || 1)} · Total ₹${escapeHtml(order.total)}
+              </span>
+              ${order.address_line ? `<span class="block text-xs mt-0.5 text-slate-500">📍 Deliver to: ${escapeHtml(order.address_line)}, ${escapeHtml(order.city || '')} ${escapeHtml(order.state || '')} ${escapeHtml(order.pincode || '')}</span>` : ''}
+              <span class="inline-block mt-1 text-xs font-bold px-2 py-0.5 rounded ${
+                String(order.status).toLowerCase() === 'accepted' ? 'bg-emerald-100 text-emerald-800' :
+                String(order.status).toLowerCase() === 'rejected' ? 'bg-rose-100 text-rose-800' :
+                String(order.status).toLowerCase() === 'dispatched' ? 'bg-indigo-100 text-indigo-800' :
+                'bg-amber-100 text-amber-800'
+              }">${escapeHtml(order.status || 'Confirmed')}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              ${(String(order.status).toLowerCase() === 'confirmed' || String(order.status).toLowerCase() === 'pending')
+                ? `<button type="button" class="account-small-action text-emerald-700 font-bold border border-emerald-300 hover:bg-emerald-50 px-2.5 py-1 rounded-lg" data-accept-order="${order.id}">✅ Accept</button>
+                   <button type="button" class="account-small-action text-rose-700 font-bold border border-rose-300 hover:bg-rose-50 px-2.5 py-1 rounded-lg" data-reject-order="${order.id}">❌ Reject</button>`
+                : ''}
+            </div>
+          </div>
+        </div>`).join('')
     : `<p class="account-muted">${emptyMessage}</p>`;
   content.innerHTML = `<div class="account-panel"><h3>${t('account_orders')}</h3><div class="order-switcher"><button class="order-switch ${isMine ? 'order-switch-active' : ''}" data-order-view="mine">Requested by me</button><button class="order-switch ${state.orderView === 'incoming' ? 'order-switch-active' : ''}" data-order-view="incoming">Requests from other buyers</button><button class="order-switch ${isPublished ? 'order-switch-active' : ''}" data-order-view="published">Orders published by me</button></div><div class="order-view-content">${isPublished ? publishedMarkup : rowsMarkup}</div></div>`;
   content.querySelectorAll('[data-order-view]').forEach(button => {
@@ -724,10 +748,43 @@ function renderOrdersView(content) {
       button.addEventListener('click', () => cancelMarketplaceOrder(Number(button.dataset.cancelOrder), content));
     });
   }
+  if (!isMine && !isPublished) {
+    content.querySelectorAll('[data-accept-order]').forEach(button => {
+      button.addEventListener('click', () => updateIncomingOrderStatus(Number(button.dataset.acceptOrder), 'Accepted', content));
+    });
+    content.querySelectorAll('[data-reject-order]').forEach(button => {
+      button.addEventListener('click', () => updateIncomingOrderStatus(Number(button.dataset.rejectOrder), 'Rejected', content));
+    });
+  }
   if (isPublished) {
     content.querySelectorAll('[data-remove-published]').forEach(button => {
       button.addEventListener('click', () => deleteMarketplaceProduct(Number(button.dataset.removePublished)));
     });
+  }
+}
+
+async function updateIncomingOrderStatus(orderId, status, content) {
+  if (!state.currentUser || !orderId) return;
+  let note = '';
+  if (status === 'Rejected') {
+    const input = prompt('Reason for rejecting order (e.g. Out of stock / customized piece unavailable):', 'Cannot fulfill at this time');
+    if (input === null) return;
+    note = input.trim();
+  }
+
+  try {
+    const res = await fetch(`/api/orders/${orderId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: state.currentUser.id, status, note })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Could not update order status');
+    showToast(status === 'Accepted' ? 'Order accepted!' : 'Order rejected (stock restored to listing)');
+    await loadAccountData();
+    renderOrdersView(content);
+  } catch (err) {
+    showToast(err.message || 'Status update failed');
   }
 }
 

@@ -53,6 +53,8 @@ import {
   addProductReview,
   deleteProduct,
   fetchPublishedProducts,
+  fetchIncomingOrders,
+  updateOrderStatusApi,
   loginAdmin,
   fetchAdminRequests,
   updateAdminRequest,
@@ -135,6 +137,9 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [wishlist, setWishlist] = useState<number[]>([]);
   const [orders, setOrders] = useState<OrderRecord[]>([]);
+  const [incomingOrders, setIncomingOrders] = useState<OrderRecord[]>([]);
+  const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
+  const [orderSubTab, setOrderSubTab] = useState<'incoming' | 'mine' | 'published'>('incoming');
   const [publishedProducts, setPublishedProducts] = useState<CraftProduct[]>([]);
   const [cancelReason, setCancelReason] = useState('Changed requirement / buyer changed decision');
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -339,12 +344,42 @@ export default function App() {
   };
 
   const refreshAccountData = async (user: AppUser) => {
-    const [userOrders, userListings] = await Promise.all([
+    const [userOrders, userListings, incoming] = await Promise.all([
       fetchOrdersForUser(user.id),
-      fetchPublishedProducts(user.id)
+      fetchPublishedProducts(user.id),
+      fetchIncomingOrders(user.id)
     ]);
     setOrders(userOrders);
     setPublishedProducts(userListings);
+    setIncomingOrders(incoming);
+  };
+
+  const handleUpdateOrderStatus = async (
+    orderId: number,
+    newStatus: 'Accepted' | 'Rejected' | 'Dispatched' | 'Delivered',
+    note: string = ''
+  ) => {
+    if (!currentUser) return;
+    setUpdatingOrderId(orderId);
+    try {
+      await updateOrderStatusApi(orderId, currentUser.id, newStatus, note);
+      Alert.alert(
+        newStatus === 'Accepted' ? '✅ Order Accepted!' : newStatus === 'Rejected' ? '❌ Order Rejected' : 'Status Updated',
+        newStatus === 'Accepted'
+          ? 'You accepted this order request. Please prepare the craft for packaging and dispatch.'
+          : newStatus === 'Rejected'
+          ? 'Order was rejected. The reserved quantity has been restored back to your product listing.'
+          : `Order marked as ${newStatus}.`
+      );
+      await Promise.all([
+        refreshAccountData(currentUser),
+        loadProducts()
+      ]);
+    } catch (err: any) {
+      Alert.alert('Update Failed', err?.message || 'Could not update order status.');
+    } finally {
+      setUpdatingOrderId(null);
+    }
   };
 
   const handleGuestLogin = async () => {
@@ -360,6 +395,9 @@ export default function App() {
         return;
       }
       setCurrentUser(user);
+      if (user.phone) setArtisanPhone(user.phone);
+      if (user.name) setArtisanName(user.name);
+      if (user.city) setArtisanLocation(user.city);
       setIsLoggedIn(true);
       setAuthMode('login');
       setActiveTab('home');
@@ -811,7 +849,7 @@ export default function App() {
       name: editTitle,
       artisan_name: currentUser?.name || artisanName || "Artisan Beneficiary",
       artisan_location: artisanLocation || "Rural Cluster",
-      artisan_phone: artisanPhone,
+      artisan_phone: currentUser?.phone || artisanPhone || "+919876543210",
       category: editCategory,
       price: Number(editPrice),
       quantity: listingQuantityValue,
@@ -1263,7 +1301,162 @@ export default function App() {
                 ))}</ScrollView>
                 {accountView === 'profile' && (<View><Text style={styles.profileSectionTitle}>{tx('profile')}</Text><Text style={styles.notificationText}>{tx('role')}: {roleLabel}</Text><Text style={styles.notificationText}>{tx('publishedListings')}: {publishedProducts.length}</Text><Text style={styles.notificationText}>{tx('savedCrafts')}: {wishlist.length}</Text><TouchableOpacity style={styles.secondaryAction} onPress={handleLogout}><Text style={styles.secondaryActionText}>{tx('logout')}</Text></TouchableOpacity></View>)}
                 {accountView === 'history' && (<View><Text style={styles.profileSectionTitle}>{tx('activityHistory')}</Text><Text style={styles.notificationText}>{orders.length} {tx('purchaseOrders')}</Text><Text style={styles.notificationText}>{publishedProducts.length} {tx('publishedListing')}</Text>{orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>• {order.productName} — {order.status}</Text>)}{publishedProducts.slice(0, 5).map(product => <Text key={`published-${product.id}`} style={styles.notificationText}>• Published: {product.name} — ₹{product.price}</Text>)}</View>)}
-                {accountView === 'orders' && (<View><Text style={styles.profileSectionTitle}>{tx('ordersByMe')}</Text>{orders.filter(order => order.status.toLowerCase() !== 'cancelled').length === 0 ? <Text style={styles.emptyStateText}>{tx('noActiveOrders')}</Text> : orders.filter(order => order.status.toLowerCase() !== 'cancelled').map(order => (<View key={order.id} style={styles.orderCard}><Text style={styles.orderTitle}>{order.productName}</Text><Text style={styles.orderMeta}>₹{order.price} · {order.status}</Text><TouchableOpacity style={styles.secondaryAction} onPress={() => handleCancelOrder(order.id)}><Text style={styles.secondaryActionText}>{tx('cancelOrder')}</Text></TouchableOpacity></View>))}<Text style={styles.profileSectionTitle}>{tx('ordersPublishedByMe')}</Text>{publishedProducts.map(product => <View key={product.id} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} · {product.category}</Text><TouchableOpacity style={[styles.deleteProductButton, deletingProductId === product.id && styles.disabledButton]} onPress={() => removeOwnProduct(product)} disabled={deletingProductId === product.id}><Text style={styles.deleteProductButtonText}>{deletingProductId === product.id ? 'Removing...' : tx('removePublished')}</Text></TouchableOpacity></View>)}</View>)}
+                {accountView === 'orders' && (
+                  <View>
+                    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
+                      <TouchableOpacity
+                        style={[styles.orderSegmentBtn, orderSubTab === 'incoming' && styles.orderSegmentBtnActive]}
+                        onPress={() => setOrderSubTab('incoming')}
+                      >
+                        <Text style={[styles.orderSegmentText, orderSubTab === 'incoming' && styles.orderSegmentTextActive]}>
+                          📥 Incoming ({incomingOrders.length})
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.orderSegmentBtn, orderSubTab === 'mine' && styles.orderSegmentBtnActive]}
+                        onPress={() => setOrderSubTab('mine')}
+                      >
+                        <Text style={[styles.orderSegmentText, orderSubTab === 'mine' && styles.orderSegmentTextActive]}>
+                          🛍️ My Orders ({orders.filter(o => o.status.toLowerCase() !== 'cancelled').length})
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.orderSegmentBtn, orderSubTab === 'published' && styles.orderSegmentBtnActive]}
+                        onPress={() => setOrderSubTab('published')}
+                      >
+                        <Text style={[styles.orderSegmentText, orderSubTab === 'published' && styles.orderSegmentTextActive]}>
+                          🏷️ My Listings ({publishedProducts.length})
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {orderSubTab === 'incoming' && (
+                      <View>
+                        <Text style={styles.profileSectionTitle}>Orders Requested by Others</Text>
+                        <Text style={styles.helperText}>Buyer purchase requests for your published crafts.</Text>
+                        {incomingOrders.length === 0 ? (
+                          <Text style={styles.emptyStateText}>No incoming orders from buyers yet. When a buyer places an order for your craft, it will appear here for your confirmation.</Text>
+                        ) : (
+                          incomingOrders.map(order => {
+                            const isPending = order.status.toLowerCase() === 'confirmed' || order.status.toLowerCase() === 'pending';
+                            const isAccepted = order.status.toLowerCase() === 'accepted';
+                            const isRejected = order.status.toLowerCase() === 'rejected';
+                            const isDispatched = order.status.toLowerCase() === 'dispatched';
+                            const isBusy = updatingOrderId === order.id;
+
+                            return (
+                              <View key={order.id} style={styles.orderCard}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                                  <Text style={[styles.orderTitle, { flex: 1 }]}>{order.productName}</Text>
+                                  <View style={[
+                                    styles.orderStatusBadge,
+                                    isAccepted && styles.orderBadgeAccepted,
+                                    isRejected && styles.orderBadgeRejected,
+                                    isPending && styles.orderBadgePending,
+                                    isDispatched && styles.orderBadgeDispatched
+                                  ]}>
+                                    <Text style={[
+                                      styles.orderStatusBadgeText,
+                                      isAccepted && styles.orderBadgeTextAccepted,
+                                      isRejected && styles.orderBadgeTextRejected,
+                                      isPending && styles.orderBadgeTextPending,
+                                      isDispatched && styles.orderBadgeTextDispatched
+                                    ]}>
+                                      {order.status}
+                                    </Text>
+                                  </View>
+                                </View>
+                                <Text style={styles.orderMeta}>💰 ₹{order.price} total • {order.quantity} unit(s)</Text>
+                                <Text style={styles.orderMeta}>👤 Buyer: {order.customerName || 'Verified Buyer'}{order.customerPhone ? ` • 📱 ${order.customerPhone}` : ''}</Text>
+                                {!!order.deliveryAddress && (
+                                  <Text style={styles.orderMeta}>📦 Deliver to: {order.deliveryAddress}{order.city ? `, ${order.city}` : ''}{order.state ? `, ${order.state}` : ''}{order.pincode ? ` - ${order.pincode}` : ''}</Text>
+                                )}
+                                {!!order.cancelReason && (
+                                  <Text style={[styles.orderMeta, { color: Colors.error }]}>Note: {order.cancelReason}</Text>
+                                )}
+
+                                {isPending && (
+                                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                                    <TouchableOpacity
+                                      style={[styles.acceptOrderBtn, isBusy && styles.disabledButton]}
+                                      onPress={() => handleUpdateOrderStatus(order.id, 'Accepted')}
+                                      disabled={isBusy}
+                                    >
+                                      {isBusy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.acceptOrderBtnText}>✅ Accept Order</Text>}
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                      style={[styles.rejectOrderBtn, isBusy && styles.disabledButton]}
+                                      onPress={() => handleUpdateOrderStatus(order.id, 'Rejected')}
+                                      disabled={isBusy}
+                                    >
+                                      <Text style={styles.rejectOrderBtnText}>❌ Reject</Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                )}
+
+                                {isAccepted && (
+                                  <View style={{ marginTop: 10 }}>
+                                    <TouchableOpacity
+                                      style={[styles.dispatchOrderBtn, isBusy && styles.disabledButton]}
+                                      onPress={() => handleUpdateOrderStatus(order.id, 'Dispatched')}
+                                      disabled={isBusy}
+                                    >
+                                      <Text style={styles.dispatchOrderBtnText}>🚚 Mark as Dispatched</Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                )}
+                              </View>
+                            );
+                          })
+                        )}
+                      </View>
+                    )}
+
+                    {orderSubTab === 'mine' && (
+                      <View>
+                        <Text style={styles.profileSectionTitle}>{tx('ordersByMe')}</Text>
+                        {orders.filter(order => order.status.toLowerCase() !== 'cancelled').length === 0 ? (
+                          <Text style={styles.emptyStateText}>{tx('noActiveOrders')}</Text>
+                        ) : (
+                          orders.filter(order => order.status.toLowerCase() !== 'cancelled').map(order => (
+                            <View key={order.id} style={styles.orderCard}>
+                              <Text style={styles.orderTitle}>{order.productName}</Text>
+                              <Text style={styles.orderMeta}>₹{order.price} · {order.status}</Text>
+                              <TouchableOpacity style={styles.secondaryAction} onPress={() => handleCancelOrder(order.id)}>
+                                <Text style={styles.secondaryActionText}>{tx('cancelOrder')}</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ))
+                        )}
+                      </View>
+                    )}
+
+                    {orderSubTab === 'published' && (
+                      <View>
+                        <Text style={styles.profileSectionTitle}>{tx('ordersPublishedByMe')}</Text>
+                        {publishedProducts.length === 0 ? (
+                          <Text style={styles.emptyStateText}>No products published yet.</Text>
+                        ) : (
+                          publishedProducts.map(product => (
+                            <View key={product.id} style={styles.orderCard}>
+                              <Text style={styles.orderTitle}>{product.name}</Text>
+                              <Text style={styles.orderMeta}>₹{product.price} · {product.category} · Stock: {product.quantity || 0}</Text>
+                              <TouchableOpacity
+                                style={[styles.deleteProductButton, deletingProductId === product.id && styles.disabledButton]}
+                                onPress={() => removeOwnProduct(product)}
+                                disabled={deletingProductId === product.id}
+                              >
+                                <Text style={styles.deleteProductButtonText}>
+                                  {deletingProductId === product.id ? 'Removing...' : tx('removePublished')}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          ))
+                        )}
+                      </View>
+                    )}
+                  </View>
+                )}
                 {accountView === 'requests' && (<View><Text style={styles.profileSectionTitle}>{tx('bulkRequests')}</Text><TextInput style={styles.textInput} value={bulkBuyerType} onChangeText={setBulkBuyerType} placeholder={tx('forBuyers')} placeholderTextColor={Colors.placeholder} /><TextInput style={[styles.textInput, styles.textArea]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder={tx('bulkHelp')} placeholderTextColor={Colors.placeholder} /><TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}><Text style={styles.primaryActionText}>{tx('sendRequest')}</Text></TouchableOpacity></View>)}
                 {accountView === 'wishlist' && (<View><Text style={styles.profileSectionTitle}>{tx('savedCraftsTitle')}</Text>{products.filter(product => wishlist.includes(product.id)).map(product => <View key={product.id} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} · {product.artisan_name}</Text></View>)}{wishlist.length === 0 && <Text style={styles.emptyStateText}>{tx('noSavedCrafts')}</Text>}</View>)}
                 {accountView === 'notifications' && (<View style={styles.notificationCard}><Text style={styles.notificationTitle}>{tx('notifications')}</Text>{orders.length ? orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>{tx('orderUpdate')}: {order.productName} is {order.status}.</Text>) : <Text style={styles.notificationText}>{tx('noNotifications')}</Text>}</View>)}
@@ -1297,6 +1490,77 @@ export default function App() {
               <View style={styles.emptyStateCard}><Text style={styles.emptyStateText}>No orders yet. Your recent requests will appear here.</Text></View>
             ) : (
               <View style={styles.productsFeed}>
+                {incomingOrders.length > 0 && (
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={styles.orderTitle}>📥 Orders Requested by Others ({incomingOrders.length})</Text>
+                    {incomingOrders.map(order => {
+                      const isPending = order.status.toLowerCase() === 'confirmed' || order.status.toLowerCase() === 'pending';
+                      const isAccepted = order.status.toLowerCase() === 'accepted';
+                      const isRejected = order.status.toLowerCase() === 'rejected';
+                      const isDispatched = order.status.toLowerCase() === 'dispatched';
+                      const isBusy = updatingOrderId === order.id;
+
+                      return (
+                        <View key={`feed-incoming-${order.id}`} style={styles.orderCard}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                            <Text style={[styles.orderTitle, { flex: 1 }]}>{order.productName}</Text>
+                            <View style={[
+                              styles.orderStatusBadge,
+                              isAccepted && styles.orderBadgeAccepted,
+                              isRejected && styles.orderBadgeRejected,
+                              isPending && styles.orderBadgePending,
+                              isDispatched && styles.orderBadgeDispatched
+                            ]}>
+                              <Text style={[
+                                styles.orderStatusBadgeText,
+                                isAccepted && styles.orderBadgeTextAccepted,
+                                isRejected && styles.orderBadgeTextRejected,
+                                isPending && styles.orderBadgeTextPending,
+                                isDispatched && styles.orderBadgeTextDispatched
+                              ]}>
+                                {order.status}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text style={styles.orderMeta}>💰 ₹{order.price} total • {order.quantity} unit(s)</Text>
+                          <Text style={styles.orderMeta}>👤 Buyer: {order.customerName || 'Verified Buyer'}{order.customerPhone ? ` • 📱 ${order.customerPhone}` : ''}</Text>
+                          {!!order.deliveryAddress && (
+                            <Text style={styles.orderMeta}>📦 Deliver to: {order.deliveryAddress}{order.city ? `, ${order.city}` : ''}{order.state ? `, ${order.state}` : ''}{order.pincode ? ` - ${order.pincode}` : ''}</Text>
+                          )}
+                          {isPending && (
+                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                              <TouchableOpacity
+                                style={[styles.acceptOrderBtn, isBusy && styles.disabledButton]}
+                                onPress={() => handleUpdateOrderStatus(order.id, 'Accepted')}
+                                disabled={isBusy}
+                              >
+                                {isBusy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.acceptOrderBtnText}>✅ Accept Order</Text>}
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.rejectOrderBtn, isBusy && styles.disabledButton]}
+                                onPress={() => handleUpdateOrderStatus(order.id, 'Rejected')}
+                                disabled={isBusy}
+                              >
+                                <Text style={styles.rejectOrderBtnText}>❌ Reject</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                          {isAccepted && (
+                            <View style={{ marginTop: 10 }}>
+                              <TouchableOpacity
+                                style={[styles.dispatchOrderBtn, isBusy && styles.disabledButton]}
+                                onPress={() => handleUpdateOrderStatus(order.id, 'Dispatched')}
+                                disabled={isBusy}
+                              >
+                                <Text style={styles.dispatchOrderBtnText}>🚚 Mark as Dispatched</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
                 <Text style={styles.orderTitle}>{tx('ordersByMe')}</Text>
                 {orders.length === 0 ? <Text style={styles.emptyStateText}>{tx('noActiveOrders')}</Text> : orders.map((order) => (
                   <View key={order.id} style={styles.orderCard}><Text style={styles.orderTitle}>{order.productName}</Text><Text style={styles.orderMeta}>₹{order.price} • {order.customerName}</Text><Text style={styles.orderMeta}>{t.orderStatus}: {order.status}</Text><Text style={styles.orderMeta}>{t.deliveryEta}: {order.eta}</Text><TextInput style={styles.searchBar} value={cancelReason} onChangeText={setCancelReason} placeholder={tx('cancelReasonPrompt')} placeholderTextColor={Colors.placeholder} /><TouchableOpacity style={styles.secondaryAction} onPress={() => handleCancelOrder(order.id)}><Text style={styles.secondaryActionText}>{tx('cancelOrder')}</Text></TouchableOpacity></View>
@@ -2957,5 +3221,101 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: Colors.primary,
     fontWeight: 'bold',
+  },
+  orderSegmentBtn: {
+    flex: 1,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  orderSegmentBtnActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primaryDark,
+  },
+  orderSegmentText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  orderSegmentTextActive: {
+    color: '#FFFFFF',
+  },
+  orderStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+  },
+  orderBadgePending: {
+    backgroundColor: '#FEF3C7',
+  },
+  orderBadgeAccepted: {
+    backgroundColor: '#DCFCE7',
+  },
+  orderBadgeRejected: {
+    backgroundColor: '#FEE2E2',
+  },
+  orderBadgeDispatched: {
+    backgroundColor: '#E0E7FF',
+  },
+  orderStatusBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  orderBadgeTextPending: {
+    color: '#92400E',
+  },
+  orderBadgeTextAccepted: {
+    color: '#166534',
+  },
+  orderBadgeTextRejected: {
+    color: '#991B1B',
+  },
+  orderBadgeTextDispatched: {
+    color: '#3730A3',
+  },
+  acceptOrderBtn: {
+    flex: 1,
+    backgroundColor: '#16A34A',
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  acceptOrderBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  rejectOrderBtn: {
+    flex: 1,
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rejectOrderBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  dispatchOrderBtn: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dispatchOrderBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
   },
 });
