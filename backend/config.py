@@ -67,3 +67,10 @@ if not ADMIN_PASSWORD:
     # Do NOT provide a known static default password in code
     ADMIN_PASSWORD = secrets.token_urlsafe(16)
     print(f"[SECURITY WARNING] No ADMIN_PASSWORD set in .env! Temporary generated admin password: {ADMIN_PASSWORD}")
+
+# SMTP Email Configuration (for Real Gmail / Email OTP Delivery)
+SMTP_HOST = os.getenv("SMTP_HOST", os.getenv("SMTP_SERVER", "smtp.gmail.com")).strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", os.getenv("SMTP_USERNAME", os.getenv("GMAIL_USER", ""))).strip()
+SMTP_PASS = os.getenv("SMTP_PASS", os.getenv("SMTP_PASSWORD", os.getenv("GMAIL_APP_PASSWORD", ""))).strip()
+EMAIL_FROM = os.getenv("EMAIL_FROM", SMTP_USER or "noreply@kalasetu.in").strip()

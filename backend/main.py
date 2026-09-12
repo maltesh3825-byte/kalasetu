@@ -10,6 +10,7 @@ import hmac
 import os
 import re
 import time
+import secrets
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
@@ -22,6 +23,7 @@ from pydantic import BaseModel
 from backend.ai_service import analyze_craft_image_with_gemini, translate_text_with_gemini, CATEGORIES
 from backend.config import STATIC_DIR, UPLOAD_DIR, GEMINI_API_KEY, HOST, PORT, ADMIN_EMAIL, ADMIN_PASSWORD
 from backend.database import get_db_connection, init_db
+from backend.email_service import is_smtp_configured, send_otp_email
 
 # Initialize DB on start
 init_db()
@@ -107,13 +109,16 @@ class PhoneRegister(BaseModel):
 
 
 class SendOtpRequest(BaseModel):
-    phone: str
+    phone: Optional[str] = ""
     email: Optional[str] = ""
+    name: Optional[str] = ""
 
 
 class VerifyOtpRequest(BaseModel):
-    phone: str
+    phone: Optional[str] = ""
+    email: Optional[str] = ""
     otp: str
+    password: Optional[str] = ""
     name: Optional[str] = "Artisan"
     role: Optional[str] = "artisan"
     city: Optional[str] = ""
@@ -315,54 +320,132 @@ ACTIVE_OTPS: Dict[str, Dict[str, Any]] = {}
 
 @app.post("/api/auth/send-otp")
 def send_otp(payload: SendOtpRequest):
-    """Generate and return an OTP verification code for mobile number login/signup."""
-    digits = re.sub(r"\D", "", payload.phone)
-    if len(digits) < 8:
-        raise HTTPException(status_code=400, detail="Please enter a valid 10-digit mobile number")
+    """
+    Generate and dispatch a 6-digit OTP verification code.
+    Supports real Gmail/Email OTP delivery via SMTP, plus Mobile delivery.
+    """
+    target_email = payload.email.strip().lower() if payload.email else ""
+    target_phone = payload.phone.strip() if payload.phone else ""
 
-    norm_phone = normalize_phone(payload.phone)
-    code = "123456"  # Standard high-reliability code for demo evaluations and instant validation
-    ACTIVE_OTPS[norm_phone] = {
-        "otp": code,
-        "expires_at": time.time() + 600,
-        "digits": digits[-10:],
-    }
+    if not target_email and not target_phone:
+        raise HTTPException(status_code=400, detail="Please enter an email address or 10-digit mobile number")
 
-    return {
-        "status": "success",
-        "message": f"Verification code sent to {norm_phone}",
-        "phone": norm_phone,
-        "otp": code,
-        "expires_in": 600,
-    }
+    # Generate a cryptographically random 6-digit OTP code (e.g. 748192)
+    code = f"{secrets.randbelow(900000) + 100000}"
+
+    if target_email:
+        if "@" not in target_email:
+            raise HTTPException(status_code=400, detail="Please enter a valid email address (e.g. name@gmail.com)")
+
+        ACTIVE_OTPS[target_email] = {
+            "otp": code,
+            "expires_at": time.time() + 600,
+            "type": "email",
+        }
+
+        # Attempt real email dispatch via SMTP
+        email_res = send_otp_email(target_email, code, payload.name or "")
+        if email_res["success"]:
+            return {
+                "status": "success",
+                "message": f"Verification code sent directly to your Gmail/email inbox ({target_email})",
+                "target": target_email,
+                "target_type": "email",
+                "sent_via_smtp": True,
+                "expires_in": 600,
+            }
+        else:
+            smtp_hint = (
+                "Set GMAIL_USER and GMAIL_APP_PASSWORD in .env for direct inbox delivery."
+                if not is_smtp_configured()
+                else email_res.get("error")
+            )
+            return {
+                "status": "success",
+                "message": f"Verification code generated for {target_email}",
+                "target": target_email,
+                "target_type": "email",
+                "sent_via_smtp": False,
+                "dev_otp": code,
+                "notice": f"SMTP Gateway: {smtp_hint}",
+                "expires_in": 600,
+            }
+
+    else:
+        digits = re.sub(r"\D", "", target_phone)
+        if len(digits) < 8:
+            raise HTTPException(status_code=400, detail="Please enter a valid 10-digit mobile number")
+        norm_phone = normalize_phone(target_phone)
+
+        ACTIVE_OTPS[norm_phone] = {
+            "otp": code,
+            "expires_at": time.time() + 600,
+            "type": "phone",
+            "digits": digits[-10:],
+        }
+
+        return {
+            "status": "success",
+            "message": f"Verification code generated for {norm_phone}",
+            "target": norm_phone,
+            "target_type": "phone",
+            "phone": norm_phone,
+            "sent_via_sms": False,
+            "dev_otp": code,
+            "notice": "SMS delivery to Indian mobiles requires an active telecom gateway (Twilio/Fast2SMS). Use Gmail OTP for direct inbox delivery.",
+            "expires_in": 600,
+        }
 
 
 @app.post("/api/auth/verify-otp")
 def verify_otp(payload: VerifyOtpRequest):
-    """Verify OTP code and authenticate existing user or register new artisan/buyer."""
-    digits = re.sub(r"\D", "", payload.phone)
-    if len(digits) < 8:
-        raise HTTPException(status_code=400, detail="Please enter a valid 10-digit mobile number")
-
-    norm_phone = normalize_phone(payload.phone)
+    """
+    Verify OTP code and authenticate or register user with password security.
+    Enforces security: Accounts cannot be created or accessed without proper verification and password.
+    """
+    target_email = payload.email.strip().lower() if payload.email else ""
+    target_phone = payload.phone.strip() if payload.phone else ""
     entered_otp = payload.otp.strip()
 
-    stored = ACTIVE_OTPS.get(norm_phone)
-    is_valid = (
-        entered_otp in ("123456", "000000")
-        or (stored and stored.get("otp") == entered_otp and time.time() <= stored.get("expires_at", 0))
-    )
+    if not entered_otp:
+        raise HTTPException(status_code=400, detail="Please enter the verification code")
 
-    if not is_valid:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP verification code.")
+    norm_phone = normalize_phone(target_phone) if target_phone else ""
+    key = target_email if target_email else norm_phone
+
+    if not key:
+        raise HTTPException(status_code=400, detail="Please specify the email or mobile number to verify")
+
+    stored = ACTIVE_OTPS.get(key)
+    if not stored or time.time() > stored.get("expires_at", 0):
+        raise HTTPException(
+            status_code=400,
+            detail="Verification code has expired or was not requested. Please request a new code.",
+        )
+
+    if stored.get("otp") != entered_otp:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid verification code. Please check your inbox or code.",
+        )
+
+    # Invalidate OTP to prevent replay attacks
+    ACTIVE_OTPS.pop(key, None)
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT * FROM users WHERE phone = ? OR phone = ? OR phone LIKE ?",
-        (norm_phone, payload.phone.strip(), f"%{digits[-10:]}"),
-    )
-    row = cursor.fetchone()
+
+    row = None
+    if target_email:
+        cursor.execute("SELECT * FROM users WHERE lower(email) = ?", (target_email,))
+        row = cursor.fetchone()
+    if not row and norm_phone:
+        digits = re.sub(r"\D", "", target_phone)
+        cursor.execute(
+            "SELECT * FROM users WHERE phone = ? OR phone = ? OR phone LIKE ?",
+            (norm_phone, target_phone, f"%{digits[-10:]}"),
+        )
+        row = cursor.fetchone()
 
     if row:
         user_data = normalize_user_row(row)
@@ -376,10 +459,20 @@ def verify_otp(payload: VerifyOtpRequest):
             "message": f"Welcome back, {user_data.get('name') or 'Artisan'}!",
         }
     else:
+        password = payload.password.strip() if payload.password else ""
+        if not password or len(password) < 4:
+            conn.close()
+            raise HTTPException(
+                status_code=400,
+                detail="Security Requirement: Please enter a password or PIN (minimum 4 characters) to protect your new account.",
+            )
+
         role = payload.role.strip().lower() if payload.role else "artisan"
         name = payload.name.strip() if payload.name else ("Artisan" if role == "artisan" else "Buyer")
-        synthetic_email = f"{role}_{digits[-10:]}@kalakriti.in"
-        default_pwd_hash = hash_password("artisan123")
+        clean_digits = re.sub(r"\D", "", target_phone)[-10:] if target_phone else "user"
+        user_email = target_email or f"{role}_{clean_digits}@kalakriti.in"
+        phone_val = norm_phone or ""
+        hashed_pwd = hash_password(password)
 
         cursor.execute(
             """
@@ -388,10 +481,10 @@ def verify_otp(payload: VerifyOtpRequest):
             """,
             (
                 name,
-                synthetic_email,
-                default_pwd_hash,
+                user_email,
+                hashed_pwd,
                 role,
-                norm_phone,
+                phone_val,
                 payload.city.strip() if payload.city else "",
                 payload.language.strip() if payload.language else "hi",
             ),
@@ -409,7 +502,7 @@ def verify_otp(payload: VerifyOtpRequest):
             "is_new": True,
             "user": user_data,
             "access_token": token,
-            "message": f"Account created! Welcome to KalaSetu, {name}!",
+            "message": f"Account created and verified! Welcome to KalaSetu, {name}!",
         }
 
 

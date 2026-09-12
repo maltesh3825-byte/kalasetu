@@ -677,10 +677,12 @@ function renderAccountShell() {
 }
 
 // Authentication State & Mode Controller
-state.authMode = 'signin';
-state.authMethod = 'phone';
+state.authMode = 'signin'; // 'signin' | 'signup'
+state.authMethod = 'password'; // 'password' | 'gmail' | 'phone'
 state.pendingPhone = '';
-state.lastOtp = '123456';
+state.pendingGmail = '';
+state.lastPhoneOtp = '123456';
+state.lastGmailOtp = '';
 
 function showAuthStatus(message, isError = true) {
   const box = document.getElementById('authStatusBox');
@@ -706,14 +708,17 @@ function switchAuthMode(mode) {
 
   const signInBtn = document.getElementById('authModeSignInBtn');
   const signUpBtn = document.getElementById('authModeSignUpBtn');
+  const passwordSignUpFields = document.getElementById('passwordSignUpFields');
+  const gmailSignUpFields = document.getElementById('gmailSignUpFields');
   const phoneSignUpFields = document.getElementById('phoneSignUpFields');
-  const emailSignUpFields = document.getElementById('emailSignUpFields');
+
   const title = document.getElementById('authCardTitle');
   const subtitle = document.getElementById('authCardSubtitle');
-  const sendOtpBtnText = document.getElementById('sendOtpBtnText');
-  const emailSubmitBtnText = document.getElementById('emailSubmitBtnText');
-  const emailInputLabel = document.getElementById('emailInputLabel');
-  const emailDemoPills = document.getElementById('emailDemoPills');
+  const passwordSubmitBtnText = document.getElementById('passwordSubmitBtnText');
+  const passwordInputLabel = document.getElementById('passwordInputLabel');
+  const passwordDemoPills = document.getElementById('passwordDemoPills');
+  const sendGmailOtpBtnText = document.getElementById('sendGmailOtpBtnText');
+  const sendPhoneOtpBtnText = document.getElementById('sendPhoneOtpBtnText');
 
   if (mode === 'signup') {
     if (signInBtn) {
@@ -722,14 +727,17 @@ function switchAuthMode(mode) {
     if (signUpBtn) {
       signUpBtn.className = 'flex-1 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all bg-white text-slate-900 shadow-sm cursor-pointer';
     }
+    if (passwordSignUpFields) passwordSignUpFields.classList.remove('hidden');
+    if (gmailSignUpFields) gmailSignUpFields.classList.remove('hidden');
     if (phoneSignUpFields) phoneSignUpFields.classList.remove('hidden');
-    if (emailSignUpFields) emailSignUpFields.classList.remove('hidden');
+
     if (title) title.textContent = 'Create your KalaSetu account';
     if (subtitle) subtitle.textContent = 'Join thousands of Indian artisans and verified handicraft buyers';
-    if (sendOtpBtnText) sendOtpBtnText.textContent = 'Create Account with Mobile OTP';
-    if (emailSubmitBtnText) emailSubmitBtnText.textContent = 'Create Account & Sign In';
-    if (emailInputLabel) emailInputLabel.textContent = 'Email Address';
-    if (emailDemoPills) emailDemoPills.classList.add('hidden');
+    if (passwordSubmitBtnText) passwordSubmitBtnText.textContent = 'Create Account & Sign In';
+    if (passwordInputLabel) passwordInputLabel.textContent = 'Email Address';
+    if (passwordDemoPills) passwordDemoPills.classList.add('hidden');
+    if (sendGmailOtpBtnText) sendGmailOtpBtnText.textContent = 'Create Account with Gmail OTP';
+    if (sendPhoneOtpBtnText) sendPhoneOtpBtnText.textContent = 'Create Account with Mobile OTP';
   } else {
     if (signInBtn) {
       signInBtn.className = 'flex-1 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all bg-white text-slate-900 shadow-sm cursor-pointer';
@@ -737,14 +745,17 @@ function switchAuthMode(mode) {
     if (signUpBtn) {
       signUpBtn.className = 'flex-1 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all text-slate-500 hover:text-slate-900 cursor-pointer';
     }
+    if (passwordSignUpFields) passwordSignUpFields.classList.add('hidden');
+    if (gmailSignUpFields) gmailSignUpFields.classList.add('hidden');
     if (phoneSignUpFields) phoneSignUpFields.classList.add('hidden');
-    if (emailSignUpFields) emailSignUpFields.classList.add('hidden');
+
     if (title) title.textContent = 'Sign in to KalaSetu';
     if (subtitle) subtitle.textContent = 'Access your artisan studio or buyer marketplace';
-    if (sendOtpBtnText) sendOtpBtnText.textContent = 'Send Verification Code (OTP)';
-    if (emailSubmitBtnText) emailSubmitBtnText.textContent = 'Sign In';
-    if (emailInputLabel) emailInputLabel.textContent = 'Email Address or Mobile Number';
-    if (emailDemoPills) emailDemoPills.classList.remove('hidden');
+    if (passwordSubmitBtnText) passwordSubmitBtnText.textContent = 'Sign In with Password';
+    if (passwordInputLabel) passwordInputLabel.textContent = 'Email Address or Mobile Number';
+    if (passwordDemoPills) passwordDemoPills.classList.remove('hidden');
+    if (sendGmailOtpBtnText) sendGmailOtpBtnText.textContent = 'Send OTP to Gmail Inbox';
+    if (sendPhoneOtpBtnText) sendPhoneOtpBtnText.textContent = 'Generate Mobile OTP';
   }
 }
 
@@ -752,30 +763,24 @@ function switchAuthMethod(method) {
   state.authMethod = method;
   clearAuthStatus();
 
+  const pwdBtn = document.getElementById('authMethodPasswordBtn');
+  const gmailBtn = document.getElementById('authMethodGmailBtn');
   const phoneBtn = document.getElementById('authMethodPhoneBtn');
-  const emailBtn = document.getElementById('authMethodEmailBtn');
-  const phoneContainer = document.getElementById('authPhoneContainer');
-  const emailContainer = document.getElementById('authEmailContainer');
 
-  if (method === 'email') {
-    if (emailBtn) {
-      emailBtn.className = 'flex-1 pb-3 text-orange-600 border-b-2 border-orange-600 flex items-center justify-center gap-2 transition-all cursor-pointer';
-    }
-    if (phoneBtn) {
-      phoneBtn.className = 'flex-1 pb-3 text-slate-400 border-b-2 border-transparent hover:text-slate-600 flex items-center justify-center gap-2 transition-all cursor-pointer';
-    }
-    if (phoneContainer) phoneContainer.classList.add('hidden');
-    if (emailContainer) emailContainer.classList.remove('hidden');
-  } else {
-    if (phoneBtn) {
-      phoneBtn.className = 'flex-1 pb-3 text-orange-600 border-b-2 border-orange-600 flex items-center justify-center gap-2 transition-all cursor-pointer';
-    }
-    if (emailBtn) {
-      emailBtn.className = 'flex-1 pb-3 text-slate-400 border-b-2 border-transparent hover:text-slate-600 flex items-center justify-center gap-2 transition-all cursor-pointer';
-    }
-    if (phoneContainer) phoneContainer.classList.remove('hidden');
-    if (emailContainer) emailContainer.classList.add('hidden');
-  }
+  const pwdContainer = document.getElementById('authPasswordContainer');
+  const gmailContainer = document.getElementById('authGmailContainer');
+  const phoneContainer = document.getElementById('authPhoneContainer');
+
+  const activeClass = 'flex-1 pb-3 text-orange-600 border-b-2 border-orange-600 flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap px-2';
+  const inactiveClass = 'flex-1 pb-3 text-slate-400 border-b-2 border-transparent hover:text-slate-600 flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap px-2';
+
+  if (pwdBtn) pwdBtn.className = method === 'password' ? activeClass : inactiveClass;
+  if (gmailBtn) gmailBtn.className = method === 'gmail' ? activeClass : inactiveClass;
+  if (phoneBtn) phoneBtn.className = method === 'phone' ? activeClass : inactiveClass;
+
+  if (pwdContainer) pwdContainer.classList.toggle('hidden', method !== 'password');
+  if (gmailContainer) gmailContainer.classList.toggle('hidden', method !== 'gmail');
+  if (phoneContainer) phoneContainer.classList.toggle('hidden', method !== 'phone');
 }
 
 function quickFillPhone(number) {
@@ -793,7 +798,302 @@ function quickFillEmail(email, password) {
   if (pwdInput) pwdInput.value = password;
 }
 
-async function handleSendOtp(event) {
+// -------------------------------------------------------------
+// METHOD 1: Password / PIN Authentication (Sign In & Sign Up)
+// -------------------------------------------------------------
+async function handlePasswordAuth(event) {
+  if (event) event.preventDefault();
+  clearAuthStatus();
+
+  const emailInput = document.getElementById('loginEmail');
+  const passwordInput = document.getElementById('loginPassword');
+  const emailOrPhone = emailInput ? emailInput.value.trim() : '';
+  const password = passwordInput ? passwordInput.value : '';
+
+  if (!emailOrPhone || !password) {
+    showAuthStatus('Please enter your email/phone and password.', true);
+    return;
+  }
+
+  const submitBtn = document.getElementById('passwordSubmitBtn');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>⏳ Authenticating...</span>';
+  }
+
+  try {
+    let endpoint = '/api/auth/login';
+    let payload = { email: emailOrPhone, password };
+
+    if (state.authMode === 'signup') {
+      endpoint = '/api/auth/register';
+      const nameInput = document.getElementById('passwordRegisterName');
+      const phoneInput = document.getElementById('passwordRegisterPhone');
+      const roleRadio = document.querySelector('input[name="passwordRole"]:checked');
+      const name = nameInput ? nameInput.value.trim() : 'Artisan';
+      const phone = phoneInput ? phoneInput.value.trim() : '';
+      const role = roleRadio ? roleRadio.value : 'artisan';
+
+      if (!name) {
+        throw new Error('Please enter your full name for registration.');
+      }
+      if (password.length < 4) {
+        throw new Error('Password must be at least 4 characters long.');
+      }
+
+      payload = { name, email: emailOrPhone, password, role, phone };
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.detail || (state.authMode === 'signup' ? 'Registration failed' : 'Invalid email/phone or password'));
+    }
+
+    state.currentUser = data.user || {
+      id: data.user_id,
+      name: payload.name || 'User',
+      email: emailOrPhone,
+      role: payload.role || 'artisan',
+    };
+    localStorage.setItem('kalakriti_user', JSON.stringify(state.currentUser));
+
+    try {
+      await loadAccountData();
+    } catch (loadErr) {
+      console.warn('Account activity sync delayed:', loadErr);
+    }
+
+    switchTab('home');
+    const userName = state.currentUser?.name || state.currentUser?.email || 'User';
+    showToast(`Logged in as ${userName}`);
+
+    showInteractiveModal({
+      type: 'welcome',
+      title: `Welcome, ${userName}! 🎉`,
+      subtitle: state.authMode === 'signup' ? 'Account Created Successfully' : 'Logged in to KalaSetu AI Studio',
+      message: `Your account (${state.currentUser?.email || emailOrPhone}) is active and protected. Your artisan studio and marketplace linkage are ready.`,
+      primaryText: '✨ Explore Marketplace',
+      onPrimary: () => switchTab('marketplace'),
+      secondaryText: '🎨 Open AI Studio',
+      onSecondary: () => switchTab('studio'),
+    });
+  } catch (error) {
+    showAuthStatus(error.message || 'Authentication failed. Please check credentials or switch to Sign Up.', true);
+    showInteractiveModal({
+      type: 'error',
+      title: state.authMode === 'signup' ? 'Registration Failed' : 'Sign-In Failed',
+      subtitle: 'Authentication Notice',
+      message: error.message || 'Please check your credentials or click "Create Account" if you do not have an account yet.',
+      primaryText: 'OK',
+    });
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      const text = state.authMode === 'signup' ? 'Create Account & Sign In' : 'Sign In with Password';
+      submitBtn.innerHTML = `<span>${text}</span>`;
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// METHOD 2: Gmail OTP Verification (Real SMTP Inbox Delivery)
+// -------------------------------------------------------------
+async function handleSendGmailOtp(event) {
+  if (event) event.preventDefault();
+  clearAuthStatus();
+
+  const emailInput = document.getElementById('authGmailInput');
+  const email = emailInput ? emailInput.value.trim().toLowerCase() : '';
+
+  if (!email || !email.includes('@')) {
+    showAuthStatus('Please enter a valid Gmail / email address.', true);
+    return;
+  }
+
+  // If signing up, validate required name and password before sending OTP
+  if (state.authMode === 'signup') {
+    const pwdInput = document.getElementById('gmailRegisterPassword');
+    const pwd = pwdInput ? pwdInput.value.trim() : '';
+    if (!pwd || pwd.length < 4) {
+      showAuthStatus('Security Requirement: Please enter a password/PIN (at least 4 characters) to protect your account.', true);
+      if (pwdInput) pwdInput.focus();
+      return;
+    }
+  }
+
+  const sendBtn = document.getElementById('sendGmailOtpBtn');
+  if (sendBtn) {
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<span>⏳ Sending code to Gmail...</span>';
+  }
+
+  try {
+    const res = await fetch('/api/auth/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Could not send verification code');
+
+    state.pendingGmail = data.email || data.target || email;
+    state.lastGmailOtp = data.dev_otp || '';
+
+    const reqForm = document.getElementById('gmailRequestForm');
+    const verifyForm = document.getElementById('gmailVerifyForm');
+    const targetDisplay = document.getElementById('gmailTargetDisplay');
+    const badgeWrapper = document.getElementById('gmailDemoBadgeWrapper');
+    const codeDisplay = document.getElementById('gmailDemoCode');
+
+    if (targetDisplay) targetDisplay.textContent = state.pendingGmail;
+    if (reqForm) reqForm.classList.add('hidden');
+    if (verifyForm) verifyForm.classList.remove('hidden');
+
+    if (data.sent_via_smtp) {
+      if (badgeWrapper) badgeWrapper.classList.add('hidden');
+      showAuthStatus(`✅ Verification code sent directly to ${state.pendingGmail}! Check your inbox (or spam folder).`, false);
+    } else {
+      // SMTP not configured yet; show dev code so user can proceed
+      if (badgeWrapper) badgeWrapper.classList.remove('hidden');
+      if (codeDisplay) codeDisplay.textContent = state.lastGmailOtp;
+      showAuthStatus(`ℹ️ SMTP not configured in .env. Test code: ${state.lastGmailOtp}. Set GMAIL_USER and GMAIL_APP_PASSWORD in .env for direct inbox delivery.`, false);
+    }
+
+    const otpInput = document.getElementById('authGmailOtpInput');
+    if (otpInput) {
+      otpInput.value = '';
+      otpInput.focus();
+    }
+  } catch (err) {
+    showAuthStatus(err.message || 'Failed to send OTP to Gmail. Please try again.', true);
+  } finally {
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      const text = state.authMode === 'signup' ? 'Create Account with Gmail OTP' : 'Send OTP to Gmail Inbox';
+      sendBtn.innerHTML = `<span>📩</span><span>${text}</span>`;
+    }
+  }
+}
+
+function autoFillGmailDemoOtp() {
+  const otpInput = document.getElementById('authGmailOtpInput');
+  if (otpInput) {
+    otpInput.value = state.lastGmailOtp || '123456';
+    otpInput.focus();
+  }
+}
+
+function cancelGmailOtpStep() {
+  clearAuthStatus();
+  const reqForm = document.getElementById('gmailRequestForm');
+  const verifyForm = document.getElementById('gmailVerifyForm');
+  if (verifyForm) verifyForm.classList.add('hidden');
+  if (reqForm) reqForm.classList.remove('hidden');
+}
+
+async function handleVerifyGmailOtp(event) {
+  if (event) event.preventDefault();
+  clearAuthStatus();
+
+  const otpInput = document.getElementById('authGmailOtpInput');
+  const otp = otpInput ? otpInput.value.trim() : '';
+
+  if (!otp || otp.length < 4) {
+    showAuthStatus('Please enter the 6-digit verification code.', true);
+    return;
+  }
+
+  let name = 'Artisan';
+  let role = 'artisan';
+  let password = '';
+
+  if (state.authMode === 'signup') {
+    const nameInput = document.getElementById('gmailRegisterName');
+    const pwdInput = document.getElementById('gmailRegisterPassword');
+    const roleRadio = document.querySelector('input[name="gmailRole"]:checked');
+    name = nameInput ? nameInput.value.trim() : 'Artisan';
+    role = roleRadio ? roleRadio.value : 'artisan';
+    password = pwdInput ? pwdInput.value.trim() : '';
+
+    if (!password || password.length < 4) {
+      showAuthStatus('Security Requirement: Please enter a password or PIN (at least 4 characters) to protect your account.', true);
+      return;
+    }
+  }
+
+  const verifyBtn = document.getElementById('verifyGmailOtpBtn');
+  if (verifyBtn) {
+    verifyBtn.disabled = true;
+    verifyBtn.innerHTML = '<span>⏳ Verifying Code...</span>';
+  }
+
+  try {
+    const res = await fetch('/api/auth/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: state.pendingGmail,
+        otp: otp,
+        name: name,
+        role: role,
+        password: password,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'OTP verification failed');
+
+    state.currentUser = data.user;
+    localStorage.setItem('kalakriti_user', JSON.stringify(state.currentUser));
+
+    try {
+      await loadAccountData();
+    } catch (loadErr) {
+      console.warn('Account activity sync delayed:', loadErr);
+    }
+
+    switchTab('home');
+    const userName = state.currentUser?.name || state.currentUser?.email || 'User';
+    showToast(`Logged in as ${userName}`);
+
+    showInteractiveModal({
+      type: 'welcome',
+      title: `Welcome, ${userName}! 🎉`,
+      subtitle: data.is_new ? 'Account Verified & Created' : 'Logged in to KalaSetu AI Studio',
+      message: `Your account (${state.currentUser?.email}) is verified and secured. Your smart craft studio and direct marketplace are ready.`,
+      primaryText: '✨ Explore Marketplace',
+      onPrimary: () => switchTab('marketplace'),
+      secondaryText: '🎨 Open AI Studio',
+      onSecondary: () => switchTab('studio'),
+    });
+  } catch (err) {
+    showAuthStatus(err.message || 'Invalid or expired verification code.', true);
+    showInteractiveModal({
+      type: 'error',
+      title: 'Verification Failed',
+      subtitle: 'Code Error',
+      message: err.message || 'Please check the verification code and try again.',
+      primaryText: 'OK',
+    });
+  } finally {
+    if (verifyBtn) {
+      verifyBtn.disabled = false;
+      verifyBtn.innerHTML = '<span>✅</span><span>Verify & Access KalaSetu</span>';
+    }
+  }
+}
+
+// -------------------------------------------------------------
+// METHOD 3: Mobile OTP (Telecom Gateway Notice + Security)
+// -------------------------------------------------------------
+async function handleSendPhoneOtp(event) {
   if (event) event.preventDefault();
   clearAuthStatus();
 
@@ -806,10 +1106,21 @@ async function handleSendOtp(event) {
     return;
   }
 
-  const sendBtn = document.getElementById('sendOtpBtn');
+  // If signing up, validate password requirement
+  if (state.authMode === 'signup') {
+    const pwdInput = document.getElementById('phoneRegisterPassword');
+    const pwd = pwdInput ? pwdInput.value.trim() : '';
+    if (!pwd || pwd.length < 4) {
+      showAuthStatus('Security Requirement: Please enter a password or PIN (at least 4 characters) to protect your account.', true);
+      if (pwdInput) pwdInput.focus();
+      return;
+    }
+  }
+
+  const sendBtn = document.getElementById('sendPhoneOtpBtn');
   if (sendBtn) {
     sendBtn.disabled = true;
-    sendBtn.innerHTML = '<span>⏳ Sending OTP...</span>';
+    sendBtn.innerHTML = '<span>⏳ Generating OTP...</span>';
   }
 
   try {
@@ -818,49 +1129,50 @@ async function handleSendOtp(event) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone: `+91${digits.slice(-10)}` }),
     });
+
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Could not send verification code');
+    if (!res.ok) throw new Error(data.detail || 'Could not generate verification code');
 
     state.pendingPhone = data.phone || `+91${digits.slice(-10)}`;
-    state.lastOtp = data.otp || '123456';
+    state.lastPhoneOtp = data.dev_otp || data.otp || '123456';
 
     const reqForm = document.getElementById('phoneRequestForm');
     const verifyForm = document.getElementById('phoneVerifyForm');
-    const targetDisplay = document.getElementById('otpTargetDisplay');
-    const demoBadge = document.getElementById('demoOtpBadge');
+    const targetDisplay = document.getElementById('phoneTargetDisplay');
+    const codeDisplay = document.getElementById('phoneDemoCode');
 
     if (targetDisplay) targetDisplay.textContent = state.pendingPhone;
-    if (demoBadge) demoBadge.textContent = state.lastOtp;
+    if (codeDisplay) codeDisplay.textContent = state.lastPhoneOtp;
     if (reqForm) reqForm.classList.add('hidden');
     if (verifyForm) verifyForm.classList.remove('hidden');
 
-    const otpInput = document.getElementById('authOtpInput');
+    const otpInput = document.getElementById('authPhoneOtpInput');
     if (otpInput) {
       otpInput.value = '';
       otpInput.focus();
     }
 
-    showAuthStatus(`✅ OTP sent successfully to ${state.pendingPhone}. Use code ${state.lastOtp} to verify.`, false);
+    showAuthStatus(`ℹ️ Code generated for ${state.pendingPhone}. Test Code: ${state.lastPhoneOtp} (Direct SMS requires telecom gateway; use Gmail OTP for inbox delivery).`, false);
   } catch (err) {
-    showAuthStatus(err.message || 'Failed to send OTP code. Please try again.', true);
+    showAuthStatus(err.message || 'Failed to generate OTP code. Please try again.', true);
   } finally {
     if (sendBtn) {
       sendBtn.disabled = false;
-      const text = state.authMode === 'signup' ? 'Create Account with Mobile OTP' : 'Send Verification Code (OTP)';
+      const text = state.authMode === 'signup' ? 'Create Account with Mobile OTP' : 'Generate Mobile OTP';
       sendBtn.innerHTML = `<span>📲</span><span>${text}</span>`;
     }
   }
 }
 
-function autoFillDemoOtp() {
-  const otpInput = document.getElementById('authOtpInput');
+function autoFillPhoneDemoOtp() {
+  const otpInput = document.getElementById('authPhoneOtpInput');
   if (otpInput) {
-    otpInput.value = state.lastOtp || '123456';
+    otpInput.value = state.lastPhoneOtp || '123456';
     otpInput.focus();
   }
 }
 
-function cancelOtpStep() {
+function cancelPhoneOtpStep() {
   clearAuthStatus();
   const reqForm = document.getElementById('phoneRequestForm');
   const verifyForm = document.getElementById('phoneVerifyForm');
@@ -868,34 +1180,40 @@ function cancelOtpStep() {
   if (reqForm) reqForm.classList.remove('hidden');
 }
 
-function resendOtp() {
-  handleSendOtp(null);
-}
-
-async function handleVerifyOtp(event) {
+async function handleVerifyPhoneOtp(event) {
   if (event) event.preventDefault();
   clearAuthStatus();
 
-  const otpInput = document.getElementById('authOtpInput');
+  const otpInput = document.getElementById('authPhoneOtpInput');
   const otp = otpInput ? otpInput.value.trim() : '';
+
   if (!otp || otp.length < 4) {
     showAuthStatus('Please enter the 6-digit verification code.', true);
     return;
   }
 
-  let name = '';
+  let name = 'Artisan';
   let role = 'artisan';
+  let password = '';
+
   if (state.authMode === 'signup') {
     const nameInput = document.getElementById('phoneRegisterName');
-    name = nameInput ? nameInput.value.trim() : '';
+    const pwdInput = document.getElementById('phoneRegisterPassword');
     const roleRadio = document.querySelector('input[name="phoneRole"]:checked');
-    if (roleRadio) role = roleRadio.value;
+    name = nameInput ? nameInput.value.trim() : 'Artisan';
+    role = roleRadio ? roleRadio.value : 'artisan';
+    password = pwdInput ? pwdInput.value.trim() : '';
+
+    if (!password || password.length < 4) {
+      showAuthStatus('Security Requirement: Please enter a password or PIN (at least 4 characters) to protect your account.', true);
+      return;
+    }
   }
 
-  const verifyBtn = document.getElementById('verifyOtpBtn');
+  const verifyBtn = document.getElementById('verifyPhoneOtpBtn');
   if (verifyBtn) {
     verifyBtn.disabled = true;
-    verifyBtn.innerHTML = '<span>⏳ Verifying Code...</span>';
+    verifyBtn.innerHTML = '<span>⏳ Verifying OTP...</span>';
   }
 
   try {
@@ -905,10 +1223,12 @@ async function handleVerifyOtp(event) {
       body: JSON.stringify({
         phone: state.pendingPhone,
         otp: otp,
-        name: name || 'Artisan',
+        name: name,
         role: role,
+        password: password,
       }),
     });
+
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || 'OTP verification failed');
 
@@ -929,7 +1249,7 @@ async function handleVerifyOtp(event) {
       type: 'welcome',
       title: `Welcome, ${userName}! 🎉`,
       subtitle: data.is_new ? 'Account Created Successfully' : 'Logged in to KalaSetu AI Studio',
-      message: `Your account (${state.currentUser?.phone || state.currentUser?.email}) is active. Your artisan catalog and market linkage tools are ready.`,
+      message: `Your account (${state.currentUser?.phone || state.currentUser?.email}) is active and secured. Your artisan catalog and market linkage tools are ready.`,
       primaryText: '✨ Explore Marketplace',
       onPrimary: () => switchTab('marketplace'),
       secondaryText: '🎨 Open AI Studio',
@@ -952,101 +1272,14 @@ async function handleVerifyOtp(event) {
   }
 }
 
-async function handleEmailAuth(event) {
-  if (event) event.preventDefault();
-  clearAuthStatus();
-
-  const emailInput = document.getElementById('loginEmail');
-  const passwordInput = document.getElementById('loginPassword');
-  const email = emailInput ? emailInput.value.trim() : '';
-  const password = passwordInput ? passwordInput.value : '';
-
-  if (!email || !password) {
-    showAuthStatus('Please enter your email/phone and password.', true);
-    return;
-  }
-
-  const submitBtn = document.getElementById('emailSubmitBtn');
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span>⏳ Authenticating...</span>';
-  }
-
-  try {
-    let endpoint = '/api/auth/login';
-    let payload = { email, password };
-
-    if (state.authMode === 'signup') {
-      endpoint = '/api/auth/register';
-      const nameInput = document.getElementById('emailRegisterName');
-      const phoneInput = document.getElementById('emailRegisterPhone');
-      const roleRadio = document.querySelector('input[name="emailRole"]:checked');
-      const name = nameInput ? nameInput.value.trim() : 'User';
-      const phone = phoneInput ? phoneInput.value.trim() : '';
-      const role = roleRadio ? roleRadio.value : 'artisan';
-      payload = { name, email, password, role, phone };
-    }
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data.detail || (state.authMode === 'signup' ? 'Registration failed' : 'Invalid email or password'));
-    }
-
-    // Auto log in with newly registered or authenticated profile
-    state.currentUser = data.user || {
-      id: data.user_id,
-      name: payload.name || 'User',
-      email: email,
-      role: payload.role || 'buyer',
-    };
-    localStorage.setItem('kalakriti_user', JSON.stringify(state.currentUser));
-
-    try {
-      await loadAccountData();
-    } catch (loadErr) {
-      console.warn('Account data load skipped after auth:', loadErr);
-    }
-
-    switchTab('home');
-    const userName = state.currentUser?.name || state.currentUser?.email || 'User';
-    showToast(`Logged in as ${userName}`);
-
-    showInteractiveModal({
-      type: 'welcome',
-      title: `Welcome, ${userName}! 🎉`,
-      subtitle: state.authMode === 'signup' ? 'Account Created Successfully' : 'Logged in to KalaSetu AI Studio',
-      message: `Your account (${state.currentUser?.email || email}) is successfully active. Your smart craft studio and direct marketplace orders are ready.`,
-      primaryText: '✨ Explore Marketplace',
-      onPrimary: () => switchTab('marketplace'),
-      secondaryText: '🎨 Open AI Studio',
-      onSecondary: () => switchTab('studio'),
-    });
-  } catch (error) {
-    showAuthStatus(error.message || 'Authentication failed. Please verify your credentials or sign up.', true);
-    showInteractiveModal({
-      type: 'error',
-      title: state.authMode === 'signup' ? 'Registration Failed' : 'Sign-In Failed',
-      subtitle: 'Authentication Notice',
-      message: error.message || 'Please check your credentials or click "Create Account" if you do not have an account yet.',
-      primaryText: 'OK',
-    });
-  } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      const text = state.authMode === 'signup' ? 'Create Account & Sign In' : 'Sign In';
-      submitBtn.innerHTML = `<span>${text}</span>`;
-    }
-  }
-}
-
-// Legacy alias
-const loginAccount = handleEmailAuth;
+// Backward compatibility aliases
+const handleSendOtp = handleSendPhoneOtp;
+const handleVerifyOtp = handleVerifyPhoneOtp;
+const handleEmailAuth = handlePasswordAuth;
+const loginAccount = handlePasswordAuth;
+const autoFillDemoOtp = autoFillPhoneDemoOtp;
+const cancelOtpStep = cancelPhoneOtpStep;
+const resendOtp = () => handleSendPhoneOtp(null);
 
 function logoutAccount() {
   state.currentUser = null;
