@@ -179,9 +179,9 @@ Ministry of Social Justice & Empowerment (MoSJE)
         try:
             print(f"[SMTP] Connecting to {cfg['host']}:{port}...")
             if port == 465:
-                server = smtplib.SMTP_SSL(cfg["host"], port, timeout=12)
+                server = smtplib.SMTP_SSL(cfg["host"], port, timeout=4)
             else:
-                server = smtplib.SMTP(cfg["host"], port, timeout=12)
+                server = smtplib.SMTP(cfg["host"], port, timeout=4)
                 server.ehlo()
                 server.starttls()
                 server.ehlo()

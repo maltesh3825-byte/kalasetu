@@ -11,8 +11,12 @@ import os
 import re
 import time
 import secrets
+import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
+
+logger = logging.getLogger("kalasetu")
+
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -347,8 +351,16 @@ def send_otp(payload: SendOtpRequest):
         }
 
         # Attempt real email dispatch via SMTP
-        email_res = send_otp_email(target_email, code, payload.name or "")
-        if email_res["success"]:
+        try:
+            email_res = send_otp_email(target_email, code, payload.name or "")
+        except Exception as ex:
+            email_res = {
+                "success": False,
+                "message": f"SMTP dispatch error ({str(ex)})",
+                "error": str(ex)
+            }
+
+        if email_res.get("success"):
             return {
                 "status": "success",
                 "message": f"Verification code sent directly to your Gmail/email inbox ({target_email})",
@@ -424,6 +436,35 @@ def get_smtp_status():
         "pass_length": len(cfg.get("pass", "")),
         "from_address": cfg.get("from"),
     }
+
+
+@app.get("/api/auth/smtp-test")
+def test_smtp_connectivity():
+    """
+    Test raw socket connectivity to smtp.gmail.com on ports 587 and 465.
+    Returns live connectivity status to verify whether the hosting provider permits SMTP traffic.
+    """
+    import socket
+    results = {}
+    for port in [587, 465]:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(3.0)
+        start = time.time()
+        try:
+            s.connect(("smtp.gmail.com", port))
+            latency = round((time.time() - start) * 1000, 1)
+            s.close()
+            results[f"port_{port}"] = {
+                "status": "OPEN",
+                "latency_ms": latency
+            }
+        except Exception as e:
+            results[f"port_{port}"] = {
+                "status": "BLOCKED_OR_TIMEOUT",
+                "error": f"{type(e).__name__}: {str(e)}"
+            }
+    return results
+
 
 
 
