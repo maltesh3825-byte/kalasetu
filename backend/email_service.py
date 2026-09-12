@@ -10,6 +10,11 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 
+import json
+import urllib.request
+import urllib.error
+
+
 def _get_env_non_empty(*keys, default: str = "") -> str:
     """Return first non-empty environment variable value, stripped of whitespace and quotes."""
     for k in keys:
@@ -23,9 +28,9 @@ def _get_env_non_empty(*keys, default: str = "") -> str:
 
 def get_smtp_config():
     """
-    Dynamically get current SMTP settings directly from system environment.
-    Guarantees Render dashboard environment variables take precedence (override=False),
-    prioritizes GMAIL_USER and GMAIL_APP_PASSWORD, and strips any accidental spaces or quotes.
+    Dynamically get current email settings directly from system environment.
+    Supports standard SMTP (Gmail/Custom) as well as HTTPS Email APIs (Resend, Brevo)
+    which bypass cloud provider SMTP port firewalls.
     """
     try:
         from pathlib import Path
@@ -49,6 +54,9 @@ def get_smtp_config():
     # Remove all spaces (Google displays app passwords in 4 groups e.g. 'cczi zkjs kiab isjo')
     password = re.sub(r"\s+", "", raw_pass)
 
+    resend_key = _get_env_non_empty("RESEND_API_KEY", "RESEND_KEY")
+    brevo_key = _get_env_non_empty("BREVO_API_KEY", "SENDINBLUE_API_KEY")
+
     from_email = _get_env_non_empty("EMAIL_FROM", default=user or "noreply@kalasetu.in")
     return {
         "host": host,
@@ -56,27 +64,78 @@ def get_smtp_config():
         "user": user,
         "pass": password,
         "from": from_email,
+        "resend_key": resend_key,
+        "brevo_key": brevo_key,
     }
 
 
 def is_smtp_configured() -> bool:
-    """Check whether real SMTP credentials are provided in the environment."""
+    """Check whether real email credentials (SMTP or HTTPS API) are provided in the environment."""
     cfg = get_smtp_config()
-    return bool(cfg["user"] and cfg["pass"])
+    return bool((cfg["user"] and cfg["pass"]) or cfg["resend_key"] or cfg["brevo_key"])
 
+
+
+
+def _send_via_resend(api_key: str, target: str, subject: str, text: str, html: str) -> dict:
+    try:
+        url = "https://api.resend.com/emails"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "KalaSetu-App/1.0"
+        }
+        data = {
+            "from": "KalaSetu AI Studio <onboarding@resend.dev>",
+            "to": [target],
+            "subject": subject,
+            "text": text,
+            "html": html,
+        }
+        req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+            return {"success": True, "id": body.get("id")}
+    except Exception as e:
+        print(f"[RESEND ERROR] Failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _send_via_brevo(api_key: str, target: str, subject: str, text: str, html: str) -> dict:
+    try:
+        url = "https://api.brevo.com/v3/smtp/email"
+        headers = {
+            "api-key": api_key,
+            "Content-Type": "application/json",
+            "User-Agent": "KalaSetu-App/1.0"
+        }
+        data = {
+            "sender": {"name": "KalaSetu AI Studio", "email": "noreply@kalasetu.in"},
+            "to": [{"email": target}],
+            "subject": subject,
+            "textContent": text,
+            "htmlContent": html,
+        }
+        req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            return {"success": True}
+    except Exception as e:
+        print(f"[BREVO ERROR] Failed: {e}")
+        return {"success": False, "error": str(e)}
 
 
 def send_otp_email(target_email: str, otp_code: str, user_name: str = "") -> dict:
     """
     Send a high-priority OTP verification email to the user's Gmail or email address.
+    Supports both HTTPS APIs (Resend, Brevo) and direct SMTP.
     Returns: {"success": bool, "message": str, "error": Optional[str]}
     """
     cfg = get_smtp_config()
-    if not cfg["user"] or not cfg["pass"]:
+    if not (cfg["user"] and cfg["pass"]) and not cfg["resend_key"] and not cfg["brevo_key"]:
         return {
             "success": False,
-            "message": "SMTP not configured in environment.",
-            "error": "GMAIL_USER and GMAIL_APP_PASSWORD not set in Render environment variables."
+            "message": "Email credentials not configured in environment.",
+            "error": "GMAIL_USER and GMAIL_APP_PASSWORD (or RESEND_API_KEY) not set in Render environment variables."
         }
 
     target = target_email.strip().lower()
@@ -165,7 +224,33 @@ Ministry of Social Justice & Empowerment (MoSJE)
     msg.attach(MIMEText(text_body, "plain"))
     msg.attach(MIMEText(html_body, "html"))
 
-    # Connection logic with dual-port fallback (e.g. tries 587 then 465, or 465 then 587)
+
+    subject_text = f"🔐 {otp_code} is your KalaSetu Verification Code"
+
+    # Method 1: If HTTPS Email API is configured, use it (works reliably on Render cloud without port blocks)
+    if cfg.get("resend_key"):
+        print(f"[EMAIL] Attempting delivery to {target} via Resend HTTPS API (Port 443)...")
+        resend_res = _send_via_resend(cfg["resend_key"], target, subject_text, text_body, html_body)
+        if resend_res.get("success"):
+            print(f"[EMAIL SUCCESS] Delivered to {target} via Resend API!")
+            return {
+                "success": True,
+                "message": f"Verification code successfully delivered to {target}",
+                "error": None
+            }
+
+    if cfg.get("brevo_key"):
+        print(f"[EMAIL] Attempting delivery to {target} via Brevo HTTPS API (Port 443)...")
+        brevo_res = _send_via_brevo(cfg["brevo_key"], target, subject_text, text_body, html_body)
+        if brevo_res.get("success"):
+            print(f"[EMAIL SUCCESS] Delivered to {target} via Brevo API!")
+            return {
+                "success": True,
+                "message": f"Verification code successfully delivered to {target}",
+                "error": None
+            }
+
+    # Method 2: Standard raw SMTP sockets (for localhost and unblocked servers)
     preferred_port = cfg.get("port") or 587
     fallback_port = 465 if preferred_port != 465 else 587
     ports_to_try = [preferred_port, fallback_port]
@@ -211,9 +296,19 @@ Ministry of Social Justice & Empowerment (MoSJE)
 
     err_str = f"{type(last_error).__name__}: {str(last_error)}" if last_error else "Unknown SMTP error"
     print(f"[SMTP ERROR] All delivery attempts failed for {target}: {err_str}")
+
+    if "101" in err_str or "unreachable" in err_str.lower() or "timed out" in err_str.lower():
+        friendly_error = (
+            "Render cloud firewall blocks raw SMTP ports (587/465). "
+            "Use the verification code below to log in, or set RESEND_API_KEY in Render to enable cloud delivery."
+        )
+    else:
+        friendly_error = err_str
+
     return {
         "success": False,
         "message": f"Failed to send email via SMTP ({err_str})",
-        "error": err_str
+        "error": friendly_error
     }
+
 
