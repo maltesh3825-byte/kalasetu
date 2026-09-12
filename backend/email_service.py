@@ -120,7 +120,7 @@ def _send_via_resend(api_key: str, target: str, subject: str, text: str, html: s
 
 
 
-def _send_via_brevo(api_key: str, target: str, subject: str, text: str, html: str) -> dict:
+def _send_via_brevo(api_key: str, from_addr: str, target: str, subject: str, text: str, html: str) -> dict:
     try:
         url = "https://api.brevo.com/v3/smtp/email"
         headers = {
@@ -128,8 +128,9 @@ def _send_via_brevo(api_key: str, target: str, subject: str, text: str, html: st
             "Content-Type": "application/json",
             "User-Agent": "KalaSetu-App/1.0"
         }
+        sender_email = from_addr if "@" in from_addr and not from_addr.endswith("@kalasetu.in") else "maltesh3825@gmail.com"
         data = {
-            "sender": {"name": "KalaSetu AI Studio", "email": "noreply@kalasetu.in"},
+            "sender": {"name": "KalaSetu AI Studio", "email": sender_email},
             "to": [{"email": target}],
             "subject": subject,
             "textContent": text,
@@ -138,9 +139,19 @@ def _send_via_brevo(api_key: str, target: str, subject: str, text: str, html: st
         req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=8) as resp:
             return {"success": True}
+    except urllib.error.HTTPError as e:
+        err_body = ""
+        try:
+            err_body = e.read().decode("utf-8")
+        except Exception:
+            pass
+        err_msg = f"Brevo HTTP {e.code}: {err_body or e.reason}"
+        print(f"[BREVO HTTP ERROR] {err_msg}")
+        return {"success": False, "error": err_msg}
     except Exception as e:
         print(f"[BREVO ERROR] Failed: {e}")
         return {"success": False, "error": str(e)}
+
 
 
 def send_otp_email(target_email: str, otp_code: str, user_name: str = "") -> dict:
@@ -262,9 +273,10 @@ Ministry of Social Justice & Empowerment (MoSJE)
             resend_attempted_err = resend_res.get("error")
             print(f"[EMAIL WARNING] Resend failed: {resend_attempted_err}")
 
+    brevo_attempted_err = None
     if cfg.get("brevo_key"):
         print(f"[EMAIL] Attempting delivery to {target} via Brevo HTTPS API (Port 443)...")
-        brevo_res = _send_via_brevo(cfg["brevo_key"], target, subject_text, text_body, html_body)
+        brevo_res = _send_via_brevo(cfg["brevo_key"], from_addr, target, subject_text, text_body, html_body)
         if brevo_res.get("success"):
             print(f"[EMAIL SUCCESS] Delivered to {target} via Brevo API!")
             return {
@@ -272,6 +284,10 @@ Ministry of Social Justice & Empowerment (MoSJE)
                 "message": f"Verification code successfully delivered to {target}",
                 "error": None
             }
+        else:
+            brevo_attempted_err = brevo_res.get("error")
+            print(f"[EMAIL WARNING] Brevo delivery failed: {brevo_attempted_err}")
+
 
     # Method 2: Standard raw SMTP sockets (for localhost and unblocked servers)
     preferred_port = cfg.get("port") or 587
@@ -320,15 +336,24 @@ Ministry of Social Justice & Empowerment (MoSJE)
     err_str = f"{type(last_error).__name__}: {str(last_error)}" if last_error else "Unknown SMTP error"
     print(f"[SMTP ERROR] All delivery attempts failed for {target}: {err_str}")
 
-    if resend_attempted_err:
-        friendly_error = f"Resend API Error: {resend_attempted_err}"
+    if resend_attempted_err and "403" in str(resend_attempted_err):
+        friendly_error = (
+            "Resend sandbox allows direct delivery to your registered email (maltesh3825@gmail.com). "
+            "To send to other emails without a custom domain, set BREVO_API_KEY in Render, "
+            "or use the 1-click test code below."
+        )
+    elif resend_attempted_err:
+        friendly_error = f"Resend API: {resend_attempted_err}"
+    elif brevo_attempted_err:
+        friendly_error = f"Brevo API: {brevo_attempted_err}"
     elif "101" in err_str or "unreachable" in err_str.lower() or "timed out" in err_str.lower():
         friendly_error = (
             "Render cloud firewall blocks raw SMTP ports (587/465). "
-            "Use the verification code below to log in, or set RESEND_API_KEY in Render to enable cloud delivery."
+            "Use the verification code below to log in, or set BREVO_API_KEY / RESEND_API_KEY in Render."
         )
     else:
         friendly_error = err_str
+
 
 
     return {
