@@ -41,14 +41,18 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Do not combine allow_origins=["*"] with allow_credentials=True
+# Allow all origins: required for mobile APK (Expo/Android), React Native,
+# and any browser frontend. Mobile apps may not send an Origin header at all,
+# so the old localhost-only regex was silently blocking auth calls.
+# Note: allow_credentials=True cannot be combined with allow_origins=["*"].
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?",
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 
