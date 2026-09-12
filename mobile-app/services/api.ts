@@ -468,7 +468,7 @@ export async function loginUser(email: string, password: string, role: UserRole 
     candidates.push(`${digits}@kalakriti.in`);
   }
 
-  let lastError = 'Invalid email or password.';
+  let lastError = 'Invalid email or password. If you signed up on the website, try using Gmail OTP tab to access your account.';
 
   for (const candidate of candidates) {
     try {
@@ -477,7 +477,7 @@ export async function loginUser(email: string, password: string, role: UserRole 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
-      }, 10000);
+      }, 12000);
 
       if (res.ok) {
         const data = await res.json();
@@ -487,14 +487,19 @@ export async function loginUser(email: string, password: string, role: UserRole 
       } else {
         const errData = await res.json().catch(() => ({}));
         if (errData.detail && typeof errData.detail === 'string') {
-          lastError = errData.detail;
+          lastError = errData.detail + '\n\nTip: Try the Gmail OTP tab if you forgot your password.';
         }
       }
     } catch (err: any) {
       if (err.message && err.message.includes('Server took too long')) {
         throw err;
       }
-      lastError = err.message || 'Network error during login.';
+      // Network / CORS error — give a clear message
+      if (err.message?.includes('Network request failed') || err.message?.includes('Failed to fetch')) {
+        lastError = 'Network error: Could not reach the KalaSetu server. Please check your internet connection and try again.';
+      } else {
+        lastError = err.message || 'Network error during login.';
+      }
     }
   }
 
