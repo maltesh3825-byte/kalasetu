@@ -3,15 +3,53 @@ KalaSetu Email Service for OTP Delivery
 Smart India Hackathon 2026 - Problem Statement SIH26090
 Ministry of Social Justice and Empowerment (MoSJE)
 """
+import os
+import re
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from backend.config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM
+
+
+def get_smtp_config():
+    """
+    Dynamically get current SMTP settings directly from system environment.
+    Guarantees Render dashboard environment variables take precedence (override=False),
+    and strips any accidental spaces or quotes (e.g. 'cczi zkjs kiab isjo' -> 'cczizkjskiabisjo').
+    """
+    try:
+        from pathlib import Path
+        from dotenv import load_dotenv
+        env_file = Path(__file__).resolve().parent.parent / ".env"
+        if env_file.exists():
+            load_dotenv(env_file, override=False)
+    except Exception:
+        pass
+
+    host = os.getenv("SMTP_HOST", os.getenv("SMTP_SERVER", "smtp.gmail.com")).strip()
+    try:
+        port = int(os.getenv("SMTP_PORT", "587"))
+    except (ValueError, TypeError):
+        port = 587
+
+    user = os.getenv("SMTP_USER", os.getenv("SMTP_USERNAME", os.getenv("GMAIL_USER", ""))).strip().strip("\"'")
+    raw_pass = os.getenv("SMTP_PASS", os.getenv("SMTP_PASSWORD", os.getenv("GMAIL_APP_PASSWORD", ""))).strip().strip("\"'")
+    # Remove any spaces that user might have copied from Google's 4-group app password display
+    password = re.sub(r"\s+", "", raw_pass)
+
+    from_email = os.getenv("EMAIL_FROM", user or "noreply@kalasetu.in").strip().strip("\"'")
+    return {
+        "host": host,
+        "port": port,
+        "user": user,
+        "pass": password,
+        "from": from_email,
+    }
 
 
 def is_smtp_configured() -> bool:
-    """Check whether real SMTP credentials are provided."""
-    return bool(SMTP_USER and SMTP_PASS)
+    """Check whether real SMTP credentials are provided in the environment."""
+    cfg = get_smtp_config()
+    return bool(cfg["user"] and cfg["pass"])
 
 
 def send_otp_email(target_email: str, otp_code: str, user_name: str = "") -> dict:
@@ -19,11 +57,12 @@ def send_otp_email(target_email: str, otp_code: str, user_name: str = "") -> dic
     Send a high-priority OTP verification email to the user's Gmail or email address.
     Returns: {"success": bool, "message": str, "error": Optional[str]}
     """
-    if not is_smtp_configured():
+    cfg = get_smtp_config()
+    if not cfg["user"] or not cfg["pass"]:
         return {
             "success": False,
             "message": "SMTP not configured in environment.",
-            "error": "GMAIL_USER and GMAIL_APP_PASSWORD (or SMTP_USER and SMTP_PASS) not set in .env."
+            "error": "GMAIL_USER and GMAIL_APP_PASSWORD not set in Render environment variables."
         }
 
     target = target_email.strip().lower()
@@ -37,8 +76,8 @@ def send_otp_email(target_email: str, otp_code: str, user_name: str = "") -> dic
     name_display = user_name.strip() if user_name else "KalaSetu Artisan / Buyer"
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"🔐 {otp_code} is your KalaSetu Verification Code"
-    msg["From"] = f"KalaSetu AI Studio <{EMAIL_FROM}>"
+    from_addr = cfg.get("from") or cfg.get("user") or "noreply@kalasetu.in"
+    msg["From"] = f"KalaSetu AI Studio <{from_addr}>"
     msg["To"] = target
 
     text_body = f"""Hello {name_display},
@@ -112,14 +151,14 @@ Ministry of Social Justice & Empowerment (MoSJE)
     msg.attach(MIMEText(html_body, "html"))
 
     try:
-        if SMTP_PORT == 465:
-            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=12)
+        if cfg["port"] == 465:
+            server = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=12)
         else:
-            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=12)
+            server = smtplib.SMTP(cfg["host"], cfg["port"], timeout=12)
             server.starttls()
 
-        server.login(SMTP_USER, SMTP_PASS)
-        server.sendmail(EMAIL_FROM, [target], msg.as_string())
+        server.login(cfg["user"], cfg["pass"])
+        server.sendmail(cfg["from"], [target], msg.as_string())
         server.quit()
 
         return {

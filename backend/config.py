@@ -15,8 +15,10 @@ UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(STATIC_DIR / "uploads")))
 # Ensure upload directory exists
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# Load .env file (with override=True to ensure edited credentials take effect immediately)
-load_dotenv(BASE_DIR / ".env", override=True)
+import re
+
+# Load .env file (override=False ensures Render's dashboard environment variables ALWAYS take priority)
+load_dotenv(BASE_DIR / ".env", override=False)
 
 
 def find_available_port(start_port: int, host: str = "0.0.0.0", max_tries: int = 20) -> int:
@@ -70,7 +72,11 @@ if not ADMIN_PASSWORD:
 
 # SMTP Email Configuration (for Real Gmail / Email OTP Delivery)
 SMTP_HOST = os.getenv("SMTP_HOST", os.getenv("SMTP_SERVER", "smtp.gmail.com")).strip()
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+try:
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+except (ValueError, TypeError):
+    SMTP_PORT = 587
 SMTP_USER = os.getenv("SMTP_USER", os.getenv("SMTP_USERNAME", os.getenv("GMAIL_USER", ""))).strip().strip("\"'")
-SMTP_PASS = os.getenv("SMTP_PASS", os.getenv("SMTP_PASSWORD", os.getenv("GMAIL_APP_PASSWORD", ""))).strip().strip("\"'")
+_raw_pass = os.getenv("SMTP_PASS", os.getenv("SMTP_PASSWORD", os.getenv("GMAIL_APP_PASSWORD", ""))).strip().strip("\"'")
+SMTP_PASS = re.sub(r"\s+", "", _raw_pass)
 EMAIL_FROM = os.getenv("EMAIL_FROM", SMTP_USER or "noreply@kalasetu.in").strip().strip("\"'")
