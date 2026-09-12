@@ -916,17 +916,6 @@ async function handleSendGmailOtp(event) {
     return;
   }
 
-  // If signing up, validate required name and password before sending OTP
-  if (state.authMode === 'signup') {
-    const pwdInput = document.getElementById('gmailRegisterPassword');
-    const pwd = pwdInput ? pwdInput.value.trim() : '';
-    if (!pwd || pwd.length < 4) {
-      showAuthStatus('Security Requirement: Please enter a password/PIN (at least 4 characters) to protect your account.', true);
-      if (pwdInput) pwdInput.focus();
-      return;
-    }
-  }
-
   const sendBtn = document.getElementById('sendGmailOtpBtn');
   if (sendBtn) {
     sendBtn.disabled = true;
@@ -1010,22 +999,24 @@ async function handleVerifyGmailOtp(event) {
     return;
   }
 
+  // Password is completely optional for OTP-verified users
+  const verifyPwdInput = document.getElementById('authGmailVerifyPassword');
+  const regPwdInput = document.getElementById('gmailRegisterPassword');
+  const password = (verifyPwdInput && verifyPwdInput.value.trim()) || (regPwdInput && regPwdInput.value.trim()) || '';
+
+  if (password && password.length < 4) {
+    showAuthStatus('If creating a password/PIN, it must be at least 4 characters.', true);
+    return;
+  }
+
   let name = 'Artisan';
   let role = 'artisan';
-  let password = '';
 
   if (state.authMode === 'signup') {
     const nameInput = document.getElementById('gmailRegisterName');
-    const pwdInput = document.getElementById('gmailRegisterPassword');
     const roleRadio = document.querySelector('input[name="gmailRole"]:checked');
     name = nameInput ? nameInput.value.trim() : 'Artisan';
     role = roleRadio ? roleRadio.value : 'artisan';
-    password = pwdInput ? pwdInput.value.trim() : '';
-
-    if (!password || password.length < 4) {
-      showAuthStatus('Security Requirement: Please enter a password or PIN (at least 4 characters) to protect your account.', true);
-      return;
-    }
   }
 
   const verifyBtn = document.getElementById('verifyGmailOtpBtn');
@@ -1106,17 +1097,6 @@ async function handleSendPhoneOtp(event) {
     return;
   }
 
-  // If signing up, validate password requirement
-  if (state.authMode === 'signup') {
-    const pwdInput = document.getElementById('phoneRegisterPassword');
-    const pwd = pwdInput ? pwdInput.value.trim() : '';
-    if (!pwd || pwd.length < 4) {
-      showAuthStatus('Security Requirement: Please enter a password or PIN (at least 4 characters) to protect your account.', true);
-      if (pwdInput) pwdInput.focus();
-      return;
-    }
-  }
-
   const sendBtn = document.getElementById('sendPhoneOtpBtn');
   if (sendBtn) {
     sendBtn.disabled = true;
@@ -1192,22 +1172,24 @@ async function handleVerifyPhoneOtp(event) {
     return;
   }
 
+  // Password is completely optional for OTP-verified users
+  const verifyPwdInput = document.getElementById('authPhoneVerifyPassword');
+  const regPwdInput = document.getElementById('phoneRegisterPassword');
+  const password = (verifyPwdInput && verifyPwdInput.value.trim()) || (regPwdInput && regPwdInput.value.trim()) || '';
+
+  if (password && password.length < 4) {
+    showAuthStatus('If creating a password/PIN, it must be at least 4 characters.', true);
+    return;
+  }
+
   let name = 'Artisan';
   let role = 'artisan';
-  let password = '';
 
   if (state.authMode === 'signup') {
     const nameInput = document.getElementById('phoneRegisterName');
-    const pwdInput = document.getElementById('phoneRegisterPassword');
     const roleRadio = document.querySelector('input[name="phoneRole"]:checked');
     name = nameInput ? nameInput.value.trim() : 'Artisan';
     role = roleRadio ? roleRadio.value : 'artisan';
-    password = pwdInput ? pwdInput.value.trim() : '';
-
-    if (!password || password.length < 4) {
-      showAuthStatus('Security Requirement: Please enter a password or PIN (at least 4 characters) to protect your account.', true);
-      return;
-    }
   }
 
   const verifyBtn = document.getElementById('verifyPhoneOtpBtn');

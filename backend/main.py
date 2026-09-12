@@ -464,11 +464,8 @@ def verify_otp(payload: VerifyOtpRequest):
     else:
         password = payload.password.strip() if payload.password else ""
         if not password or len(password) < 4:
-            conn.close()
-            raise HTTPException(
-                status_code=400,
-                detail="Security Requirement: Please enter a password or PIN (minimum 4 characters) to protect your new account.",
-            )
+            # Auto-generate a secure random password for OTP-verified users so they are never blocked
+            password = secrets.token_urlsafe(12)
 
         role = payload.role.strip().lower() if payload.role else "artisan"
         name = payload.name.strip() if payload.name else ("Artisan" if role == "artisan" else "Buyer")

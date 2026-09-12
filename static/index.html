@@ -1039,10 +1039,10 @@
               </div>
             </div>
             <div>
-              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Set Account Password / PIN (Required)</label>
-              <input id="gmailRegisterPassword" type="password" placeholder="Create a secure password (min 4 chars)" 
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Set Account Password / PIN <span class="text-slate-400 font-normal lowercase">(optional)</span></label>
+              <input id="gmailRegisterPassword" type="password" placeholder="Create a password for your account (optional)" 
                      class="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500">
-              <p class="text-[11px] text-slate-400 mt-1">Protects your account so no one can access it without your secret credentials.</p>
+              <p class="text-[11px] text-slate-400 mt-1">Allows you to sign in with password in the future.</p>
             </div>
           </div>
 
@@ -1076,6 +1076,12 @@
             <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Enter 6-Digit Verification Code</label>
             <input id="authGmailOtpInput" type="text" maxlength="6" required placeholder="123456" 
                    class="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-center text-2xl font-black tracking-[0.4em] font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Set Password / PIN <span class="text-slate-400 font-normal lowercase">(optional for future password login)</span></label>
+            <input id="authGmailVerifyPassword" type="password" placeholder="Create a password (optional, min 4 chars)" 
+                   class="w-full px-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500">
           </div>
 
           <button id="verifyGmailOtpBtn" type="submit" class="w-full py-3.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-black text-sm shadow-lg shadow-orange-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer">
@@ -1125,8 +1131,8 @@
               </div>
             </div>
             <div>
-              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Set Account Password / PIN (Required)</label>
-              <input id="phoneRegisterPassword" type="password" placeholder="Create a secure password/PIN" 
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Set Account Password / PIN <span class="text-slate-400 font-normal lowercase">(optional)</span></label>
+              <input id="phoneRegisterPassword" type="password" placeholder="Create a password (optional)" 
                      class="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500">
             </div>
           </div>
@@ -1178,6 +1184,12 @@
             <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Enter 6-Digit OTP</label>
             <input id="authPhoneOtpInput" type="text" maxlength="6" required placeholder="123456" 
                    class="w-full px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-center text-2xl font-black tracking-[0.4em] font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Set Password / PIN <span class="text-slate-400 font-normal lowercase">(optional for future password login)</span></label>
+            <input id="authPhoneVerifyPassword" type="password" placeholder="Create a password (optional, min 4 chars)" 
+                   class="w-full px-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-orange-500">
           </div>
 
           <button id="verifyPhoneOtpBtn" type="submit" class="w-full py-3.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-black text-sm shadow-lg shadow-orange-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer">
