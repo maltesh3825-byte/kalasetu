@@ -999,7 +999,7 @@ export default function App() {
               </View>
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>{tx('quantityToSell')}</Text>
-                <TextInput style={styles.textInput} value={listingQuantity} onChangeText={setListingQuantity} keyboardType="number-pad" maxLength={2} placeholderTextColor={Colors.textSecondary} />
+                <TextInput style={styles.textInput} value={listingQuantity} onChangeText={setListingQuantity} keyboardType="number-pad" maxLength={2} placeholderTextColor={Colors.placeholder} />
                 <Text style={styles.helperText}>{tx('listingLimit')}</Text>
               </View>
               <View style={styles.actionButtonRow}>
@@ -1011,10 +1011,10 @@ export default function App() {
                 </TouchableOpacity>
               </View>
               <View style={styles.formFields}>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanName}</Text><TextInput style={styles.textInput} value={artisanName} onChangeText={setArtisanName} /></View>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanLocation}</Text><TextInput style={styles.textInput} value={artisanLocation} onChangeText={setArtisanLocation} /></View>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanPhone}</Text><TextInput style={styles.textInput} value={artisanPhone} onChangeText={setArtisanPhone} keyboardType="phone-pad" /></View>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.priceIdea}</Text><TextInput style={styles.textInput} value={priceIdea} onChangeText={setPriceIdea} keyboardType="numeric" placeholder="e.g. 500" placeholderTextColor={Colors.textSecondary} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanName}</Text><TextInput style={styles.textInput} value={artisanName} onChangeText={setArtisanName} placeholder="Enter your full name" placeholderTextColor={Colors.placeholder} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanLocation}</Text><TextInput style={styles.textInput} value={artisanLocation} onChangeText={setArtisanLocation} placeholder="City, State (e.g. Madhubani, Bihar)" placeholderTextColor={Colors.placeholder} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanPhone}</Text><TextInput style={styles.textInput} value={artisanPhone} onChangeText={setArtisanPhone} keyboardType="phone-pad" placeholder="10-digit mobile number" placeholderTextColor={Colors.placeholder} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.priceIdea}</Text><TextInput style={styles.textInput} value={priceIdea} onChangeText={setPriceIdea} keyboardType="numeric" placeholder="Expected price (e.g. 500)" placeholderTextColor={Colors.placeholder} /></View>
                 <View style={styles.inputGroup}>
                   <View style={styles.inputLabelRow}>
                     <Text style={styles.inputLabel}>{t.artisanNotes}</Text>
@@ -1030,7 +1030,7 @@ export default function App() {
                     ))}
                   </View>
                   <View style={styles.descriptionInputWrap}>
-                    <TextInput style={[styles.textInput, styles.textArea, styles.descriptionInput]} value={artisanNotes} onChangeText={setArtisanNotes} multiline placeholder={t.artisanNotesPlaceholder} placeholderTextColor={Colors.textSecondary} />
+                    <TextInput style={[styles.textInput, styles.textArea, styles.descriptionInput]} value={artisanNotes} onChangeText={setArtisanNotes} multiline placeholder={t.artisanNotesPlaceholder} placeholderTextColor={Colors.placeholder} />
                     <TouchableOpacity style={[styles.descriptionMicButton, isListening && styles.voiceButtonActive]} onPress={toggleVoiceInput} accessibilityLabel={isListening ? tx('voiceListening') : tx('voiceInput')}>
                       <Text style={styles.descriptionMicText}>{isListening ? '⏹️' : '🎙️'}</Text>
                     </TouchableOpacity>
@@ -1050,8 +1050,8 @@ export default function App() {
             {aiResult && (
               <View style={[styles.card, styles.reviewCard]}>
                 <Text style={styles.cardStepTitle}>{t.step2Title}</Text>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.productTitle}</Text><TextInput style={styles.textInput} value={editTitle} onChangeText={setEditTitle} /></View>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.category}</Text><TextInput style={styles.textInput} value={editCategory} onChangeText={setEditCategory} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.productTitle}</Text><TextInput style={styles.textInput} value={editTitle} onChangeText={setEditTitle} placeholder="Craft Title (e.g. Hand-Carved Sheesham Elephant)" placeholderTextColor={Colors.placeholder} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.category}</Text><TextInput style={styles.textInput} value={editCategory} onChangeText={setEditCategory} placeholder="Craft Category (e.g. Woodcraft)" placeholderTextColor={Colors.placeholder} /></View>
                 <View style={styles.pricingBox}>
                   <Text style={styles.pricingTitle}>⚖️ {t.pricingAssistant}</Text>
                   <Text style={styles.pricingRange}>{t.fairRange} <Text style={styles.boldText}>₹{aiResult.pricing.fair_min} - ₹{aiResult.pricing.fair_max}</Text></Text>
@@ -1060,12 +1060,12 @@ export default function App() {
                     <Text style={styles.applyPriceBtnText}>{t.btnApplyPrice} (₹{aiResult.pricing.suggested})</Text>
                   </TouchableOpacity>
                 </View>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>Final Selling Price (₹)</Text><TextInput style={[styles.textInput, styles.boldPriceInput]} value={editPrice} onChangeText={setEditPrice} keyboardType="numeric" /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>Final Selling Price (₹)</Text><TextInput style={[styles.textInput, styles.boldPriceInput]} value={editPrice} onChangeText={setEditPrice} keyboardType="numeric" placeholder="e.g. 650" placeholderTextColor={Colors.placeholder} /></View>
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>{t.tags}</Text>
                   <View style={styles.tagsContainer}>{tags.map((tag, idx) => (<TouchableOpacity key={idx} style={styles.tagChip} onPress={() => handleRemoveTag(idx)}><Text style={styles.tagText}>#{tag} ×</Text></TouchableOpacity>))}</View>
                   <View style={styles.addTagRow}>
-                    <TextInput style={[styles.textInput, styles.addTagInput]} value={newTag} onChangeText={setNewTag} placeholder={tx('addTag')} />
+                    <TextInput style={[styles.textInput, styles.addTagInput]} value={newTag} onChangeText={setNewTag} placeholder={tx('addTag')} placeholderTextColor={Colors.placeholder} />
                     <TouchableOpacity style={styles.addTagBtn} onPress={handleAddTag}><Text style={styles.addTagBtnText}>+ Add</Text></TouchableOpacity>
                   </View>
                 </View>
@@ -1074,14 +1074,14 @@ export default function App() {
                     <Text style={styles.inputLabel}>{t.descEn}</Text>
                     <TouchableOpacity style={styles.speakerBtn} onPress={() => toggleSpeech(editDescEn, voiceLanguage)}><Text style={styles.speakerBtnText}>{isSpeaking ? '⏹ Stop' : `🔊 ${t.listenDesc}`}</Text></TouchableOpacity>
                   </View>
-                  <TextInput style={[styles.textInput, styles.textArea]} value={editDescEn} onChangeText={setEditDescEn} multiline />
+                  <TextInput style={[styles.textInput, styles.textArea]} value={editDescEn} onChangeText={setEditDescEn} multiline placeholder="Describe the craft, material, and heritage technique in English..." placeholderTextColor={Colors.placeholder} />
                 </View>
                 <View style={styles.inputGroup}>
                   <View style={styles.descHeaderRow}>
                     <Text style={styles.inputLabel}>{t.descHi}</Text>
                     <TouchableOpacity style={styles.speakerBtn} onPress={() => toggleSpeech(editDescHi, voiceLanguage)}><Text style={styles.speakerBtnText}>{isSpeaking ? '⏹ Stop' : `🔊 ${t.listenDesc}`}</Text></TouchableOpacity>
                   </View>
-                  <TextInput style={[styles.textInput, styles.textArea]} value={editDescHi} onChangeText={setEditDescHi} multiline />
+                  <TextInput style={[styles.textInput, styles.textArea]} value={editDescHi} onChangeText={setEditDescHi} multiline placeholder="शिल्प, सामग्री और पारंपरिक तकनीक का हिंदी में विवरण..." placeholderTextColor={Colors.placeholder} />
                 </View>
                 <TouchableOpacity style={[styles.publishButton, isPublishing && styles.disabledButton]} onPress={handlePublish} disabled={isPublishing}>{isPublishing ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.publishButtonText}>{t.btnPublish}</Text>}</TouchableOpacity>
                 <TouchableOpacity style={styles.secondaryButton} onPress={saveCatalogDraft}><Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text></TouchableOpacity>
@@ -1111,18 +1111,18 @@ export default function App() {
                 <Text style={styles.bulkLeadButtonText}>{tx('prepareRfq')}</Text>
               </TouchableOpacity>
             </View>
-            <TextInput style={styles.searchBar} placeholder={t.searchPlaceholder} value={searchQuery} onChangeText={setSearchQuery} placeholderTextColor={Colors.textSecondary} />
+            <TextInput style={styles.searchBar} placeholder={t.searchPlaceholder} value={searchQuery} onChangeText={setSearchQuery} placeholderTextColor={Colors.placeholder} />
             <View style={styles.deliveryCard}>
-              <Text style={styles.deliveryTitle}>{tx('deliveryDetails')}</Text>
+              <Text style={styles.deliveryTitle}>📦 {tx('deliveryDetails')}</Text>
               {([
-                ['recipientName', 'Full name'],
-                ['recipientPhone', tx('mobileNumber')],
-                ['addressLine', tx('houseStreet')],
-                ['city', tx('city')],
-                ['state', tx('state')],
-                ['pincode', tx('pincode')]
+                ['recipientName', 'Enter full name (e.g. Aarav Sharma)'],
+                ['recipientPhone', 'Enter 10-digit mobile number (e.g. 9800112233)'],
+                ['addressLine', 'Enter house no, street, locality'],
+                ['city', 'Enter city (e.g. Bhopal)'],
+                ['state', 'Enter state (e.g. Madhya Pradesh)'],
+                ['pincode', 'Enter 6-digit pincode (e.g. 462001)']
               ] as const).map(([key, placeholder]) => (
-                <TextInput key={key} style={styles.deliveryInput} placeholder={placeholder} value={deliveryDetails[key]} onChangeText={value => setDeliveryDetails(prev => ({ ...prev, [key]: value }))} keyboardType={key === 'pincode' || key === 'recipientPhone' ? 'phone-pad' : 'default'} placeholderTextColor={Colors.textSecondary} />
+                <TextInput key={key} style={styles.deliveryInput} placeholder={placeholder} value={deliveryDetails[key]} onChangeText={value => setDeliveryDetails(prev => ({ ...prev, [key]: value }))} keyboardType={key === 'pincode' || key === 'recipientPhone' ? 'phone-pad' : 'default'} placeholderTextColor={Colors.placeholder} />
               ))}
             </View>
             {!!orderActionMessage && <Text style={styles.orderActionMessage}>{orderActionMessage}</Text>}
@@ -1156,7 +1156,7 @@ export default function App() {
                     {reviewProductId === product.id && (
                       <View style={styles.reviewEditor}>
                         <View style={styles.reviewStarsRow}>{[1,2,3,4,5].map(star => (<TouchableOpacity key={star} onPress={() => setReviewRating(star)}><Text style={[styles.reviewStar, star <= reviewRating && styles.reviewStarActive]}>★</Text></TouchableOpacity>))}</View>
-                        <TextInput style={styles.reviewInput} value={reviewComment} onChangeText={setReviewComment} placeholder={tx('writeExperience')} multiline placeholderTextColor={Colors.textSecondary} />
+                        <TextInput style={styles.reviewInput} value={reviewComment} onChangeText={setReviewComment} placeholder={tx('writeExperience')} multiline placeholderTextColor={Colors.placeholder} />
                         <TouchableOpacity style={styles.submitReviewButton} onPress={() => submitReview(product)} disabled={isSubmittingReview}>{isSubmittingReview ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.submitReviewButtonText}>{tx('submitReview')}</Text>}</TouchableOpacity>
                       </View>
                     )}
@@ -1188,7 +1188,7 @@ export default function App() {
         return (
           <View style={styles.marketContainer}>
             <View style={styles.institutionalHero}><Text style={styles.institutionalKicker}>{tx('bulkHero')}</Text><Text style={styles.institutionalTitle}>{tx('bulkTitle')}</Text><Text style={styles.institutionalSubtitle}>{tx('bulkSubtitle')}</Text></View>
-            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 1</Text><Text style={styles.profileSectionTitle}>{tx('createBulkRequest')}</Text><Text style={styles.bulkHelpText}>{tx('bulkHelp')}</Text><TextInput style={styles.textInput} value={currentUser?.name || authName} placeholder={t.fullName} editable={!isLoggedIn} placeholderTextColor={Colors.textSecondary} /><TextInput style={styles.textInput} value={currentUser?.email || authEmail} placeholder={`${t.email} for follow-up`} keyboardType="email-address" editable={!isLoggedIn} placeholderTextColor={Colors.textSecondary} /><TextInput style={styles.textInput} value={bulkBuyerType} onChangeText={setBulkBuyerType} placeholder={tx('buyerType')} placeholderTextColor={Colors.textSecondary} /><TextInput style={styles.textInput} value={bulkCategory} onChangeText={setBulkCategory} placeholder={t.category} placeholderTextColor={Colors.textSecondary} /><View style={styles.bulkInputRow}><TextInput style={[styles.textInput, styles.bulkHalfInput]} value={bulkQuantity} onChangeText={setBulkQuantity} placeholder="Quantity" keyboardType="numeric" placeholderTextColor={Colors.textSecondary} /><TextInput style={[styles.textInput, styles.bulkHalfInput]} value={bulkUnitPrice} onChangeText={setBulkUnitPrice} placeholder="Unit price (₹)" keyboardType="numeric" placeholderTextColor={Colors.textSecondary} /></View><TextInput style={styles.textInput} value={bulkLeadTime} onChangeText={setBulkLeadTime} placeholder="Production / dispatch lead time" placeholderTextColor={Colors.textSecondary} /><TextInput style={[styles.textInput, styles.textArea]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder="Packaging, customization, certifications, quality sample notes..." placeholderTextColor={Colors.textSecondary} /><TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}><Text style={styles.primaryActionText}>{tx('submitRfq')}</Text></TouchableOpacity><TouchableOpacity style={styles.secondaryButton} onPress={saveBulkDraft}><Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text></TouchableOpacity>{bulkDrafts.length > 0 && (<View><Text style={styles.helperText}>{bulkDrafts.length} bulk draft(s) saved on this device.</Text><TouchableOpacity onPress={() => restoreBulkDraft(bulkDrafts[0])}><Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text></TouchableOpacity></View>)}</View>
+            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 1</Text><Text style={styles.profileSectionTitle}>{tx('createBulkRequest')}</Text><Text style={styles.bulkHelpText}>{tx('bulkHelp')}</Text><TextInput style={styles.textInput} value={currentUser?.name || authName} placeholder={t.fullName} editable={!isLoggedIn} placeholderTextColor={Colors.placeholder} /><TextInput style={styles.textInput} value={currentUser?.email || authEmail} placeholder={`${t.email} for follow-up`} keyboardType="email-address" editable={!isLoggedIn} placeholderTextColor={Colors.placeholder} /><TextInput style={styles.textInput} value={bulkBuyerType} onChangeText={setBulkBuyerType} placeholder={tx('buyerType')} placeholderTextColor={Colors.placeholder} /><TextInput style={styles.textInput} value={bulkCategory} onChangeText={setBulkCategory} placeholder={t.category} placeholderTextColor={Colors.placeholder} /><View style={styles.bulkInputRow}><TextInput style={[styles.textInput, styles.bulkHalfInput]} value={bulkQuantity} onChangeText={setBulkQuantity} placeholder="Quantity" keyboardType="numeric" placeholderTextColor={Colors.placeholder} /><TextInput style={[styles.textInput, styles.bulkHalfInput]} value={bulkUnitPrice} onChangeText={setBulkUnitPrice} placeholder="Unit price (₹)" keyboardType="numeric" placeholderTextColor={Colors.placeholder} /></View><TextInput style={styles.textInput} value={bulkLeadTime} onChangeText={setBulkLeadTime} placeholder="Production / dispatch lead time" placeholderTextColor={Colors.placeholder} /><TextInput style={[styles.textInput, styles.textArea]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder="Packaging, customization, certifications, quality sample notes..." placeholderTextColor={Colors.placeholder} /><TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}><Text style={styles.primaryActionText}>{tx('submitRfq')}</Text></TouchableOpacity><TouchableOpacity style={styles.secondaryButton} onPress={saveBulkDraft}><Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text></TouchableOpacity>{bulkDrafts.length > 0 && (<View><Text style={styles.helperText}>{bulkDrafts.length} bulk draft(s) saved on this device.</Text><TouchableOpacity onPress={() => restoreBulkDraft(bulkDrafts[0])}><Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text></TouchableOpacity></View>)}</View>
             <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 2</Text><Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text><Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text><View style={styles.bulkPricingCard}><View style={styles.bulkPricingHeader}><Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text><Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text></View><Text style={styles.bulkPricingHint}>Based on {bulkQuantityNumber || 0} units at ₹{bulkUnitPriceNumber.toLocaleString('en-IN')} base price</Text>{bulkPricingTiers.map(tier => (<View key={tier.volume} style={styles.bulkPricingRow}><Text style={styles.bulkPricingVolume}>{tier.volume}</Text><Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text><Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>{bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}</Text></View>))}</View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => { if (!bulkQuantityNumber || !bulkUnitPriceNumber) { Alert.alert('Bulk pricing', 'Enter both quantity and unit price to calculate your live bulk total.'); return; } const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0; const tier = bulkPricingTiers[tierIndex]; const total = Math.round(tier.price) * bulkQuantityNumber; const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber)); Alert.alert('Bulk pricing', `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`); }}><Text style={styles.bulkToolText}>📊 Bulk pricing calculator</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => Alert.alert('RFQ pitch', `Create a buyer pitch for ${bulkCategory}, ${bulkQuantity} units at ₹${bulkUnitPrice} each.`)}><Text style={styles.bulkToolText}>✉️ Generate RFQ pitch</Text></TouchableOpacity></View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => Alert.alert('GeM export', 'Your RFQ details are ready to be copied into a GeM-compliant CSV.')}><Text style={styles.bulkToolText}>📦 GeM-ready export</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => Alert.alert('ONDC export', 'Your RFQ details are ready for an ONDC Beckn JSON payload.')}><Text style={styles.bulkToolText}>⚡ ONDC JSON</Text></TouchableOpacity></View></View>
             <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 3</Text><Text style={styles.profileSectionTitle}>{tx('connectChannels')}</Text><Text style={styles.bulkHelpText}>{tx('connectHelp')}</Text><View style={styles.bulkChannelRow}><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://gem.gov.in/')}><Text style={styles.bulkToolText}>GeM ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://ondc.org/')}><Text style={styles.bulkToolText}>ONDC ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://trifed.tribal.gov.in/')}><Text style={styles.bulkToolText}>TRIFED ↗</Text></TouchableOpacity></View><TouchableOpacity style={styles.secondaryAction} onPress={() => openBulkChannel('mailto:kalasetu24824.9@gmail.com?subject=KalaSetu%20Bulk%20Buyer%20Support')}><Text style={styles.secondaryActionText}>{tx('emailSupport')}</Text></TouchableOpacity></View>
           </View>
@@ -1226,7 +1226,7 @@ export default function App() {
                     onChangeText={setAuthPhone}
                     placeholder="10-digit Mobile Number (e.g. 9876543210)"
                     keyboardType="phone-pad"
-                    placeholderTextColor={Colors.textSecondary}
+                    placeholderTextColor={Colors.placeholder}
                   />
                 ) : (
                   <TextInput
@@ -1236,7 +1236,7 @@ export default function App() {
                     placeholder={t.email}
                     keyboardType="email-address"
                     autoCapitalize="none"
-                    placeholderTextColor={Colors.textSecondary}
+                    placeholderTextColor={Colors.placeholder}
                   />
                 )}
                 <TextInput
@@ -1245,7 +1245,7 @@ export default function App() {
                   onChangeText={setAuthPassword}
                   placeholder={authMethod === 'phone' ? "PIN or Password (e.g. 1234)" : t.password}
                   secureTextEntry
-                  placeholderTextColor={Colors.textSecondary}
+                  placeholderTextColor={Colors.placeholder}
                 />
                 <TouchableOpacity style={styles.primaryAction} onPress={handleGuestLogin}>
                   <Text style={styles.primaryActionText}>{t.signIn}</Text>
@@ -1264,10 +1264,10 @@ export default function App() {
                 {accountView === 'profile' && (<View><Text style={styles.profileSectionTitle}>{tx('profile')}</Text><Text style={styles.notificationText}>{tx('role')}: {roleLabel}</Text><Text style={styles.notificationText}>{tx('publishedListings')}: {publishedProducts.length}</Text><Text style={styles.notificationText}>{tx('savedCrafts')}: {wishlist.length}</Text><TouchableOpacity style={styles.secondaryAction} onPress={handleLogout}><Text style={styles.secondaryActionText}>{tx('logout')}</Text></TouchableOpacity></View>)}
                 {accountView === 'history' && (<View><Text style={styles.profileSectionTitle}>{tx('activityHistory')}</Text><Text style={styles.notificationText}>{orders.length} {tx('purchaseOrders')}</Text><Text style={styles.notificationText}>{publishedProducts.length} {tx('publishedListing')}</Text>{orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>• {order.productName} — {order.status}</Text>)}{publishedProducts.slice(0, 5).map(product => <Text key={`published-${product.id}`} style={styles.notificationText}>• Published: {product.name} — ₹{product.price}</Text>)}</View>)}
                 {accountView === 'orders' && (<View><Text style={styles.profileSectionTitle}>{tx('ordersByMe')}</Text>{orders.filter(order => order.status.toLowerCase() !== 'cancelled').length === 0 ? <Text style={styles.emptyStateText}>{tx('noActiveOrders')}</Text> : orders.filter(order => order.status.toLowerCase() !== 'cancelled').map(order => (<View key={order.id} style={styles.orderCard}><Text style={styles.orderTitle}>{order.productName}</Text><Text style={styles.orderMeta}>₹{order.price} · {order.status}</Text><TouchableOpacity style={styles.secondaryAction} onPress={() => handleCancelOrder(order.id)}><Text style={styles.secondaryActionText}>{tx('cancelOrder')}</Text></TouchableOpacity></View>))}<Text style={styles.profileSectionTitle}>{tx('ordersPublishedByMe')}</Text>{publishedProducts.map(product => <View key={product.id} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} · {product.category}</Text><TouchableOpacity style={[styles.deleteProductButton, deletingProductId === product.id && styles.disabledButton]} onPress={() => removeOwnProduct(product)} disabled={deletingProductId === product.id}><Text style={styles.deleteProductButtonText}>{deletingProductId === product.id ? 'Removing...' : tx('removePublished')}</Text></TouchableOpacity></View>)}</View>)}
-                {accountView === 'requests' && (<View><Text style={styles.profileSectionTitle}>{tx('bulkRequests')}</Text><TextInput style={styles.textInput} value={bulkBuyerType} onChangeText={setBulkBuyerType} placeholder={tx('forBuyers')} /><TextInput style={[styles.textInput, styles.textArea]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder={tx('bulkHelp')} /><TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}><Text style={styles.primaryActionText}>{tx('sendRequest')}</Text></TouchableOpacity></View>)}
+                {accountView === 'requests' && (<View><Text style={styles.profileSectionTitle}>{tx('bulkRequests')}</Text><TextInput style={styles.textInput} value={bulkBuyerType} onChangeText={setBulkBuyerType} placeholder={tx('forBuyers')} placeholderTextColor={Colors.placeholder} /><TextInput style={[styles.textInput, styles.textArea]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder={tx('bulkHelp')} placeholderTextColor={Colors.placeholder} /><TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}><Text style={styles.primaryActionText}>{tx('sendRequest')}</Text></TouchableOpacity></View>)}
                 {accountView === 'wishlist' && (<View><Text style={styles.profileSectionTitle}>{tx('savedCraftsTitle')}</Text>{products.filter(product => wishlist.includes(product.id)).map(product => <View key={product.id} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} · {product.artisan_name}</Text></View>)}{wishlist.length === 0 && <Text style={styles.emptyStateText}>{tx('noSavedCrafts')}</Text>}</View>)}
                 {accountView === 'notifications' && (<View style={styles.notificationCard}><Text style={styles.notificationTitle}>{tx('notifications')}</Text>{orders.length ? orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>{tx('orderUpdate')}: {order.productName} is {order.status}.</Text>) : <Text style={styles.notificationText}>{tx('noNotifications')}</Text>}</View>)}
-                {accountView === 'admin' && (<View><Text style={styles.profileSectionTitle}>{tx('adminReview')}</Text>{!adminToken ? (<View><Text style={styles.bulkHelpText}>{tx('reviewRequests')}</Text><TextInput style={styles.textInput} value={adminEmail} onChangeText={setAdminEmail} placeholder={tx('adminEmail')} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.textSecondary} /><TextInput style={styles.textInput} value={adminPassword} onChangeText={setAdminPassword} placeholder={tx('adminPassword')} secureTextEntry placeholderTextColor={Colors.textSecondary} />{!!adminStatus && <Text style={styles.orderActionMessage}>{adminStatus}</Text>}<TouchableOpacity style={styles.primaryAction} onPress={handleAdminLogin}><Text style={styles.primaryActionText}>{tx('signInAdmin')}</Text></TouchableOpacity></View>) : (<View><View style={styles.adminHeaderRow}><Text style={styles.bulkHelpText}>{tx('requestQueue')}</Text><TouchableOpacity onPress={handleAdminLogout}><Text style={styles.offlineDraftRemove}>Logout</Text></TouchableOpacity></View>{adminRequests.length === 0 ? <Text style={styles.emptyStateText}>No institutional requests yet.</Text> : adminRequests.map(request => (<View key={request.id} style={styles.orderCard}><Text style={styles.orderTitle}>{request.artisan_name} · {request.product_category || 'Craft request'}</Text><Text style={styles.orderMeta}>{request.email} · Qty {request.quantity || 1} · {request.target_market || 'Bulk'}</Text><Text style={styles.orderMeta}>{request.requirements || 'No requirements'}</Text><View style={styles.adminStatusRow}>{['New', 'In Review', 'Approved', 'Rejected'].map(status => (<TouchableOpacity key={status} style={[styles.adminStatusButton, request.status === status && styles.adminStatusButtonActive]} onPress={() => handleAdminUpdate(request.id, status)}><Text style={[styles.adminStatusText, request.status === status && styles.adminStatusTextActive]}>{status}</Text></TouchableOpacity>))}</View></View>))}</View>)}</View>)}
+                {accountView === 'admin' && (<View><Text style={styles.profileSectionTitle}>{tx('adminReview')}</Text>{!adminToken ? (<View><Text style={styles.bulkHelpText}>{tx('reviewRequests')}</Text><TextInput style={styles.textInput} value={adminEmail} onChangeText={setAdminEmail} placeholder={tx('adminEmail')} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.placeholder} /><TextInput style={styles.textInput} value={adminPassword} onChangeText={setAdminPassword} placeholder={tx('adminPassword')} secureTextEntry placeholderTextColor={Colors.placeholder} />{!!adminStatus && <Text style={styles.orderActionMessage}>{adminStatus}</Text>}<TouchableOpacity style={styles.primaryAction} onPress={handleAdminLogin}><Text style={styles.primaryActionText}>{tx('signInAdmin')}</Text></TouchableOpacity></View>) : (<View><View style={styles.adminHeaderRow}><Text style={styles.bulkHelpText}>{tx('requestQueue')}</Text><TouchableOpacity onPress={handleAdminLogout}><Text style={styles.offlineDraftRemove}>Logout</Text></TouchableOpacity></View>{adminRequests.length === 0 ? <Text style={styles.emptyStateText}>No institutional requests yet.</Text> : adminRequests.map(request => (<View key={request.id} style={styles.orderCard}><Text style={styles.orderTitle}>{request.artisan_name} · {request.product_category || 'Craft request'}</Text><Text style={styles.orderMeta}>{request.email} · Qty {request.quantity || 1} · {request.target_market || 'Bulk'}</Text><Text style={styles.orderMeta}>{request.requirements || 'No requirements'}</Text><View style={styles.adminStatusRow}>{['New', 'In Review', 'Approved', 'Rejected'].map(status => (<TouchableOpacity key={status} style={[styles.adminStatusButton, request.status === status && styles.adminStatusButtonActive]} onPress={() => handleAdminUpdate(request.id, status)}><Text style={[styles.adminStatusText, request.status === status && styles.adminStatusTextActive]}>{status}</Text></TouchableOpacity>))}</View></View>))}</View>)}</View>)}
               </View>
             )}
           </View>
@@ -1299,7 +1299,7 @@ export default function App() {
               <View style={styles.productsFeed}>
                 <Text style={styles.orderTitle}>{tx('ordersByMe')}</Text>
                 {orders.length === 0 ? <Text style={styles.emptyStateText}>{tx('noActiveOrders')}</Text> : orders.map((order) => (
-                  <View key={order.id} style={styles.orderCard}><Text style={styles.orderTitle}>{order.productName}</Text><Text style={styles.orderMeta}>₹{order.price} • {order.customerName}</Text><Text style={styles.orderMeta}>{t.orderStatus}: {order.status}</Text><Text style={styles.orderMeta}>{t.deliveryEta}: {order.eta}</Text><TextInput style={styles.searchBar} value={cancelReason} onChangeText={setCancelReason} placeholder={tx('cancelReasonPrompt')} /><TouchableOpacity style={styles.secondaryAction} onPress={() => handleCancelOrder(order.id)}><Text style={styles.secondaryActionText}>{tx('cancelOrder')}</Text></TouchableOpacity></View>
+                  <View key={order.id} style={styles.orderCard}><Text style={styles.orderTitle}>{order.productName}</Text><Text style={styles.orderMeta}>₹{order.price} • {order.customerName}</Text><Text style={styles.orderMeta}>{t.orderStatus}: {order.status}</Text><Text style={styles.orderMeta}>{t.deliveryEta}: {order.eta}</Text><TextInput style={styles.searchBar} value={cancelReason} onChangeText={setCancelReason} placeholder={tx('cancelReasonPrompt')} placeholderTextColor={Colors.placeholder} /><TouchableOpacity style={styles.secondaryAction} onPress={() => handleCancelOrder(order.id)}><Text style={styles.secondaryActionText}>{tx('cancelOrder')}</Text></TouchableOpacity></View>
                 ))}
                 <Text style={styles.orderTitle}>{tx('ordersPublishedByMe')}</Text>
                 {publishedProducts.length === 0 ? <Text style={styles.emptyStateText}>{tx('noPublishedProducts')}</Text> : publishedProducts.map(product => (
@@ -1974,14 +1974,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   textInput: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: Colors.border,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
     borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
     fontSize: 13,
-    color: Colors.textPrimary,
+    color: '#0F172A',
   },
   textArea: {
     minHeight: 60,
@@ -2333,13 +2333,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   searchBar: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: Colors.border,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 13,
+    color: '#0F172A',
     marginBottom: 12,
   },
   deliveryCard: {
@@ -2347,8 +2348,25 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
-    padding: 12,
+    padding: 14,
     marginBottom: 12,
+  },
+  deliveryTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 10,
+  },
+  deliveryInput: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: '#0F172A',
+    marginBottom: 8,
   },
   orderActionMessage: {
     backgroundColor: '#FEF2F2',
@@ -2399,23 +2417,6 @@ const styles = StyleSheet.create({
   },
   quantityOptionTextActive: {
     color: '#FFFFFF',
-  },
-  deliveryTitle: {
-    color: Colors.textPrimary,
-    fontSize: 13,
-    fontWeight: '900',
-    marginBottom: 8,
-  },
-  deliveryInput: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 7,
-    fontSize: 12,
-    color: Colors.textPrimary,
   },
   categoriesBar: {
     marginBottom: 14,
@@ -2571,14 +2572,14 @@ const styles = StyleSheet.create({
   },
   reviewInput: {
     minHeight: 60,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#FCD34D',
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
     borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    color: Colors.textPrimary,
-    fontSize: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#0F172A',
+    fontSize: 13,
     marginBottom: 8,
   },
   submitReviewButton: {

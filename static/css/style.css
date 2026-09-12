@@ -26,6 +26,62 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Accessible, High-Contrast Input & Placeholder Styling */
+input::placeholder,
+textarea::placeholder,
+select::placeholder {
+  color: #475569 !important;
+  opacity: 1 !important;
+  font-weight: 500 !important;
+}
+
+input::-webkit-input-placeholder,
+textarea::-webkit-input-placeholder {
+  color: #475569 !important;
+  opacity: 1 !important;
+  font-weight: 500 !important;
+}
+
+input::-moz-placeholder,
+textarea::-moz-placeholder {
+  color: #475569 !important;
+  opacity: 1 !important;
+  font-weight: 500 !important;
+}
+
+input:-ms-input-placeholder,
+textarea:-ms-input-placeholder {
+  color: #475569 !important;
+  opacity: 1 !important;
+  font-weight: 500 !important;
+}
+
+/* Base input field styling for clear visible borders and soft contrast background */
+input[type="text"],
+input[type="tel"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+textarea,
+select {
+  background-color: #f1f5f9;
+  border: 1.5px solid #94a3b8;
+  color: #0f172a;
+}
+
+input[type="text"]:focus,
+input[type="tel"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+textarea:focus,
+select:focus {
+  background-color: #ffffff;
+  border-color: #b0461b;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(176, 70, 27, 0.2);
+}
+
 /* Devanagari Font support */
 .font-hindi {
   font-family: 'Noto Sans Devanagari', 'Plus Jakarta Sans', sans-serif;
@@ -145,15 +201,16 @@ body {
   width: 100%;
   margin-top: 0.45rem;
   padding: 0.7rem 0.85rem;
-  border: 1px solid #cbd5e1;
+  border: 1.5px solid #94a3b8;
   border-radius: 0.85rem;
-  background: #fff;
+  background: #f1f5f9;
   color: #0f172a;
   font-size: 0.875rem;
   font-weight: 500;
 }
 
 .institutional-input:focus {
+  background: #ffffff;
   outline: 2px solid rgba(200, 90, 43, 0.25);
   border-color: var(--terracotta-500);
 }

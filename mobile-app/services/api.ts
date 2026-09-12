@@ -359,15 +359,13 @@ export async function loginUser(email: string, password: string, role: UserRole 
       if (data && data.user) {
         return data.user as AppUser;
       }
-
-    } 
-    catch (err) {
-      console.error('Authentication request failed:', err);
-      throw new Error('Unable to connect to authentication server. Please check your network connection.');
     }
 
     // Reject unauthenticated access. Never auto-authenticate with mock credentials in production.
     throw new Error('Invalid email or password.');
+  } catch (err) {
+    console.error('Authentication request failed:', err);
+    throw (err instanceof Error) ? err : new Error('Unable to connect to authentication server. Please check your network connection.');
   }
 }
 

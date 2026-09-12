@@ -11,10 +11,13 @@ export const Colors = {
   accent: '#D97706',        // Amber / Saffron
   background: '#FAF8F5',    // Sandstone Warm White
   cardBackground: '#FFFFFF',
-  textPrimary: '#0F172A',
-  textSecondary: '#64748B',
-  textMuted: '#94A3B8',
-  border: '#E2E8F0',
+  inputBackground: '#F1F5F9', // Soft light slate gray background
+  inputBorder: '#94A3B8',     // Distinct visible border
+  textPrimary: '#0F172A',     // Very dark slate (typed text)
+  textSecondary: '#475569',   // Darker readable secondary text
+  placeholder: '#475569',     // Rich dark slate placeholder (high contrast, never whitish!)
+  textMuted: '#64748B',
+  border: '#CBD5E1',
   success: '#10B981',
   error: '#EF4444',
   whatsapp: '#25D366'
