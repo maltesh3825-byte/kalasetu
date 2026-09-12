@@ -7,6 +7,107 @@ import json
 from backend.config import DATABASE_PATH, DATABASE_URL
 
 
+class PgRow(dict):
+    """
+    Row wrapper that supports both dictionary access by column name (row['id'])
+    and tuple index access (row[0]), matching sqlite3.Row behavior.
+    """
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            return list(self.values())[item]
+        return super().__getitem__(item)
+
+
+class PgCursorWrapper:
+    def __init__(self, cursor):
+        self._cursor = cursor
+        self.lastrowid = None
+
+    def execute(self, query, vars=None):
+        clean_q = query.strip()
+        is_insert = clean_q.upper().startswith("INSERT INTO")
+        has_returning = "RETURNING" in clean_q.upper()
+
+        if is_insert and not has_returning:
+            clean_q = clean_q.rstrip(";").strip() + " RETURNING id"
+            query = clean_q
+
+        if isinstance(query, str) and "?" in query:
+            query = query.replace("?", "%s")
+
+        if vars is not None:
+            res = self._cursor.execute(query, vars)
+        else:
+            res = self._cursor.execute(query)
+
+        if is_insert and not has_returning:
+            try:
+                row = self._cursor.fetchone()
+                if row:
+                    if isinstance(row, dict) and "id" in row:
+                        self.lastrowid = row["id"]
+                    elif isinstance(row, (tuple, list)):
+                        self.lastrowid = row[0]
+            except Exception:
+                self.lastrowid = None
+
+        return res
+
+    def executemany(self, query, vars_list):
+        if isinstance(query, str) and "?" in query:
+            query = query.replace("?", "%s")
+        return self._cursor.executemany(query, vars_list)
+
+    def fetchone(self):
+        row = self._cursor.fetchone()
+        if row is None:
+            return None
+        return PgRow(row)
+
+    def fetchall(self):
+        rows = self._cursor.fetchall()
+        return [PgRow(r) for r in rows]
+
+    def __iter__(self):
+        for row in self._cursor:
+            yield PgRow(row)
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+
+class PgConnectionWrapper:
+    _is_pg = True
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def cursor(self, *args, **kwargs):
+        cur = self._conn.cursor(*args, **kwargs)
+        return PgCursorWrapper(cur)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        return self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self.rollback()
+        else:
+            self.commit()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
 def get_db_connection():
     """
     Create a thread-safe database connection.
@@ -19,7 +120,7 @@ def get_db_connection():
             from psycopg2.extras import RealDictCursor
             pg_url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
             conn = psycopg2.connect(pg_url, cursor_factory=RealDictCursor)
-            return conn
+            return PgConnectionWrapper(conn)
         except ImportError:
             print("[DATABASE WARNING] DATABASE_URL provided but psycopg2 is not installed. Falling back to SQLite.")
         except Exception as err:
@@ -34,198 +135,347 @@ def init_db():
     """Initialize database tables and seed sample data if empty."""
     conn = get_db_connection()
     cursor = conn.cursor()
+    is_pg = getattr(conn, "_is_pg", False)
 
+    if is_pg:
+        # PostgreSQL (Supabase) Table Initialization
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS products (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                artisan_name TEXT NOT NULL,
+                artisan_phone TEXT DEFAULT '+919876543210',
+                artisan_location TEXT NOT NULL,
+                category TEXT NOT NULL,
+                price INTEGER NOT NULL,
+                suggested_price_min INTEGER,
+                suggested_price_max INTEGER,
+                price_justification TEXT,
+                description_en TEXT NOT NULL,
+                description_hi TEXT,
+                tags TEXT NOT NULL,
+                image_url TEXT NOT NULL,
+                image_gallery TEXT DEFAULT '[]',
+                rating REAL DEFAULT 4.5,
+                reviews TEXT DEFAULT '[]',
+                is_enhanced INTEGER DEFAULT 0,
+                mosje_verified INTEGER DEFAULT 1,
+                quantity INTEGER NOT NULL DEFAULT 10,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 10;")
+        cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_gallery TEXT DEFAULT '[]';")
+        cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS rating REAL DEFAULT 4.5;")
+        cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS reviews TEXT DEFAULT '[]';")
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                role TEXT DEFAULT 'buyer',
+                phone TEXT,
+                city TEXT,
+                language TEXT DEFAULT 'en',
+                business_name TEXT,
+                gst_number TEXT,
+                udyam_number TEXT,
+                document_verification_status TEXT DEFAULT 'pending',
+                bank_status TEXT DEFAULT 'not_uploaded',
+                profile_completion REAL DEFAULT 0.25,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS business_name TEXT;")
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS gst_number TEXT;")
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS udyam_number TEXT;")
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS document_verification_status TEXT DEFAULT 'pending';")
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_status TEXT DEFAULT 'not_uploaded';")
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_completion REAL DEFAULT 0.25;")
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS wishlist (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, product_id)
+            );
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS orders (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                product_name TEXT NOT NULL,
+                quantity INTEGER DEFAULT 1,
+                total INTEGER NOT NULL,
+                status TEXT DEFAULT 'Confirmed',
+                eta TEXT DEFAULT '2-4 working days',
+                cancel_reason TEXT DEFAULT '',
+                cancelled_at TIMESTAMPTZ NULL,
+                recipient_name TEXT DEFAULT '',
+                recipient_phone TEXT DEFAULT '',
+                address_line TEXT DEFAULT '',
+                city TEXT DEFAULT '',
+                state TEXT DEFAULT '',
+                pincode TEXT DEFAULT '',
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancel_reason TEXT DEFAULT '';")
+        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ NULL;")
+        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_name TEXT DEFAULT '';")
+        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_phone TEXT DEFAULT '';")
+        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS address_line TEXT DEFAULT '';")
+        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS city TEXT DEFAULT '';")
+        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS state TEXT DEFAULT '';")
+        cursor.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS pincode TEXT DEFAULT '';")
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS institutional_requests (
+                id SERIAL PRIMARY KEY,
+                artisan_name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                phone TEXT,
+                location TEXT,
+                buyer_type TEXT,
+                product_category TEXT,
+                quantity INTEGER DEFAULT 1,
+                unit_price REAL DEFAULT 0,
+                lead_time TEXT,
+                target_buyer TEXT DEFAULT 'Open to all',
+                target_market TEXT,
+                requirements TEXT,
+                status TEXT DEFAULT 'New',
+                quality_flags TEXT DEFAULT '',
+                admin_notes TEXT DEFAULT '',
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN IF NOT EXISTS quality_flags TEXT DEFAULT '';")
+        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN IF NOT EXISTS admin_notes TEXT DEFAULT '';")
+        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN IF NOT EXISTS unit_price REAL DEFAULT 0;")
+        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN IF NOT EXISTS lead_time TEXT;")
+        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN IF NOT EXISTS target_buyer TEXT DEFAULT 'Open to all';")
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notifications (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                related_id INTEGER,
+                is_read INTEGER DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+    else:
+        # SQLite Table Initialization
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                artisan_name TEXT NOT NULL,
+                artisan_phone TEXT DEFAULT '+919876543210',
+                artisan_location TEXT NOT NULL,
+                category TEXT NOT NULL,
+                price INTEGER NOT NULL,
+                suggested_price_min INTEGER,
+                suggested_price_max INTEGER,
+                price_justification TEXT,
+                description_en TEXT NOT NULL,
+                description_hi TEXT,
+                tags TEXT NOT NULL,
+                image_url TEXT NOT NULL,
+                image_gallery TEXT DEFAULT '[]',
+                rating REAL DEFAULT 4.5,
+                reviews TEXT DEFAULT '[]',
+                is_enhanced INTEGER DEFAULT 0,
+                mosje_verified INTEGER DEFAULT 1,
+                quantity INTEGER NOT NULL DEFAULT 10,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        product_columns = {row[1] for row in cursor.execute("PRAGMA table_info(products)").fetchall()}
+        if "quantity" not in product_columns:
+            cursor.execute("ALTER TABLE products ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1")
+        for column, column_type in {
+            "image_gallery": "TEXT DEFAULT '[]'",
+            "rating": "REAL DEFAULT 4.5",
+            "reviews": "TEXT DEFAULT '[]'",
+        }.items():
+            if column not in product_columns:
+                cursor.execute(f"ALTER TABLE products ADD COLUMN {column} {column_type}")
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                role TEXT DEFAULT 'buyer',
+                phone TEXT,
+                city TEXT,
+                language TEXT DEFAULT 'en',
+                business_name TEXT,
+                gst_number TEXT,
+                udyam_number TEXT,
+                document_verification_status TEXT DEFAULT 'pending',
+                bank_status TEXT DEFAULT 'not_uploaded',
+                profile_completion REAL DEFAULT 0.25,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        user_columns = {row[1] for row in cursor.execute("PRAGMA table_info(users)").fetchall()}
+        for column, column_type in {
+            "business_name": "TEXT",
+            "gst_number": "TEXT",
+            "udyam_number": "TEXT",
+            "document_verification_status": "TEXT DEFAULT 'pending'",
+            "bank_status": "TEXT DEFAULT 'not_uploaded'",
+            "profile_completion": "REAL DEFAULT 0.25",
+        }.items():
+            if column not in user_columns:
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {column} {column_type}")
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS wishlist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, product_id)
+            );
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                product_name TEXT NOT NULL,
+                quantity INTEGER DEFAULT 1,
+                total INTEGER NOT NULL,
+                status TEXT DEFAULT 'Confirmed',
+                eta TEXT DEFAULT '2-4 working days',
+                cancel_reason TEXT DEFAULT '',
+                cancelled_at TIMESTAMP NULL,
+                recipient_name TEXT DEFAULT '',
+                recipient_phone TEXT DEFAULT '',
+                address_line TEXT DEFAULT '',
+                city TEXT DEFAULT '',
+                state TEXT DEFAULT '',
+                pincode TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        order_columns = {row[1] for row in cursor.execute("PRAGMA table_info(orders)").fetchall()}
+        if "cancel_reason" not in order_columns:
+            cursor.execute("ALTER TABLE orders ADD COLUMN cancel_reason TEXT DEFAULT ''")
+        if "cancelled_at" not in order_columns:
+            cursor.execute("ALTER TABLE orders ADD COLUMN cancelled_at TIMESTAMP NULL")
+        for column, column_type in {
+            "recipient_name": "TEXT DEFAULT ''",
+            "recipient_phone": "TEXT DEFAULT ''",
+            "address_line": "TEXT DEFAULT ''",
+            "city": "TEXT DEFAULT ''",
+            "state": "TEXT DEFAULT ''",
+            "pincode": "TEXT DEFAULT ''",
+        }.items():
+            if column not in order_columns:
+                cursor.execute(f"ALTER TABLE orders ADD COLUMN {column} {column_type}")
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS institutional_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                artisan_name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                phone TEXT,
+                location TEXT,
+                buyer_type TEXT,
+                product_category TEXT,
+                quantity INTEGER DEFAULT 1,
+                unit_price REAL DEFAULT 0,
+                lead_time TEXT,
+                target_buyer TEXT DEFAULT 'Open to all',
+                target_market TEXT,
+                requirements TEXT,
+                status TEXT DEFAULT 'New',
+                quality_flags TEXT DEFAULT '',
+                admin_notes TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+        request_columns = {row[1] for row in cursor.execute("PRAGMA table_info(institutional_requests)").fetchall()}
+        if "quality_flags" not in request_columns:
+            cursor.execute("ALTER TABLE institutional_requests ADD COLUMN quality_flags TEXT DEFAULT ''")
+        if "admin_notes" not in request_columns:
+            cursor.execute("ALTER TABLE institutional_requests ADD COLUMN admin_notes TEXT DEFAULT ''")
+        if "unit_price" not in request_columns:
+            cursor.execute("ALTER TABLE institutional_requests ADD COLUMN unit_price REAL DEFAULT 0")
+        if "lead_time" not in request_columns:
+            cursor.execute("ALTER TABLE institutional_requests ADD COLUMN lead_time TEXT")
+        if "target_buyer" not in request_columns:
+            cursor.execute("ALTER TABLE institutional_requests ADD COLUMN target_buyer TEXT DEFAULT 'Open to all'")
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                related_id INTEGER,
+                is_read INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
+        )
+
+    # Common backfill and seeding
     cursor.execute(
         """
-        CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            artisan_name TEXT NOT NULL,
-            artisan_phone TEXT DEFAULT '+919876543210',
-            artisan_location TEXT NOT NULL,
-            category TEXT NOT NULL,
-            price INTEGER NOT NULL,
-            suggested_price_min INTEGER,
-            suggested_price_max INTEGER,
-            price_justification TEXT,
-            description_en TEXT NOT NULL,
-            description_hi TEXT,
-            tags TEXT NOT NULL,
-            image_url TEXT NOT NULL,
-            image_gallery TEXT DEFAULT '[]',
-            rating REAL DEFAULT 4.5,
-            reviews TEXT DEFAULT '[]',
-            is_enhanced INTEGER DEFAULT 0,
-            mosje_verified INTEGER DEFAULT 1,
-            quantity INTEGER NOT NULL DEFAULT 10,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-    )
-    product_columns = {row[1] for row in cursor.execute("PRAGMA table_info(products)").fetchall()}
-    if "quantity" not in product_columns:
-        cursor.execute("ALTER TABLE products ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1")
-    for column, column_type in {
-        "image_gallery": "TEXT DEFAULT '[]'",
-        "rating": "REAL DEFAULT 4.5",
-        "reviews": "TEXT DEFAULT '[]'",
-    }.items():
-        if column not in product_columns:
-            cursor.execute(f"ALTER TABLE products ADD COLUMN {column} {column_type}")
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            role TEXT DEFAULT 'buyer',
-            phone TEXT,
-            city TEXT,
-            language TEXT DEFAULT 'en',
-            business_name TEXT,
-            gst_number TEXT,
-            udyam_number TEXT,
-            document_verification_status TEXT DEFAULT 'pending',
-            bank_status TEXT DEFAULT 'not_uploaded',
-            profile_completion REAL DEFAULT 0.25,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-    )
-    user_columns = {row[1] for row in cursor.execute("PRAGMA table_info(users)").fetchall()}
-    for column, column_type in {
-        "business_name": "TEXT",
-        "gst_number": "TEXT",
-        "udyam_number": "TEXT",
-        "document_verification_status": "TEXT DEFAULT 'pending'",
-        "bank_status": "TEXT DEFAULT 'not_uploaded'",
-        "profile_completion": "REAL DEFAULT 0.25",
-    }.items():
-        if column not in user_columns:
-            cursor.execute(f"ALTER TABLE users ADD COLUMN {column} {column_type}")
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS wishlist (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            product_id INTEGER NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, product_id)
-        );
-        """
-    )
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            product_id INTEGER NOT NULL,
-            product_name TEXT NOT NULL,
-            quantity INTEGER DEFAULT 1,
-            total INTEGER NOT NULL,
-            status TEXT DEFAULT 'Confirmed',
-            eta TEXT DEFAULT '2-4 working days',
-            cancel_reason TEXT DEFAULT '',
-            cancelled_at TIMESTAMP NULL,
-            recipient_name TEXT DEFAULT '',
-            recipient_phone TEXT DEFAULT '',
-            address_line TEXT DEFAULT '',
-            city TEXT DEFAULT '',
-            state TEXT DEFAULT '',
-            pincode TEXT DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-    )
-    order_columns = {row[1] for row in cursor.execute("PRAGMA table_info(orders)").fetchall()}
-    if "cancel_reason" not in order_columns:
-        cursor.execute("ALTER TABLE orders ADD COLUMN cancel_reason TEXT DEFAULT ''")
-    if "cancelled_at" not in order_columns:
-        cursor.execute("ALTER TABLE orders ADD COLUMN cancelled_at TIMESTAMP NULL")
-    for column, column_type in {
-        "recipient_name": "TEXT DEFAULT ''",
-        "recipient_phone": "TEXT DEFAULT ''",
-        "address_line": "TEXT DEFAULT ''",
-        "city": "TEXT DEFAULT ''",
-        "state": "TEXT DEFAULT ''",
-        "pincode": "TEXT DEFAULT ''",
-    }.items():
-        if column not in order_columns:
-            cursor.execute(f"ALTER TABLE orders ADD COLUMN {column} {column_type}")
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS institutional_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            artisan_name TEXT NOT NULL,
-            email TEXT NOT NULL,
-            phone TEXT,
-            location TEXT,
-            buyer_type TEXT,
-            product_category TEXT,
-            quantity INTEGER DEFAULT 1,
-            unit_price REAL DEFAULT 0,
-            lead_time TEXT,
-            target_buyer TEXT DEFAULT 'Open to all',
-            target_market TEXT,
-            requirements TEXT,
-            status TEXT DEFAULT 'New',
-            quality_flags TEXT DEFAULT '',
-            admin_notes TEXT DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-    )
-    request_columns = {row[1] for row in cursor.execute("PRAGMA table_info(institutional_requests)").fetchall()}
-    if "quality_flags" not in request_columns:
-        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN quality_flags TEXT DEFAULT ''")
-    if "admin_notes" not in request_columns:
-        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN admin_notes TEXT DEFAULT ''")
-    if "unit_price" not in request_columns:
-        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN unit_price REAL DEFAULT 0")
-    if "lead_time" not in request_columns:
-        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN lead_time TEXT")
-    if "target_buyer" not in request_columns:
-        cursor.execute("ALTER TABLE institutional_requests ADD COLUMN target_buyer TEXT DEFAULT 'Open to all'")
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS notifications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            kind TEXT NOT NULL,
-            title TEXT NOT NULL,
-            message TEXT NOT NULL,
-            related_id INTEGER,
-            is_read INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-    )
-
-    # The first six catalog rows are the built-in demo products from the
-    # original database. Backfill their stock to ten, less recorded orders,
-    # when upgrading an existing deployment from the old no-inventory schema.
-    cursor.execute(
-        """
+        UPDATE products
+        SET quantity = GREATEST(
+            0,
+            10 - COALESCE((SELECT SUM(quantity) FROM orders WHERE orders.product_id = products.id), 0)
+        )
+        WHERE id <= 6
+        """ if is_pg else """
         UPDATE products
         SET quantity = MAX(
             0,
             10 - COALESCE((SELECT SUM(quantity) FROM orders WHERE orders.product_id = products.id), 0)
         )
         WHERE id <= 6
-        """
-    )
-    cursor.execute(
-        """
-        UPDATE products
-        SET image_url = 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?auto=format&fit=crop&w=800&q=80'
-        WHERE name = 'Authentic Bastar Dhokra Bell Metal Elephant'
-          AND image_url LIKE '%photo-1610444583715-46884024b33a%'
         """
     )
 
