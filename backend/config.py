@@ -34,15 +34,19 @@ def find_available_port(start_port: int, host: str = "0.0.0.0", max_tries: int =
 
 
 # =========================================================================
-# 🔑 API KEY CONFIGURATION
-# You can set your GEMINI_API_KEY in the `.env` file or export it as an env var.
-# Keep credentials out of source control. Set GEMINI_API_KEY in `.env` or
-# provide it through the process environment when deploying.
+# 🔑 API KEY & SECRET CONFIGURATION
+# Keep credentials strictly out of source control.
 # =========================================================================
-# >>> PASTE YOUR KEY HERE IF NOT USING .ENV <<<
-DEFAULT_HARDCODED_KEY = ""
+import secrets
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", DEFAULT_HARDCODED_KEY).strip()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+
+# Secret key for signing session tokens and admin tokens
+# In production, set APP_SECRET_KEY as a high-entropy 64-char hex string in .env
+APP_SECRET_KEY = os.getenv("APP_SECRET_KEY") or os.getenv("ADMIN_TOKEN_SECRET")
+if not APP_SECRET_KEY:
+    # Ephemeral fallback for local dev; invalidates tokens on restart to prevent static token attacks
+    APP_SECRET_KEY = secrets.token_hex(32)
 
 # Gemini Model endpoint: use a currently supported model for new users.
 # Example: gemini-3.6-flash
@@ -55,6 +59,11 @@ HOST = os.getenv("HOST", "0.0.0.0")
 configured_port = os.getenv("PORT")
 PORT = int(configured_port) if configured_port else find_available_port(8000, HOST)
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 DATABASE_PATH = Path(os.getenv("DATABASE_PATH", str(BASE_DIR / "artisan_catalog.db")))
-ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "kalasetu123.4@gmail.com").strip().lower()
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "K123@nm")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@kalasetu.gov.in").strip().lower()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+if not ADMIN_PASSWORD:
+    # Do NOT provide a known static default password in code
+    ADMIN_PASSWORD = secrets.token_urlsafe(16)
+    print(f"[SECURITY WARNING] No ADMIN_PASSWORD set in .env! Temporary generated admin password: {ADMIN_PASSWORD}")

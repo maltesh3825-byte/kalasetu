@@ -8,6 +8,7 @@ import uuid
 import hashlib
 import hmac
 import os
+import re
 from datetime import datetime, timezone
 from typing import Optional, List
 
@@ -30,13 +31,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Do not combine allow_origins=["*"] with allow_credentials=True
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 class ProductCreate(BaseModel):
@@ -86,6 +89,20 @@ class UserCreate(BaseModel):
     document_verification_status: Optional[str] = "pending"
     bank_status: Optional[str] = "not_uploaded"
     profile_completion: Optional[float] = 0.25
+
+
+class PhoneLogin(BaseModel):
+    phone: str
+    password: str
+
+
+class PhoneRegister(BaseModel):
+    phone: str
+    password: str
+    name: str
+    role: Optional[str] = "artisan"
+    city: Optional[str] = ""
+    language: Optional[str] = "hi"
 
 
 class WishlistRequest(BaseModel):
@@ -150,21 +167,89 @@ class OfflineSyncRequest(BaseModel):
     drafts: List[InstitutionalRequestCreate] = []
 
 
+import base64
+import time
+import secrets
+from backend.config import APP_SECRET_KEY
+
+def hash_password(password: str, salt: Optional[str] = None) -> str:
+    """Hash password using PBKDF2-HMAC-SHA256 with a unique cryptographic salt."""
+    if not salt:
+        salt = secrets.token_hex(16)
+    key = hashlib.pbkdf2_hmac(
+        'sha256',
+        password.encode('utf-8'),
+        salt.encode('utf-8'),
+        iterations=100000
+    )
+    return f"pbkdf2$sha256$100000${salt}${key.hex()}"
+
+def verify_password(plain_password: str, stored_hash: str) -> bool:
+    """Verify password against hash; handles legacy plain-text during migration."""
+    if not (stored_hash.startswith("pbkdf2$") or stored_hash.startswith("pbkdf2:sha256:")):
+        # Legacy fallback for demo records
+        return hmac.compare_digest(plain_password, stored_hash)
+    try:
+        parts = stored_hash.split("$")
+        if len(parts) == 5:
+            _, _, iters, salt, hex_key = parts
+        elif len(parts) == 3:
+            prefix, salt, hex_key = parts
+            iters = prefix.split(":")[-1]
+        else:
+            return False
+
+        computed = hashlib.pbkdf2_hmac(
+            'sha256',
+            plain_password.encode('utf-8'),
+            salt.encode('utf-8'),
+            iterations=int(iters)
+        ).hex()
+        return hmac.compare_digest(computed, hex_key)
+    except Exception:
+        return False
+
+def generate_signed_token(subject: str, role: str, expires_in_seconds: int = 86400) -> str:
+    """Generate a tamper-proof signed bearer token with expiry and cryptographic nonce."""
+    exp = int(time.time()) + expires_in_seconds
+    nonce = secrets.token_hex(8)
+    payload_str = f"{subject}|{role}|{exp}|{nonce}"
+    payload_b64 = base64.urlsafe_b64encode(payload_str.encode()).decode().rstrip("=")
+    signature = hmac.new(APP_SECRET_KEY.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
+    return f"{payload_b64}.{signature}"
+
+def verify_signed_token(token: Optional[str], required_role: Optional[str] = None) -> dict:
+    """Cryptographically verify signature, timestamp expiration, and role."""
+    if not token or "." not in token:
+        raise HTTPException(status_code=401, detail="Authentication token missing or malformed")
+    payload_b64, signature = token.split(".", 1)
+    expected_sig = hmac.new(APP_SECRET_KEY.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected_sig):
+        raise HTTPException(status_code=401, detail="Invalid token signature")
+    
+    # Restore base64 padding
+    padding = "=" * ((4 - len(payload_b64) % 4) % 4)
+    try:
+        payload_str = base64.urlsafe_b64decode((payload_b64 + padding).encode()).decode()
+        subject, role, exp_str, _ = payload_str.split("|")
+        if int(exp_str) < int(time.time()):
+            raise HTTPException(status_code=401, detail="Token has expired")
+        if required_role and role != required_role:
+            raise HTTPException(status_code=403, detail="Insufficient privileges")
+        return {"subject": subject, "role": role}
+    except Exception as exc:
+        if isinstance(exc, HTTPException):
+            raise exc
+        raise HTTPException(status_code=401, detail="Token payload invalid")
+
+def require_admin(token: Optional[str]):
+    verify_signed_token(token, required_role="admin")
+
+
 def normalize_user_row(row):
     user = dict(row)
     user.pop("password", None)
     return user
-
-
-def create_admin_token(email: str) -> str:
-    secret = os.getenv("ADMIN_TOKEN_SECRET", ADMIN_PASSWORD)
-    return hmac.new(secret.encode(), email.encode(), hashlib.sha256).hexdigest()
-
-
-def require_admin(token: Optional[str]):
-    expected = create_admin_token(ADMIN_EMAIL)
-    if not token or not hmac.compare_digest(token, expected):
-        raise HTTPException(status_code=401, detail="Admin authentication required")
 
 
 @app.get("/api/config-status")
@@ -194,27 +279,122 @@ def get_categories():
 
 @app.post("/api/auth/login")
 def login_user(payload: UserLogin):
-    """Authenticate a buyer or artisan for the mobile app."""
+    """Authenticate a buyer or artisan and issue a signed session token."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT * FROM users WHERE lower(email) = ? AND password = ?",
-        (payload.email.strip().lower(), payload.password),
+        "SELECT * FROM users WHERE lower(email) = ?",
+        (payload.email.strip().lower(),),
     )
     row = cursor.fetchone()
-    conn.close()
 
-    if not row:
+    if not row or not verify_password(payload.password, row["password"]):
+        conn.close()
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    return {"status": "success", "user": normalize_user_row(row)}
+    # If the user still had a plaintext password, upgrade it transparently
+    if not row["password"].startswith("pbkdf2:sha256:"):
+        new_hash = hash_password(payload.password)
+        cursor.execute("UPDATE users SET password = ? WHERE id = ?", (new_hash, row["id"]))
+        conn.commit()
+    conn.close()
+
+    user_data = normalize_user_row(row)
+    token = generate_signed_token(subject=str(row["id"]), role=row["role"] or "buyer")
+    return {"status": "success", "user": user_data, "access_token": token}
+
+
+def normalize_phone(phone: str) -> str:
+    """Normalize Indian and international phone numbers to standard format."""
+    raw = re.sub(r"[^\d+]", "", phone.strip())
+    digits = re.sub(r"\D", "", raw)
+    if len(digits) == 10:
+        return f"+91{digits}"
+    if len(digits) == 12 and digits.startswith("91"):
+        return f"+{digits}"
+    return raw or phone.strip()
+
+
+@app.post("/api/auth/phone-login")
+def phone_login(payload: PhoneLogin):
+    """Authenticate an artisan or buyer using their mobile number and PIN/password."""
+    norm_phone = normalize_phone(payload.phone)
+    digits = re.sub(r"\D", "", payload.phone)
+    if len(digits) < 8:
+        raise HTTPException(status_code=400, detail="Invalid phone number format")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM users WHERE phone = ? OR phone = ? OR phone LIKE ?",
+        (norm_phone, payload.phone.strip(), f"%{digits[-10:]}"),
+    )
+    row = cursor.fetchone()
+    if not row or not verify_password(payload.password, row["password"]):
+        conn.close()
+        raise HTTPException(status_code=401, detail="Invalid phone number or PIN/password")
+
+    # If the user still had a plaintext password, upgrade it transparently
+    if not (row["password"].startswith("pbkdf2$") or row["password"].startswith("pbkdf2:sha256:")):
+        new_hash = hash_password(payload.password)
+        cursor.execute("UPDATE users SET password = ? WHERE id = ?", (new_hash, row["id"]))
+        conn.commit()
+    conn.close()
+
+    user_data = normalize_user_row(row)
+    token = generate_signed_token(subject=str(row["id"]), role=row["role"] or "artisan")
+    return {"status": "success", "user": user_data, "access_token": token}
+
+
+@app.post("/api/auth/phone-register")
+def phone_register(payload: PhoneRegister):
+    """Register a new artisan or buyer using their 10-digit mobile number."""
+    norm_phone = normalize_phone(payload.phone)
+    digits = re.sub(r"\D", "", payload.phone)
+    if len(digits) < 10:
+        raise HTTPException(status_code=400, detail="Please enter a valid 10-digit mobile number")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE phone = ? OR phone = ? OR phone LIKE ?", (norm_phone, payload.phone.strip(), f"%{digits[-10:]}"))
+    if cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=409, detail="An account with this phone number already exists. Please log in.")
+
+    synthetic_email = f"artisan_{digits[-10:]}@kalakriti.in"
+    hashed_pwd = hash_password(payload.password)
+    cursor.execute(
+        """
+        INSERT INTO users (name, email, password, role, phone, city, language)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            payload.name.strip() or "Artisan",
+            synthetic_email,
+            hashed_pwd,
+            payload.role.strip().lower() if payload.role else "artisan",
+            norm_phone,
+            payload.city.strip() if payload.city else "",
+            payload.language.strip() if payload.language else "hi",
+        ),
+    )
+    user_id = cursor.lastrowid
+    conn.commit()
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    new_row = cursor.fetchone()
+    conn.close()
+
+    user_data = normalize_user_row(new_row)
+    token = generate_signed_token(subject=str(user_id), role=payload.role.strip().lower() if payload.role else "artisan")
+    return {"status": "success", "user_id": user_id, "user": user_data, "access_token": token}
 
 
 @app.post("/api/admin/login")
 def admin_login(payload: AdminLogin):
     if payload.email.strip().lower() != ADMIN_EMAIL or not hmac.compare_digest(payload.password, ADMIN_PASSWORD):
         raise HTTPException(status_code=401, detail="Invalid admin credentials")
-    return {"status": "success", "admin": {"email": ADMIN_EMAIL}, "admin_token": create_admin_token(ADMIN_EMAIL)}
+    token = generate_signed_token(subject=ADMIN_EMAIL, role="admin", expires_in_seconds=28800) # 8-hr TTL
+    return {"status": "success", "admin": {"email": ADMIN_EMAIL}, "admin_token": token}
 
 
 @app.post("/api/auth/register")
@@ -228,6 +408,7 @@ def register_user(payload: UserCreate):
         conn.close()
         raise HTTPException(status_code=409, detail="User already exists")
 
+    hashed_pwd = hash_password(payload.password)
     cursor.execute(
         """
         INSERT INTO users (name, email, password, role, phone, city, language,
@@ -238,7 +419,7 @@ def register_user(payload: UserCreate):
         (
             payload.name,
             email,
-            payload.password,
+            hashed_pwd,
             payload.role,
             payload.phone or "",
             payload.city or "",

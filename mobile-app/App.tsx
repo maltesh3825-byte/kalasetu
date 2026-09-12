@@ -34,10 +34,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from './constants/Colors';
 import { i18n, additionalTranslations, getAppText, Language } from './constants/i18n';
 
-TextInput.defaultProps = {
-  placeholderTextColor: Colors.textSecondary,
-};
-
 import {
   CraftProduct,
   AiAnalysisResult,
@@ -49,6 +45,8 @@ import {
   UserRole,
   OrderRecord,
   loginUser,
+  loginWithPhone,
+  registerWithPhone,
   createOrder,
   fetchOrdersForUser,
   cancelOrderApi,
@@ -88,8 +86,10 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authMethod, setAuthMethod] = useState<'phone' | 'email'>('phone');
+  const [authPhone, setAuthPhone] = useState('+919876543210');
   const [authEmail, setAuthEmail] = useState('demo@kalakriti.in');
-  const [authPassword, setAuthPassword] = useState('demo123');
+  const [authPassword, setAuthPassword] = useState('1234');
   const [authName, setAuthName] = useState('Aarav Sharma');
   const [authRole, setAuthRole] = useState<UserRole>('buyer');
   const [bulkNeed, setBulkNeed] = useState('');
@@ -160,7 +160,8 @@ export default function App() {
   const t = { ...i18n, ...additionalTranslations }[lang];
   const tx = (key: Parameters<typeof getAppText>[1]) => getAppText(lang, key);
   const speechLocale = ({ en: 'en-IN', hi: 'hi-IN', ta: 'ta-IN', kn: 'kn-IN', te: 'te-IN', ml: 'ml-IN', mr: 'mr-IN', bh: 'hi-IN', bho: 'hi-IN' } as const)[lang];
-  const topSafeInset = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) : 0;
+  const statusBarInset = Platform.OS === 'android' ? 24 : 0;
+  const topSafeInset = statusBarInset;
   const roleLabel = currentUser?.role === 'buyer'
     ? (lang === 'hi' ? 'खरीदार' : lang === 'ta' ? 'வாங்குபவர்' : lang === 'kn' ? 'ಖರೀದಿದಾರ' : lang === 'te' ? 'కొనుగోలుదారు' : lang === 'ml' ? 'വാങ്ങുന്നയാൾ' : lang === 'mr' ? 'खरेदीदार' : 'Buyer')
     : currentUser?.role === 'artisan'
@@ -185,7 +186,7 @@ export default function App() {
 
   useSpeechRecognitionEvent('end', () => {
     if (nativeListeningRef.current) {
-      window.setTimeout(() => {
+      setTimeout(() => {
         if (nativeListeningRef.current) {
           ExpoSpeechRecognitionModule.start({
             lang: voiceLanguage,
@@ -347,19 +348,28 @@ export default function App() {
   };
 
   const handleGuestLogin = async () => {
-    const user = await loginUser(authEmail, authPassword, authRole);
-    if (!user) {
-      Alert.alert('Login Error', 'Use demo@kalakriti.in / demo123 or check the backend connection.');
-      return;
-    }
-    setCurrentUser(user);
-    setIsLoggedIn(true);
-    setAuthMode('login');
-    setActiveTab('home');
     try {
-      await refreshAccountData(user);
-    } catch (error) {
-      console.warn('Account activity unavailable:', error);
+      let user: AppUser | null = null;
+      if (authMethod === 'phone') {
+        user = await loginWithPhone(authPhone.trim(), authPassword);
+      } else {
+        user = await loginUser(authEmail.trim(), authPassword, authRole);
+      }
+      if (!user) {
+        Alert.alert('Login Error', 'Invalid credentials or unable to reach backend.');
+        return;
+      }
+      setCurrentUser(user);
+      setIsLoggedIn(true);
+      setAuthMode('login');
+      setActiveTab('home');
+      try {
+        await refreshAccountData(user);
+      } catch (error) {
+        console.warn('Account activity unavailable:', error);
+      }
+    } catch (err: any) {
+      Alert.alert('Sign-In Failed', err?.message || 'Please check your phone number/password.');
     }
   };
 
@@ -622,14 +632,27 @@ export default function App() {
   };
 
   // Native Audio Speech
-  const toggleSpeech = (text: string, speechLang: string = 'en') => {
+  const toggleSpeech = (text: string, speechLang: string = voiceLanguage) => {
+    const languageMap: Record<string, string> = {
+      en: 'en-IN',
+      hi: 'hi-IN',
+      kn: 'kn-IN',
+      te: 'te-IN',
+      ml: 'ml-IN',
+      mr: 'mr-IN',
+      ta: 'ta-IN',
+      bh: 'hi-IN',
+      bho: 'hi-IN',
+    };
+    const resolvedLanguage = speechLang.includes('-') ? speechLang : languageMap[speechLang] || voiceLanguage;
+
     if (isSpeaking) {
       Speech.stop();
       setIsSpeaking(false);
     } else {
       setIsSpeaking(true);
       Speech.speak(text, {
-        language: speechLang.includes('-') ? speechLang : speechLocale,
+        language: resolvedLanguage,
         rate: 0.9,
         onDone: () => setIsSpeaking(false),
         onError: () => setIsSpeaking(false),
@@ -703,12 +726,12 @@ export default function App() {
         };
         recognition.onend = () => {
           if (browserListeningRef.current) {
-            window.setTimeout(() => {
+            setTimeout(() => {
               if (browserListeningRef.current) {
                 try {
                   recognition.start();
                 } catch {
-                  window.setTimeout(() => {
+                  setTimeout(() => {
                     if (browserListeningRef.current) {
                       try {
                         recognition.start();
@@ -868,6 +891,430 @@ export default function App() {
 
   const categoriesList = ['All', 'Handloom & Textiles', 'Pottery & Terracotta', 'Brass & Metalcraft', 'Woodcraft', 'Cane & Bamboo', 'Folk Art & Painting'];
 
+  const renderMainContent = () => {
+    switch (activeTab) {
+      case 'home':
+        return (
+          <View style={styles.homeContainer}>
+            <View style={styles.homeHero}>
+              <Text style={styles.homeKicker}>KalaSetu x SIH26090</Text>
+              <Text style={styles.homeTitle}>{tx('homeTitle')}</Text>
+              <Text style={styles.homeSubtitle}>{tx('homeSubtitle')}</Text>
+              <View style={styles.homeActionRow}>
+                <TouchableOpacity style={styles.primaryAction} onPress={() => setActiveTab('studio')}>
+                  <Text style={styles.primaryActionText}>{tx('startCataloging')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.secondaryAction} onPress={() => setActiveTab('market')}>
+                  <Text style={styles.secondaryActionText}>{tx('exploreCrafts')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.homeImageCard}>
+              <Image source={{ uri: 'https://images.unsplash.com/photo-1577083288073-40892c0860a4?auto=format&fit=crop&w=1200&q=80' }} style={styles.homeImage} />
+              <Text style={styles.homeImageCaption}>{lang === 'hi' ? 'टेराकोटा • मधुबनी • ढोकरा • ' : lang === 'kn' ? 'ಟೆರಾಕೋಟಾ • ಮಧುಬನಿ • ಧೋಕ್ರಾ • ' : 'Terracotta • Madhubani • Dhokra • '}{t.mosjeVerified}</Text>
+            </View>
+            <Text style={styles.homeSectionTitle}>{tx('connectedPaths')}</Text>
+            <View style={styles.homeFeatureGrid}>
+              <View style={styles.homeFeatureCard}>
+                <Text style={styles.homeFeatureIcon}>🪡</Text>
+                <Text style={styles.homeFeatureTitle}>{tx('forArtisans')}</Text>
+                <Text style={styles.homeFeatureText}>{tx('artisanPath')}</Text>
+              </View>
+              <View style={styles.homeFeatureCard}>
+                <Text style={styles.homeFeatureIcon}>🏛️</Text>
+                <Text style={styles.homeFeatureTitle}>{tx('forBuyers')}</Text>
+                <Text style={styles.homeFeatureText}>{tx('buyerPath')}</Text>
+              </View>
+            </View>
+            <Text style={styles.homeSectionTitle}>{tx('aiCataloging')}</Text>
+            <View style={styles.homeFeatureCard}>
+              <Text style={styles.homeFeatureTitle}>{tx('aiCatalogingText')}</Text>
+              <Text style={styles.homeFeatureText}>{tx('homeSubtitle')}</Text>
+            </View>
+          </View>
+        );
+
+      case 'studio':
+        return (
+          <View style={styles.studioContainer}>
+            <View style={styles.offlineDraftBanner}>
+              <View style={styles.offlineDraftHeader}>
+                <Text style={styles.offlineDraftTitle}>{tx('saveDraft')}</Text>
+                <Text style={styles.offlineDraftBadge}>{catalogDrafts.length} saved</Text>
+              </View>
+              <Text style={styles.offlineDraftText}>{tx('bulkHelp')}</Text>
+              <TouchableOpacity style={styles.offlineDraftSaveButton} onPress={saveCatalogDraft}>
+                <Text style={styles.offlineDraftSaveText}>{tx('saveDraft')}</Text>
+              </TouchableOpacity>
+              {catalogDrafts.map(draft => (
+                <View key={draft.id} style={styles.offlineDraftRow}>
+                  <View style={styles.offlineDraftInfo}>
+                    <Text style={styles.offlineDraftName}>{draft.title}</Text>
+                    <Text style={styles.offlineDraftDate}>{new Date(draft.savedAt).toLocaleString()}</Text>
+                  </View>
+                  <View style={styles.offlineDraftActions}>
+                    <TouchableOpacity onPress={() => restoreCatalogDraft(draft)}>
+                      <Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => removeCatalogDraft(draft.id)}>
+                      <Text style={styles.offlineDraftRemove}>{tx('removePublished')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+            <View style={styles.card}>
+              <Text style={styles.cardStepTitle}>{t.step1Title}</Text>
+              <Text style={styles.cardStepSub}>{t.step1Sub}</Text>
+              <View style={styles.presetsRow}>
+                <Text style={styles.presetLabel}>{t.demoSampleTitle}</Text>
+                <View style={styles.presetButtons}>
+                  <TouchableOpacity style={styles.presetChip} onPress={() => loadDemoPreset(0)}>
+                    <Text style={styles.presetChipText}>🏺 Terracotta</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.presetChip} onPress={() => loadDemoPreset(1)}>
+                    <Text style={styles.presetChipText}>🐘 Brass</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.presetChip} onPress={() => loadDemoPreset(2)}>
+                    <Text style={styles.presetChipText}>🧵 Handloom</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={styles.imageBox}>
+                {imageUri ? (
+                  <Image source={{ uri: imageUri }} style={[styles.previewImage, isEnhanced && styles.enhancedImage]} />
+                ) : (
+                  <View style={styles.imagePlaceholder}>
+                    <Text style={styles.placeholderEmoji}>📸</Text>
+                    <Text style={styles.placeholderText}>{tx('placeholderPhoto')}</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.enhancerRow}>
+                <View>
+                  <Text style={styles.enhancerTitle}>💡 {t.studioEnhancer}</Text>
+                  <Text style={styles.enhancerSub}>{tx('professionalLighting')}</Text>
+                </View>
+                <Switch value={isEnhanced} onValueChange={setIsEnhanced} trackColor={{ false: Colors.border, true: Colors.primary }} thumbColor="#FFFFFF" />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>{tx('quantityToSell')}</Text>
+                <TextInput style={styles.textInput} value={listingQuantity} onChangeText={setListingQuantity} keyboardType="number-pad" maxLength={2} placeholderTextColor={Colors.textSecondary} />
+                <Text style={styles.helperText}>{tx('listingLimit')}</Text>
+              </View>
+              <View style={styles.actionButtonRow}>
+                <TouchableOpacity style={styles.primaryButton} onPress={takePhoto}>
+                  <Text style={styles.primaryButtonText}>📷 {t.btnCamera}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.secondaryButton} onPress={pickFromGallery}>
+                  <Text style={styles.secondaryButtonText}>🖼️ {t.btnGallery}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.formFields}>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanName}</Text><TextInput style={styles.textInput} value={artisanName} onChangeText={setArtisanName} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanLocation}</Text><TextInput style={styles.textInput} value={artisanLocation} onChangeText={setArtisanLocation} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanPhone}</Text><TextInput style={styles.textInput} value={artisanPhone} onChangeText={setArtisanPhone} keyboardType="phone-pad" /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.priceIdea}</Text><TextInput style={styles.textInput} value={priceIdea} onChangeText={setPriceIdea} keyboardType="numeric" placeholder="e.g. 500" placeholderTextColor={Colors.textSecondary} /></View>
+                <View style={styles.inputGroup}>
+                  <View style={styles.inputLabelRow}>
+                    <Text style={styles.inputLabel}>{t.artisanNotes}</Text>
+                    <TouchableOpacity style={[styles.voiceButton, isListening && styles.voiceButtonActive]} onPress={toggleVoiceInput}>
+                      <Text style={styles.voiceButtonText}>{isListening ? `⏹️ ${tx('voiceListening')}` : `🎙️ ${tx('voiceInput')}`}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.voiceLanguageRow}>
+                    {([['en-IN', 'English'], ['kn-IN', 'ಕನ್ನಡ'], ['hi-IN', 'हिन्दी']] as const).map(([code, label]) => (
+                      <TouchableOpacity key={code} style={[styles.voiceLanguageChip, voiceLanguage === code && styles.voiceLanguageChipActive]} onPress={() => setVoiceLanguage(code)}>
+                        <Text style={[styles.voiceLanguageChipText, voiceLanguage === code && styles.voiceLanguageChipTextActive]}>{label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={styles.descriptionInputWrap}>
+                    <TextInput style={[styles.textInput, styles.textArea, styles.descriptionInput]} value={artisanNotes} onChangeText={setArtisanNotes} multiline placeholder={t.artisanNotesPlaceholder} placeholderTextColor={Colors.textSecondary} />
+                    <TouchableOpacity style={[styles.descriptionMicButton, isListening && styles.voiceButtonActive]} onPress={toggleVoiceInput} accessibilityLabel={isListening ? tx('voiceListening') : tx('voiceInput')}>
+                      <Text style={styles.descriptionMicText}>{isListening ? '⏹️' : '🎙️'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.voiceHint}>{tx('voiceTranslationHint')}</Text>
+                  {speechError ? <Text style={styles.errorText}>{speechError}</Text> : null}
+                </View>
+              </View>
+              <TouchableOpacity style={[styles.analyzeButton, (!imageUri || isAnalyzing) && styles.disabledButton]} onPress={handleAnalyze} disabled={!imageUri || isAnalyzing}>
+                {isAnalyzing ? (
+                  <View style={styles.loadingRow}><ActivityIndicator color="#FFFFFF" /><Text style={styles.analyzeButtonText}>{analysisProgress || t.analyzing}</Text></View>
+                ) : (
+                  <Text style={styles.analyzeButtonText}>{t.btnAnalyze}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+            {aiResult && (
+              <View style={[styles.card, styles.reviewCard]}>
+                <Text style={styles.cardStepTitle}>{t.step2Title}</Text>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.productTitle}</Text><TextInput style={styles.textInput} value={editTitle} onChangeText={setEditTitle} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.category}</Text><TextInput style={styles.textInput} value={editCategory} onChangeText={setEditCategory} /></View>
+                <View style={styles.pricingBox}>
+                  <Text style={styles.pricingTitle}>⚖️ {t.pricingAssistant}</Text>
+                  <Text style={styles.pricingRange}>{t.fairRange} <Text style={styles.boldText}>₹{aiResult.pricing.fair_min} - ₹{aiResult.pricing.fair_max}</Text></Text>
+                  <Text style={styles.pricingJustification}>{aiResult.pricing.justification}</Text>
+                  <TouchableOpacity style={styles.applyPriceBtn} onPress={() => setEditPrice(String(aiResult.pricing.suggested))}>
+                    <Text style={styles.applyPriceBtnText}>{t.btnApplyPrice} (₹{aiResult.pricing.suggested})</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>Final Selling Price (₹)</Text><TextInput style={[styles.textInput, styles.boldPriceInput]} value={editPrice} onChangeText={setEditPrice} keyboardType="numeric" /></View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>{t.tags}</Text>
+                  <View style={styles.tagsContainer}>{tags.map((tag, idx) => (<TouchableOpacity key={idx} style={styles.tagChip} onPress={() => handleRemoveTag(idx)}><Text style={styles.tagText}>#{tag} ×</Text></TouchableOpacity>))}</View>
+                  <View style={styles.addTagRow}>
+                    <TextInput style={[styles.textInput, styles.addTagInput]} value={newTag} onChangeText={setNewTag} placeholder={tx('addTag')} />
+                    <TouchableOpacity style={styles.addTagBtn} onPress={handleAddTag}><Text style={styles.addTagBtnText}>+ Add</Text></TouchableOpacity>
+                  </View>
+                </View>
+                <View style={styles.inputGroup}>
+                  <View style={styles.descHeaderRow}>
+                    <Text style={styles.inputLabel}>{t.descEn}</Text>
+                    <TouchableOpacity style={styles.speakerBtn} onPress={() => toggleSpeech(editDescEn, voiceLanguage)}><Text style={styles.speakerBtnText}>{isSpeaking ? '⏹ Stop' : `🔊 ${t.listenDesc}`}</Text></TouchableOpacity>
+                  </View>
+                  <TextInput style={[styles.textInput, styles.textArea]} value={editDescEn} onChangeText={setEditDescEn} multiline />
+                </View>
+                <View style={styles.inputGroup}>
+                  <View style={styles.descHeaderRow}>
+                    <Text style={styles.inputLabel}>{t.descHi}</Text>
+                    <TouchableOpacity style={styles.speakerBtn} onPress={() => toggleSpeech(editDescHi, voiceLanguage)}><Text style={styles.speakerBtnText}>{isSpeaking ? '⏹ Stop' : `🔊 ${t.listenDesc}`}</Text></TouchableOpacity>
+                  </View>
+                  <TextInput style={[styles.textInput, styles.textArea]} value={editDescHi} onChangeText={setEditDescHi} multiline />
+                </View>
+                <TouchableOpacity style={[styles.publishButton, isPublishing && styles.disabledButton]} onPress={handlePublish} disabled={isPublishing}>{isPublishing ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.publishButtonText}>{t.btnPublish}</Text>}</TouchableOpacity>
+                <TouchableOpacity style={styles.secondaryButton} onPress={saveCatalogDraft}><Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text></TouchableOpacity>
+              </View>
+            )}
+          </View>
+        );
+
+      case 'market':
+        return (
+          <View style={styles.marketContainer}>
+            <View style={styles.marketHero}>
+              <Text style={styles.marketHeroTitle}>{t.marketTitle}</Text>
+              <Text style={styles.marketHeroSub}>{t.marketSub}</Text>
+              <TouchableOpacity style={styles.marketSpeakButton} onPress={() => toggleSpeech(`${t.marketTitle}. ${t.marketSub}. ${t.directToArtisan}. ${t.mosjeVerified}`, speechLocale)}>
+                <Text style={styles.marketSpeakButtonText}>{isSpeaking ? '⏹ Stop' : `🔊 ${tx('tapToSpeak')}`}</Text>
+              </TouchableOpacity>
+              <View style={styles.guaranteeRow}>
+                <Text style={styles.guaranteeText}>✓ {t.directToArtisan}</Text>
+                <Text style={styles.guaranteeText}>✓ {t.mosjeVerified}</Text>
+              </View>
+            </View>
+            <View style={styles.bulkLeadCard}>
+              <Text style={styles.bulkLeadTitle}>{tx('bulkLinkage')}</Text>
+              <Text style={styles.bulkLeadText}>{tx('bulkSubtitle')}</Text>
+              <TouchableOpacity style={styles.bulkLeadButton} onPress={() => setActiveTab('institutional')}>
+                <Text style={styles.bulkLeadButtonText}>{tx('prepareRfq')}</Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput style={styles.searchBar} placeholder={t.searchPlaceholder} value={searchQuery} onChangeText={setSearchQuery} placeholderTextColor={Colors.textSecondary} />
+            <View style={styles.deliveryCard}>
+              <Text style={styles.deliveryTitle}>{tx('deliveryDetails')}</Text>
+              {([
+                ['recipientName', 'Full name'],
+                ['recipientPhone', tx('mobileNumber')],
+                ['addressLine', tx('houseStreet')],
+                ['city', tx('city')],
+                ['state', tx('state')],
+                ['pincode', tx('pincode')]
+              ] as const).map(([key, placeholder]) => (
+                <TextInput key={key} style={styles.deliveryInput} placeholder={placeholder} value={deliveryDetails[key]} onChangeText={value => setDeliveryDetails(prev => ({ ...prev, [key]: value }))} keyboardType={key === 'pincode' || key === 'recipientPhone' ? 'phone-pad' : 'default'} placeholderTextColor={Colors.textSecondary} />
+              ))}
+            </View>
+            {!!orderActionMessage && <Text style={styles.orderActionMessage}>{orderActionMessage}</Text>}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesBar}>
+              {categoriesList.map((cat, idx) => (
+                <TouchableOpacity key={idx} style={[styles.catChip, selectedCategory === cat && styles.catChipActive]} onPress={() => setSelectedCategory(cat)}>
+                  <Text style={[styles.catChipText, selectedCategory === cat && styles.catChipTextActive]}>{cat}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.productsFeed}>
+              {filteredProducts.map((product) => (
+                <View key={product.id} style={styles.productCard}>
+                  <View style={styles.productImageWrapper}>
+                    <Image source={{ uri: product.image_url }} style={styles.productImage} />
+                    <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{product.category}</Text></View>
+                    <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>★ MoSJE</Text></View>
+                    <View style={styles.priceBadge}><Text style={styles.priceBadgeText}>₹{product.price}</Text></View>
+                  </View>
+                  <View style={styles.productCardBody}>
+                    <Text style={styles.productCardTitle}>{product.name}</Text>
+                    <Text style={styles.productArtisan}>👤 {product.artisan_name} &bull; {product.artisan_location}</Text>
+                    <Text style={styles.productDesc} numberOfLines={2}>{lang === 'hi' && product.description_hi ? product.description_hi : product.description_en}</Text>
+                    <View style={styles.ratingRow}>
+                      <Text style={styles.ratingText}>★ {Number(product.rating || 4.5).toFixed(1)}</Text>
+                      <Text style={styles.reviewText}>{product.reviews?.length || 0} {tx('reviews')}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.reviewButton} onPress={() => setReviewProductId(reviewProductId === product.id ? null : product.id)}>
+                      <Text style={styles.reviewButtonText}>{tx('rateReview')}</Text>
+                    </TouchableOpacity>
+                    {reviewProductId === product.id && (
+                      <View style={styles.reviewEditor}>
+                        <View style={styles.reviewStarsRow}>{[1,2,3,4,5].map(star => (<TouchableOpacity key={star} onPress={() => setReviewRating(star)}><Text style={[styles.reviewStar, star <= reviewRating && styles.reviewStarActive]}>★</Text></TouchableOpacity>))}</View>
+                        <TextInput style={styles.reviewInput} value={reviewComment} onChangeText={setReviewComment} placeholder={tx('writeExperience')} multiline placeholderTextColor={Colors.textSecondary} />
+                        <TouchableOpacity style={styles.submitReviewButton} onPress={() => submitReview(product)} disabled={isSubmittingReview}>{isSubmittingReview ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.submitReviewButtonText}>{tx('submitReview')}</Text>}</TouchableOpacity>
+                      </View>
+                    )}
+                    {product.image_gallery && product.image_gallery.length > 1 ? (
+                      <View style={styles.galleryRow}>{product.image_gallery.slice(0, 3).map((url, idx) => (<Image key={`${url}-${idx}`} source={{ uri: url }} style={styles.galleryThumb} />))}</View>
+                    ) : null}
+                    <Text style={styles.quantityLabel}>Quantity for this order ({Math.max(1, Number(product.quantity ?? 10))} available)</Text>
+                    <View style={styles.quantityOptions}>{Array.from({ length: Math.max(0, Number(product.quantity ?? 10)) }, (_, index) => String(index + 1)).map(option => (
+                      <TouchableOpacity key={`${product.id}-${option}`} style={[styles.quantityOption, buyQuantity === option && styles.quantityOptionActive]} onPress={() => setBuyQuantity(option)}>
+                        <Text style={[styles.quantityOptionText, buyQuantity === option && styles.quantityOptionTextActive]}>{option}</Text>
+                      </TouchableOpacity>
+                    ))}</View>
+                    <View style={styles.inlineActionRow}>
+                      <TouchableOpacity style={styles.inlineActionButton} onPress={() => toggleWishlist(product.id)}><Text style={styles.inlineActionButtonText}>{wishlist.includes(product.id) ? t.removeFromWishlist : t.addToWishlist}</Text></TouchableOpacity>
+                      <TouchableOpacity style={[styles.inlineActionButtonPrimary, isPlacingOrder && styles.disabledButton]} onPress={() => requestOrder(product)} disabled={isPlacingOrder || (Number(product.quantity ?? 10) <= 0)}><Text style={styles.inlineActionButtonText}>{isPlacingOrder ? 'Placing...' : Number(product.quantity ?? 10) <= 0 ? 'Sold Out' : t.buyNow}</Text></TouchableOpacity>
+                    </View>
+                    <TouchableOpacity style={styles.whatsAppButton} onPress={() => openWhatsApp(product.artisan_phone || '+919876543210', product.name, product.price)}>
+                      <Text style={styles.whatsAppButtonText}>💬 {t.btnWhatsApp}</Text>
+                    </TouchableOpacity>
+                    {isLoggedIn && (<TouchableOpacity style={styles.deleteProductButton} onPress={() => removeOwnProduct(product)}><Text style={styles.deleteProductButtonText}>Delete my listing</Text></TouchableOpacity>)}
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        );
+
+      case 'institutional':
+        return (
+          <View style={styles.marketContainer}>
+            <View style={styles.institutionalHero}><Text style={styles.institutionalKicker}>{tx('bulkHero')}</Text><Text style={styles.institutionalTitle}>{tx('bulkTitle')}</Text><Text style={styles.institutionalSubtitle}>{tx('bulkSubtitle')}</Text></View>
+            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 1</Text><Text style={styles.profileSectionTitle}>{tx('createBulkRequest')}</Text><Text style={styles.bulkHelpText}>{tx('bulkHelp')}</Text><TextInput style={styles.textInput} value={currentUser?.name || authName} placeholder={t.fullName} editable={!isLoggedIn} placeholderTextColor={Colors.textSecondary} /><TextInput style={styles.textInput} value={currentUser?.email || authEmail} placeholder={`${t.email} for follow-up`} keyboardType="email-address" editable={!isLoggedIn} placeholderTextColor={Colors.textSecondary} /><TextInput style={styles.textInput} value={bulkBuyerType} onChangeText={setBulkBuyerType} placeholder={tx('buyerType')} placeholderTextColor={Colors.textSecondary} /><TextInput style={styles.textInput} value={bulkCategory} onChangeText={setBulkCategory} placeholder={t.category} placeholderTextColor={Colors.textSecondary} /><View style={styles.bulkInputRow}><TextInput style={[styles.textInput, styles.bulkHalfInput]} value={bulkQuantity} onChangeText={setBulkQuantity} placeholder="Quantity" keyboardType="numeric" placeholderTextColor={Colors.textSecondary} /><TextInput style={[styles.textInput, styles.bulkHalfInput]} value={bulkUnitPrice} onChangeText={setBulkUnitPrice} placeholder="Unit price (₹)" keyboardType="numeric" placeholderTextColor={Colors.textSecondary} /></View><TextInput style={styles.textInput} value={bulkLeadTime} onChangeText={setBulkLeadTime} placeholder="Production / dispatch lead time" placeholderTextColor={Colors.textSecondary} /><TextInput style={[styles.textInput, styles.textArea]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder="Packaging, customization, certifications, quality sample notes..." placeholderTextColor={Colors.textSecondary} /><TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}><Text style={styles.primaryActionText}>{tx('submitRfq')}</Text></TouchableOpacity><TouchableOpacity style={styles.secondaryButton} onPress={saveBulkDraft}><Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text></TouchableOpacity>{bulkDrafts.length > 0 && (<View><Text style={styles.helperText}>{bulkDrafts.length} bulk draft(s) saved on this device.</Text><TouchableOpacity onPress={() => restoreBulkDraft(bulkDrafts[0])}><Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text></TouchableOpacity></View>)}</View>
+            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 2</Text><Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text><Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text><View style={styles.bulkPricingCard}><View style={styles.bulkPricingHeader}><Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text><Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text></View><Text style={styles.bulkPricingHint}>Based on {bulkQuantityNumber || 0} units at ₹{bulkUnitPriceNumber.toLocaleString('en-IN')} base price</Text>{bulkPricingTiers.map(tier => (<View key={tier.volume} style={styles.bulkPricingRow}><Text style={styles.bulkPricingVolume}>{tier.volume}</Text><Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text><Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>{bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}</Text></View>))}</View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => { if (!bulkQuantityNumber || !bulkUnitPriceNumber) { Alert.alert('Bulk pricing', 'Enter both quantity and unit price to calculate your live bulk total.'); return; } const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0; const tier = bulkPricingTiers[tierIndex]; const total = Math.round(tier.price) * bulkQuantityNumber; const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber)); Alert.alert('Bulk pricing', `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`); }}><Text style={styles.bulkToolText}>📊 Bulk pricing calculator</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => Alert.alert('RFQ pitch', `Create a buyer pitch for ${bulkCategory}, ${bulkQuantity} units at ₹${bulkUnitPrice} each.`)}><Text style={styles.bulkToolText}>✉️ Generate RFQ pitch</Text></TouchableOpacity></View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => Alert.alert('GeM export', 'Your RFQ details are ready to be copied into a GeM-compliant CSV.')}><Text style={styles.bulkToolText}>📦 GeM-ready export</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => Alert.alert('ONDC export', 'Your RFQ details are ready for an ONDC Beckn JSON payload.')}><Text style={styles.bulkToolText}>⚡ ONDC JSON</Text></TouchableOpacity></View></View>
+            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 3</Text><Text style={styles.profileSectionTitle}>{tx('connectChannels')}</Text><Text style={styles.bulkHelpText}>{tx('connectHelp')}</Text><View style={styles.bulkChannelRow}><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://gem.gov.in/')}><Text style={styles.bulkToolText}>GeM ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://ondc.org/')}><Text style={styles.bulkToolText}>ONDC ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://trifed.tribal.gov.in/')}><Text style={styles.bulkToolText}>TRIFED ↗</Text></TouchableOpacity></View><TouchableOpacity style={styles.secondaryAction} onPress={() => openBulkChannel('mailto:kalasetu24824.9@gmail.com?subject=KalaSetu%20Bulk%20Buyer%20Support')}><Text style={styles.secondaryActionText}>{tx('emailSupport')}</Text></TouchableOpacity></View>
+          </View>
+        );
+
+      case 'account':
+        return (
+          <View style={styles.marketContainer}>
+            {!isLoggedIn ? (
+              <View style={styles.authCard}>
+                <Text style={styles.marketHeroTitle}>{t.loginTitle}</Text>
+                <Text style={styles.authSubtitle}>{t.loginSubtitle}</Text>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+                  <TouchableOpacity
+                    style={[styles.accountSubnavButton, authMethod === 'phone' && styles.accountSubnavButtonActive, { flex: 1, alignItems: 'center' }]}
+                    onPress={() => setAuthMethod('phone')}
+                  >
+                    <Text style={[styles.accountSubnavText, authMethod === 'phone' && styles.accountSubnavTextActive]}>
+                      📱 Mobile Number
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.accountSubnavButton, authMethod === 'email' && styles.accountSubnavButtonActive, { flex: 1, alignItems: 'center' }]}
+                    onPress={() => setAuthMethod('email')}
+                  >
+                    <Text style={[styles.accountSubnavText, authMethod === 'email' && styles.accountSubnavTextActive]}>
+                      ✉️ Email
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {authMethod === 'phone' ? (
+                  <TextInput
+                    style={styles.searchBar}
+                    value={authPhone}
+                    onChangeText={setAuthPhone}
+                    placeholder="10-digit Mobile Number (e.g. 9876543210)"
+                    keyboardType="phone-pad"
+                    placeholderTextColor={Colors.textSecondary}
+                  />
+                ) : (
+                  <TextInput
+                    style={styles.searchBar}
+                    value={authEmail}
+                    onChangeText={setAuthEmail}
+                    placeholder={t.email}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    placeholderTextColor={Colors.textSecondary}
+                  />
+                )}
+                <TextInput
+                  style={styles.searchBar}
+                  value={authPassword}
+                  onChangeText={setAuthPassword}
+                  placeholder={authMethod === 'phone' ? "PIN or Password (e.g. 1234)" : t.password}
+                  secureTextEntry
+                  placeholderTextColor={Colors.textSecondary}
+                />
+                <TouchableOpacity style={styles.primaryAction} onPress={handleGuestLogin}>
+                  <Text style={styles.primaryActionText}>{t.signIn}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.profileCard}>
+                <Text style={styles.marketHeroTitle}>{tx('account')}</Text>
+                <Text style={styles.profileName}>{currentUser?.name}</Text>
+                <Text style={styles.profileMeta}>{currentUser?.email} · {currentUser?.city}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.accountSubnav}>{([
+                  ['profile', tx('profile')], ['history', tx('history')], ['orders', t.tabOrders], ['requests', tx('requests')], ['wishlist', t.tabWishlist], ['notifications', tx('notifications')], ['admin', tx('admin')]
+                ] as const).map(([key, label]) => (
+                  <TouchableOpacity key={key} style={[styles.accountSubnavButton, accountView === key && styles.accountSubnavButtonActive]} onPress={() => setAccountView(key)}><Text style={[styles.accountSubnavText, accountView === key && styles.accountSubnavTextActive]}>{label}</Text></TouchableOpacity>
+                ))}</ScrollView>
+                {accountView === 'profile' && (<View><Text style={styles.profileSectionTitle}>{tx('profile')}</Text><Text style={styles.notificationText}>{tx('role')}: {roleLabel}</Text><Text style={styles.notificationText}>{tx('publishedListings')}: {publishedProducts.length}</Text><Text style={styles.notificationText}>{tx('savedCrafts')}: {wishlist.length}</Text><TouchableOpacity style={styles.secondaryAction} onPress={handleLogout}><Text style={styles.secondaryActionText}>{tx('logout')}</Text></TouchableOpacity></View>)}
+                {accountView === 'history' && (<View><Text style={styles.profileSectionTitle}>{tx('activityHistory')}</Text><Text style={styles.notificationText}>{orders.length} {tx('purchaseOrders')}</Text><Text style={styles.notificationText}>{publishedProducts.length} {tx('publishedListing')}</Text>{orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>• {order.productName} — {order.status}</Text>)}{publishedProducts.slice(0, 5).map(product => <Text key={`published-${product.id}`} style={styles.notificationText}>• Published: {product.name} — ₹{product.price}</Text>)}</View>)}
+                {accountView === 'orders' && (<View><Text style={styles.profileSectionTitle}>{tx('ordersByMe')}</Text>{orders.filter(order => order.status.toLowerCase() !== 'cancelled').length === 0 ? <Text style={styles.emptyStateText}>{tx('noActiveOrders')}</Text> : orders.filter(order => order.status.toLowerCase() !== 'cancelled').map(order => (<View key={order.id} style={styles.orderCard}><Text style={styles.orderTitle}>{order.productName}</Text><Text style={styles.orderMeta}>₹{order.price} · {order.status}</Text><TouchableOpacity style={styles.secondaryAction} onPress={() => handleCancelOrder(order.id)}><Text style={styles.secondaryActionText}>{tx('cancelOrder')}</Text></TouchableOpacity></View>))}<Text style={styles.profileSectionTitle}>{tx('ordersPublishedByMe')}</Text>{publishedProducts.map(product => <View key={product.id} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} · {product.category}</Text><TouchableOpacity style={[styles.deleteProductButton, deletingProductId === product.id && styles.disabledButton]} onPress={() => removeOwnProduct(product)} disabled={deletingProductId === product.id}><Text style={styles.deleteProductButtonText}>{deletingProductId === product.id ? 'Removing...' : tx('removePublished')}</Text></TouchableOpacity></View>)}</View>)}
+                {accountView === 'requests' && (<View><Text style={styles.profileSectionTitle}>{tx('bulkRequests')}</Text><TextInput style={styles.textInput} value={bulkBuyerType} onChangeText={setBulkBuyerType} placeholder={tx('forBuyers')} /><TextInput style={[styles.textInput, styles.textArea]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder={tx('bulkHelp')} /><TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}><Text style={styles.primaryActionText}>{tx('sendRequest')}</Text></TouchableOpacity></View>)}
+                {accountView === 'wishlist' && (<View><Text style={styles.profileSectionTitle}>{tx('savedCraftsTitle')}</Text>{products.filter(product => wishlist.includes(product.id)).map(product => <View key={product.id} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} · {product.artisan_name}</Text></View>)}{wishlist.length === 0 && <Text style={styles.emptyStateText}>{tx('noSavedCrafts')}</Text>}</View>)}
+                {accountView === 'notifications' && (<View style={styles.notificationCard}><Text style={styles.notificationTitle}>{tx('notifications')}</Text>{orders.length ? orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>{tx('orderUpdate')}: {order.productName} is {order.status}.</Text>) : <Text style={styles.notificationText}>{tx('noNotifications')}</Text>}</View>)}
+                {accountView === 'admin' && (<View><Text style={styles.profileSectionTitle}>{tx('adminReview')}</Text>{!adminToken ? (<View><Text style={styles.bulkHelpText}>{tx('reviewRequests')}</Text><TextInput style={styles.textInput} value={adminEmail} onChangeText={setAdminEmail} placeholder={tx('adminEmail')} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.textSecondary} /><TextInput style={styles.textInput} value={adminPassword} onChangeText={setAdminPassword} placeholder={tx('adminPassword')} secureTextEntry placeholderTextColor={Colors.textSecondary} />{!!adminStatus && <Text style={styles.orderActionMessage}>{adminStatus}</Text>}<TouchableOpacity style={styles.primaryAction} onPress={handleAdminLogin}><Text style={styles.primaryActionText}>{tx('signInAdmin')}</Text></TouchableOpacity></View>) : (<View><View style={styles.adminHeaderRow}><Text style={styles.bulkHelpText}>{tx('requestQueue')}</Text><TouchableOpacity onPress={handleAdminLogout}><Text style={styles.offlineDraftRemove}>Logout</Text></TouchableOpacity></View>{adminRequests.length === 0 ? <Text style={styles.emptyStateText}>No institutional requests yet.</Text> : adminRequests.map(request => (<View key={request.id} style={styles.orderCard}><Text style={styles.orderTitle}>{request.artisan_name} · {request.product_category || 'Craft request'}</Text><Text style={styles.orderMeta}>{request.email} · Qty {request.quantity || 1} · {request.target_market || 'Bulk'}</Text><Text style={styles.orderMeta}>{request.requirements || 'No requirements'}</Text><View style={styles.adminStatusRow}>{['New', 'In Review', 'Approved', 'Rejected'].map(status => (<TouchableOpacity key={status} style={[styles.adminStatusButton, request.status === status && styles.adminStatusButtonActive]} onPress={() => handleAdminUpdate(request.id, status)}><Text style={[styles.adminStatusText, request.status === status && styles.adminStatusTextActive]}>{status}</Text></TouchableOpacity>))}</View></View>))}</View>)}</View>)}
+              </View>
+            )}
+          </View>
+        );
+
+      case 'wishlist':
+        return (
+          <View style={styles.marketContainer}>
+            <Text style={styles.marketHeroTitle}>{t.wishlistTitle}</Text>
+            {wishlist.length === 0 ? (
+              <View style={styles.emptyStateCard}><Text style={styles.emptyStateText}>Save products you like to build your shortlist.</Text></View>
+            ) : (
+              <View style={styles.productsFeed}>{products.filter(p => wishlist.includes(p.id)).map(product => (
+                <View key={product.id} style={styles.productCard}><View style={styles.productImageWrapper}><Image source={{ uri: product.image_url }} style={styles.productImage} /><View style={styles.priceBadge}><Text style={styles.priceBadgeText}>₹{product.price}</Text></View></View><View style={styles.productCardBody}><Text style={styles.productCardTitle}>{product.name}</Text><TouchableOpacity style={styles.whatsAppButton} onPress={() => requestOrder(product)}><Text style={styles.whatsAppButtonText}>{t.buyNow}</Text></TouchableOpacity></View></View>
+              ))}</View>
+            )}
+          </View>
+        );
+
+      case 'orders':
+        return (
+          <View style={styles.marketContainer}>
+            <Text style={styles.marketHeroTitle}>{t.ordersTitle}</Text>
+            {!isLoggedIn ? (
+              <View style={styles.emptyStateCard}><Text style={styles.emptyStateText}>Sign in to track your purchase requests and delivery updates.</Text></View>
+            ) : orders.length === 0 && publishedProducts.length === 0 ? (
+              <View style={styles.emptyStateCard}><Text style={styles.emptyStateText}>No orders yet. Your recent requests will appear here.</Text></View>
+            ) : (
+              <View style={styles.productsFeed}>
+                <Text style={styles.orderTitle}>{tx('ordersByMe')}</Text>
+                {orders.length === 0 ? <Text style={styles.emptyStateText}>{tx('noActiveOrders')}</Text> : orders.map((order) => (
+                  <View key={order.id} style={styles.orderCard}><Text style={styles.orderTitle}>{order.productName}</Text><Text style={styles.orderMeta}>₹{order.price} • {order.customerName}</Text><Text style={styles.orderMeta}>{t.orderStatus}: {order.status}</Text><Text style={styles.orderMeta}>{t.deliveryEta}: {order.eta}</Text><TextInput style={styles.searchBar} value={cancelReason} onChangeText={setCancelReason} placeholder={tx('cancelReasonPrompt')} /><TouchableOpacity style={styles.secondaryAction} onPress={() => handleCancelOrder(order.id)}><Text style={styles.secondaryActionText}>{tx('cancelOrder')}</Text></TouchableOpacity></View>
+                ))}
+                <Text style={styles.orderTitle}>{tx('ordersPublishedByMe')}</Text>
+                {publishedProducts.length === 0 ? <Text style={styles.emptyStateText}>{tx('noPublishedProducts')}</Text> : publishedProducts.map(product => (
+                  <View key={`published-${product.id}`} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} • {product.category} • Qty {product.quantity || 0}</Text><TouchableOpacity style={styles.deleteProductButton} onPress={() => removeOwnProduct(product)}><Text style={styles.deleteProductButtonText}>{tx('removePublished')}</Text></TouchableOpacity></View>
+                ))}
+              </View>
+            )}
+          </View>
+        );
+
+      default:
+        return <View style={styles.marketContainer} />;
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
@@ -924,939 +1371,7 @@ export default function App() {
 
       {/* Main Body: Scrollable Screen */}
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        
-        {activeTab === 'home' ? (
-          <View style={styles.homeContainer}>
-            <View style={styles.homeHero}>
-              <Text style={styles.homeKicker}>KalaSetu x SIH26090</Text>
-              <Text style={styles.homeTitle}>{tx('homeTitle')}</Text>
-              <Text style={styles.homeSubtitle}>{tx('homeSubtitle')}</Text>
-              <View style={styles.homeActionRow}>
-                <TouchableOpacity style={styles.primaryAction} onPress={() => setActiveTab('studio')}>
-                  <Text style={styles.primaryActionText}>{tx('startCataloging')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryAction} onPress={() => setActiveTab('market')}>
-                  <Text style={styles.secondaryActionText}>{tx('exploreCrafts')}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={styles.homeImageCard}>
-              <Image source={{ uri: 'https://images.unsplash.com/photo-1577083288073-40892c0860a4?auto=format&fit=crop&w=1200&q=80' }} style={styles.homeImage} />
-              <Text style={styles.homeImageCaption}>Terracotta • Madhubani • Dhokra • {t.mosjeVerified}</Text>
-            </View>
-            <Text style={styles.homeSectionTitle}>{tx('connectedPaths')}</Text>
-            <View style={styles.homeFeatureGrid}>
-              <View style={styles.homeFeatureCard}>
-                <Text style={styles.homeFeatureIcon}>🪡</Text>
-                <Text style={styles.homeFeatureTitle}>{tx('forArtisans')}</Text>
-                <Text style={styles.homeFeatureText}>{tx('artisanPath')}</Text>
-              </View>
-              <View style={styles.homeFeatureCard}>
-                <Text style={styles.homeFeatureIcon}>🏛️</Text>
-                <Text style={styles.homeFeatureTitle}>{tx('forBuyers')}</Text>
-                <Text style={styles.homeFeatureText}>{tx('buyerPath')}</Text>
-              </View>
-            </View>
-            <Text style={styles.homeSectionTitle}>{tx('aiCataloging')}</Text>
-            <View style={styles.homeFeatureCard}>
-              <Text style={styles.homeFeatureTitle}>{tx('aiCatalogingText')}</Text>
-              <Text style={styles.homeFeatureText}>{tx('homeSubtitle')}</Text>
-            </View>
-          </View>
-        ) : activeTab === 'studio' ? (
-          /* ======================================================= */
-          /* SCREEN 1: ARTISAN STUDIO                                */
-          /* ======================================================= */
-          <View style={styles.studioContainer}>
-            <View style={styles.offlineDraftBanner}>
-              <View style={styles.offlineDraftHeader}>
-                <Text style={styles.offlineDraftTitle}>{tx('saveDraft')}</Text>
-                <Text style={styles.offlineDraftBadge}>{catalogDrafts.length} saved</Text>
-              </View>
-              <Text style={styles.offlineDraftText}>{tx('bulkHelp')}</Text>
-              <TouchableOpacity style={styles.offlineDraftSaveButton} onPress={saveCatalogDraft}>
-                <Text style={styles.offlineDraftSaveText}>{tx('saveDraft')}</Text>
-              </TouchableOpacity>
-              {catalogDrafts.map(draft => (
-                <View key={draft.id} style={styles.offlineDraftRow}>
-                  <View style={styles.offlineDraftInfo}>
-                    <Text style={styles.offlineDraftName}>{draft.title}</Text>
-                    <Text style={styles.offlineDraftDate}>{new Date(draft.savedAt).toLocaleString()}</Text>
-                  </View>
-                  <View style={styles.offlineDraftActions}>
-                    <TouchableOpacity onPress={() => restoreCatalogDraft(draft)}>
-                      <Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => removeCatalogDraft(draft.id)}>
-                      <Text style={styles.offlineDraftRemove}>{tx('removePublished')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </View>
-            
-            {/* Step 1 Card: Photo Capture */}
-            <View style={styles.card}>
-              <Text style={styles.cardStepTitle}>{t.step1Title}</Text>
-              <Text style={styles.cardStepSub}>{t.step1Sub}</Text>
-
-              {/* Demo Sample Presets */}
-              <View style={styles.presetsRow}>
-                <Text style={styles.presetLabel}>{t.demoSampleTitle}</Text>
-                <View style={styles.presetButtons}>
-                  <TouchableOpacity style={styles.presetChip} onPress={() => loadDemoPreset(0)}>
-                    <Text style={styles.presetChipText}>🏺 Terracotta</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.presetChip} onPress={() => loadDemoPreset(1)}>
-                    <Text style={styles.presetChipText}>🐘 Brass</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.presetChip} onPress={() => loadDemoPreset(2)}>
-                    <Text style={styles.presetChipText}>🧵 Handloom</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Image Preview Box */}
-              <View style={styles.imageBox}>
-                {imageUri ? (
-                  <Image 
-                    source={{ uri: imageUri }} 
-                    style={[styles.previewImage, isEnhanced && styles.enhancedImage]} 
-                  />
-                ) : (
-                  <View style={styles.imagePlaceholder}>
-                    <Text style={styles.placeholderEmoji}>📸</Text>
-                    <Text style={styles.placeholderText}>
-                      {lang === 'hi' ? 'यहाँ फोटो दिखाई देगी' : 'Take or pick a photo of your craft'}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Studio Light Enhancement Switch */}
-              <View style={styles.enhancerRow}>
-                <View>
-                  <Text style={styles.enhancerTitle}>💡 {t.studioEnhancer}</Text>
-                  <Text style={styles.enhancerSub}>Professional marketplace lighting</Text>
-                </View>
-                <Switch 
-                  value={isEnhanced} 
-                  onValueChange={setIsEnhanced}
-                  trackColor={{ false: Colors.border, true: Colors.primary }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Quantity to sell (1-10)</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={listingQuantity}
-                  onChangeText={setListingQuantity}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  placeholderTextColor={Colors.textSecondary}
-                />
-                <Text style={styles.helperText}>Maximum 3 marketplace listings per artisan each calendar month.</Text>
-              </View>
-
-              {/* Action Buttons: Camera & Gallery */}
-              <View style={styles.actionButtonRow}>
-                <TouchableOpacity style={styles.primaryButton} onPress={takePhoto}>
-                  <Text style={styles.primaryButtonText}>📷 {t.btnCamera}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.secondaryButton} onPress={pickFromGallery}>
-                  <Text style={styles.secondaryButtonText}>🖼️ {t.btnGallery}</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Artisan Profile & Voice Notes */}
-              <View style={styles.formFields}>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>{t.artisanName}</Text>
-                  <TextInput 
-                    style={styles.textInput} 
-                    value={artisanName} 
-                    onChangeText={setArtisanName} 
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>{t.artisanLocation}</Text>
-                  <TextInput 
-                    style={styles.textInput} 
-                    value={artisanLocation} 
-                    onChangeText={setArtisanLocation} 
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>{t.artisanPhone}</Text>
-                  <TextInput 
-                    style={styles.textInput} 
-                    value={artisanPhone} 
-                    onChangeText={setArtisanPhone} 
-                    keyboardType="phone-pad" 
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>{t.priceIdea}</Text>
-                  <TextInput 
-                    style={styles.textInput} 
-                    value={priceIdea} 
-                    onChangeText={setPriceIdea} 
-                    keyboardType="numeric" 
-                    placeholder="e.g. 500"
-                    placeholderTextColor={Colors.textSecondary}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <View style={styles.inputLabelRow}>
-                    <Text style={styles.inputLabel}>{t.artisanNotes}</Text>
-                    <TouchableOpacity
-                      style={[styles.voiceButton, isListening && styles.voiceButtonActive]}
-                      onPress={toggleVoiceInput}
-                    >
-                      <Text style={styles.voiceButtonText}>
-                        {isListening ? `⏹️ ${tx('voiceListening')}` : '🎙️ Speak in English / Kannada / Hindi'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={styles.voiceLanguageRow}>
-                    {([['en-IN', 'English'], ['kn-IN', 'ಕನ್ನಡ'], ['hi-IN', 'हिन्दी']] as const).map(([code, label]) => (
-                      <TouchableOpacity
-                        key={code}
-                        style={[styles.voiceLanguageChip, voiceLanguage === code && styles.voiceLanguageChipActive]}
-                        onPress={() => setVoiceLanguage(code)}
-                      >
-                        <Text style={[styles.voiceLanguageChipText, voiceLanguage === code && styles.voiceLanguageChipTextActive]}>{label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <View style={styles.descriptionInputWrap}>
-                    <TextInput
-                      style={[styles.textInput, styles.textArea, styles.descriptionInput]}
-                      value={artisanNotes}
-                      onChangeText={setArtisanNotes}
-                      multiline
-                      placeholder={t.artisanNotesPlaceholder}
-                      placeholderTextColor={Colors.textSecondary}
-                    />
-                    <TouchableOpacity
-                      style={[styles.descriptionMicButton, isListening && styles.voiceButtonActive]}
-                      onPress={toggleVoiceInput}
-                      accessibilityLabel={isListening ? tx('voiceListening') : tx('voiceInput')}
-                    >
-                      <Text style={styles.descriptionMicText}>{isListening ? '⏹️' : '🎙️'}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={styles.voiceHint}>Speak in English, Kannada or Hindi. AI will create the English catalog description.</Text>
-                  {speechError ? <Text style={styles.errorText}>{speechError}</Text> : null}
-                </View>
-              </View>
-
-              {/* Analyze Button */}
-              <TouchableOpacity 
-                style={[styles.analyzeButton, (!imageUri || isAnalyzing) && styles.disabledButton]} 
-                onPress={handleAnalyze}
-                disabled={!imageUri || isAnalyzing}>
-                {isAnalyzing ? (
-                  <View style={styles.loadingRow}>
-                    <ActivityIndicator color="#FFFFFF" />
-                    <Text style={styles.analyzeButtonText}>{analysisProgress || t.analyzing}</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.analyzeButtonText}>{t.btnAnalyze}</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-
-            {/* Step 2 Card: Review & Edit Suggestions */}
-            {aiResult && (
-              <View style={[styles.card, styles.reviewCard]}>
-                <Text style={styles.cardStepTitle}>{t.step2Title}</Text>
-
-                {/* Title */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>{t.productTitle}</Text>
-                  <TextInput 
-                    style={styles.textInput} 
-                    value={editTitle} 
-                    onChangeText={setEditTitle} 
-                  />
-                </View>
-
-                {/* Category */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>{t.category}</Text>
-                  <TextInput 
-                    style={styles.textInput} 
-                    value={editCategory} 
-                    onChangeText={setEditCategory} 
-                  />
-                </View>
-
-                {/* Dynamic Pricing Assistant Box */}
-                <View style={styles.pricingBox}>
-                  <Text style={styles.pricingTitle}>⚖️ {t.pricingAssistant}</Text>
-                  <Text style={styles.pricingRange}>
-                    {t.fairRange} <Text style={styles.boldText}>₹{aiResult.pricing.fair_min} - ₹{aiResult.pricing.fair_max}</Text>
-                  </Text>
-                  <Text style={styles.pricingJustification}>{aiResult.pricing.justification}</Text>
-
-                  <TouchableOpacity 
-                    style={styles.applyPriceBtn} 
-                    onPress={() => setEditPrice(String(aiResult.pricing.suggested))}>
-                    <Text style={styles.applyPriceBtnText}>{t.btnApplyPrice} (₹{aiResult.pricing.suggested})</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Price Input */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Final Selling Price (₹)</Text>
-                  <TextInput 
-                    style={[styles.textInput, styles.boldPriceInput]} 
-                    value={editPrice} 
-                    onChangeText={setEditPrice} 
-                    keyboardType="numeric" 
-                  />
-                </View>
-
-                {/* Tags */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>{t.tags}</Text>
-                  <View style={styles.tagsContainer}>
-                    {tags.map((tag, idx) => (
-                      <TouchableOpacity key={idx} style={styles.tagChip} onPress={() => handleRemoveTag(idx)}>
-                        <Text style={styles.tagText}>#{tag} ×</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <View style={styles.addTagRow}>
-                    <TextInput 
-                      style={[styles.textInput, styles.addTagInput]} 
-                      value={newTag} 
-                      onChangeText={setNewTag} 
-                      placeholder="Add tag..." 
-                    />
-                    <TouchableOpacity style={styles.addTagBtn} onPress={handleAddTag}>
-                      <Text style={styles.addTagBtnText}>+ Add</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* English Description + Audio */}
-                <View style={styles.inputGroup}>
-                  <View style={styles.descHeaderRow}>
-                    <Text style={styles.inputLabel}>{t.descEn}</Text>
-                    <TouchableOpacity 
-                      style={styles.speakerBtn} 
-                      onPress={() => toggleSpeech(editDescEn, 'en')}>
-                      <Text style={styles.speakerBtnText}>{isSpeaking ? '⏹ Stop' : `🔊 ${t.listenDesc}`}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <TextInput 
-                    style={[styles.textInput, styles.textArea]} 
-                    value={editDescEn} 
-                    onChangeText={setEditDescEn} 
-                    multiline 
-                  />
-                </View>
-
-                {/* Hindi Description + Audio */}
-                <View style={styles.inputGroup}>
-                  <View style={styles.descHeaderRow}>
-                    <Text style={styles.inputLabel}>{t.descHi}</Text>
-                    <TouchableOpacity 
-                      style={styles.speakerBtn} 
-                      onPress={() => toggleSpeech(editDescHi, 'hi')}>
-                      <Text style={styles.speakerBtnText}>{isSpeaking ? '⏹ Stop' : `🔊 ${t.listenDesc}`}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <TextInput 
-                    style={[styles.textInput, styles.textArea]} 
-                    value={editDescHi} 
-                    onChangeText={setEditDescHi} 
-                    multiline 
-                  />
-                </View>
-
-                {/* Publish Button */}
-                <TouchableOpacity 
-                  style={[styles.publishButton, isPublishing && styles.disabledButton]} 
-                  onPress={handlePublish}
-                  disabled={isPublishing}>
-                  {isPublishing ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.publishButtonText}>{t.btnPublish}</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryButton} onPress={saveCatalogDraft}>
-                   <Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text>
-                </TouchableOpacity>
-
-              </View>
-            )}
-          </View>
-          ) : activeTab === 'market' ? (
-          /* ======================================================= */
-          /* SCREEN 2: BUYER MARKETPLACE FEED                        */
-          /* ======================================================= */
-          <View style={styles.marketContainer}>
-            
-            {/* Marketplace Banner */}
-            <View style={styles.marketHero}>
-              <Text style={styles.marketHeroTitle}>{t.marketTitle}</Text>
-              <Text style={styles.marketHeroSub}>{t.marketSub}</Text>
-              <TouchableOpacity
-                style={styles.marketSpeakButton}
-                onPress={() => toggleSpeech(`${t.marketTitle}. ${t.marketSub}. ${t.directToArtisan}. ${t.mosjeVerified}`, speechLocale)}
-              >
-                <Text style={styles.marketSpeakButtonText}>{isSpeaking ? '⏹ Stop' : `🔊 ${tx('tapToSpeak')}`}</Text>
-              </TouchableOpacity>
-              <View style={styles.guaranteeRow}>
-                <Text style={styles.guaranteeText}>✓ {t.directToArtisan}</Text>
-                <Text style={styles.guaranteeText}>✓ {t.mosjeVerified}</Text>
-              </View>
-            </View>
-
-            <View style={styles.bulkLeadCard}>
-              <Text style={styles.bulkLeadTitle}>{tx('bulkLinkage')}</Text>
-              <Text style={styles.bulkLeadText}>{tx('bulkSubtitle')}</Text>
-              <TouchableOpacity style={styles.bulkLeadButton} onPress={() => setActiveTab('institutional')}>
-                <Text style={styles.bulkLeadButtonText}>{tx('prepareRfq')}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Search Bar */}
-            <TextInput 
-              style={styles.searchBar} 
-              placeholder={t.searchPlaceholder} 
-              value={searchQuery} 
-              onChangeText={setSearchQuery}
-              placeholderTextColor={Colors.textSecondary}
-            />
-            <View style={styles.deliveryCard}>
-              <Text style={styles.deliveryTitle}>{tx('deliveryDetails')}</Text>
-              {([
-                ['recipientName', 'Full name'],
-                ['recipientPhone', tx('mobileNumber')],
-                ['addressLine', tx('houseStreet')],
-                ['city', tx('city')],
-                ['state', tx('state')],
-                ['pincode', tx('pincode')]
-              ] as const).map(([key, placeholder]) => (
-                <TextInput
-                  key={key}
-                  style={styles.deliveryInput}
-                  placeholder={placeholder}
-                  value={deliveryDetails[key]}
-                  onChangeText={value => setDeliveryDetails(prev => ({ ...prev, [key]: value }))}
-                  keyboardType={key === 'pincode' || key === 'recipientPhone' ? 'phone-pad' : 'default'}
-                  placeholderTextColor={Colors.textSecondary}
-                />
-              ))}
-            </View>
-            {!!orderActionMessage && <Text style={styles.orderActionMessage}>{orderActionMessage}</Text>}
-
-            {/* Category Filter Chips */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesBar}>
-              {categoriesList.map((cat, idx) => (
-                <TouchableOpacity 
-                  key={idx} 
-                  style={[styles.catChip, selectedCategory === cat && styles.catChipActive]}
-                  onPress={() => setSelectedCategory(cat)}>
-                  <Text style={[styles.catChipText, selectedCategory === cat && styles.catChipTextActive]}>
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* Products Feed */}
-            <View style={styles.productsFeed}>
-              {filteredProducts.map((product) => (
-                <View key={product.id} style={styles.productCard}>
-                  
-                  {/* Image & Badges */}
-                  <View style={styles.productImageWrapper}>
-                    <Image source={{ uri: product.image_url }} style={styles.productImage} />
-                    <View style={styles.categoryBadge}>
-                      <Text style={styles.categoryBadgeText}>{product.category}</Text>
-                    </View>
-                    <View style={styles.verifiedBadge}>
-                      <Text style={styles.verifiedBadgeText}>★ MoSJE</Text>
-                    </View>
-                    <View style={styles.priceBadge}>
-                      <Text style={styles.priceBadgeText}>₹{product.price}</Text>
-                    </View>
-                  </View>
-
-                  {/* Card Content */}
-                  <View style={styles.productCardBody}>
-                    <Text style={styles.productCardTitle}>{product.name}</Text>
-                    <Text style={styles.productArtisan}>
-                      👤 {product.artisan_name} &bull; {product.artisan_location}
-                    </Text>
-
-                    <Text style={styles.productDesc} numberOfLines={2}>
-                      {lang === 'hi' && product.description_hi ? product.description_hi : product.description_en}
-                    </Text>
-
-                    <View style={styles.ratingRow}>
-                      <Text style={styles.ratingText}>★ {Number(product.rating || 4.5).toFixed(1)}</Text>
-                      <Text style={styles.reviewText}>{product.reviews?.length || 0} {tx('reviews')}</Text>
-                    </View>
-
-                    <TouchableOpacity style={styles.reviewButton} onPress={() => setReviewProductId(reviewProductId === product.id ? null : product.id)}>
-                      <Text style={styles.reviewButtonText}>{tx('rateReview')}</Text>
-                    </TouchableOpacity>
-                    {reviewProductId === product.id && (
-                      <View style={styles.reviewEditor}>
-                        <View style={styles.reviewStarsRow}>
-                          {[1, 2, 3, 4, 5].map(star => (
-                            <TouchableOpacity key={star} onPress={() => setReviewRating(star)}>
-                              <Text style={[styles.reviewStar, star <= reviewRating && styles.reviewStarActive]}>★</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                        <TextInput
-                          style={styles.reviewInput}
-                          value={reviewComment}
-                          onChangeText={setReviewComment}
-                          placeholder={tx('writeExperience')}
-                          multiline
-                          placeholderTextColor={Colors.textSecondary}
-                        />
-                        <TouchableOpacity style={styles.submitReviewButton} onPress={() => submitReview(product)} disabled={isSubmittingReview}>
-                          {isSubmittingReview ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.submitReviewButtonText}>{tx('submitReview')}</Text>}
-                        </TouchableOpacity>
-                      </View>
-                    )}
-
-                    {product.image_gallery && product.image_gallery.length > 1 ? (
-                      <View style={styles.galleryRow}>
-                        {product.image_gallery.slice(0, 3).map((url, idx) => (
-                          <Image key={`${url}-${idx}`} source={{ uri: url }} style={styles.galleryThumb} />
-                        ))}
-                      </View>
-                    ) : null}
-
-                    <Text style={styles.quantityLabel}>Quantity for this order ({Math.max(1, Number(product.quantity ?? 10))} available)</Text>
-                    <View style={styles.quantityOptions}>
-                      {Array.from({ length: Math.max(0, Number(product.quantity ?? 10)) }, (_, index) => String(index + 1)).map(option => (
-                        <TouchableOpacity
-                          key={`${product.id}-${option}`}
-                          style={[styles.quantityOption, buyQuantity === option && styles.quantityOptionActive]}
-                          onPress={() => setBuyQuantity(option)}
-                        >
-                          <Text style={[styles.quantityOptionText, buyQuantity === option && styles.quantityOptionTextActive]}>{option}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                    <View style={styles.inlineActionRow}>
-                      <TouchableOpacity style={styles.inlineActionButton} onPress={() => toggleWishlist(product.id)}>
-                        <Text style={styles.inlineActionButtonText}>{wishlist.includes(product.id) ? t.removeFromWishlist : t.addToWishlist}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.inlineActionButtonPrimary, isPlacingOrder && styles.disabledButton]} onPress={() => requestOrder(product)} disabled={isPlacingOrder || (Number(product.quantity ?? 10) <= 0)}>
-                        <Text style={styles.inlineActionButtonText}>{isPlacingOrder ? 'Placing...' : Number(product.quantity ?? 10) <= 0 ? 'Sold Out' : t.buyNow}</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <TouchableOpacity 
-                      style={styles.whatsAppButton} 
-                      onPress={() => openWhatsApp(product.artisan_phone || '+919876543210', product.name, product.price)}>
-                      <Text style={styles.whatsAppButtonText}>💬 {t.btnWhatsApp}</Text>
-                    </TouchableOpacity>
-                    {isLoggedIn && (
-                      <TouchableOpacity style={styles.deleteProductButton} onPress={() => removeOwnProduct(product)}>
-                        <Text style={styles.deleteProductButtonText}>Delete my listing</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                </View>
-              ))}
-            </View>
-          </View>
-        ) : activeTab === 'institutional' ? (
-        <View style={styles.marketContainer}>
-          <View style={styles.institutionalHero}>
-            <Text style={styles.institutionalKicker}>{tx('bulkHero')}</Text>
-            <Text style={styles.institutionalTitle}>{tx('bulkTitle')}</Text>
-            <Text style={styles.institutionalSubtitle}>{tx('bulkSubtitle')}</Text>
-          </View>
-          <View style={styles.card}>
-            <Text style={styles.stepLabel}>{tx('step')} 1</Text>
-            <Text style={styles.profileSectionTitle}>{tx('createBulkRequest')}</Text>
-            <Text style={styles.bulkHelpText}>{tx('bulkHelp')}</Text>
-            <TextInput style={styles.textInput} value={currentUser?.name || authName} placeholder={t.fullName} editable={!isLoggedIn} placeholderTextColor={Colors.textSecondary} />
-            <TextInput style={styles.textInput} value={currentUser?.email || authEmail} placeholder={`${t.email} for follow-up`} keyboardType="email-address" editable={!isLoggedIn} placeholderTextColor={Colors.textSecondary} />
-            <TextInput style={styles.textInput} value={bulkBuyerType} onChangeText={setBulkBuyerType} placeholder={tx('buyerType')} placeholderTextColor={Colors.textSecondary} />
-            <TextInput style={styles.textInput} value={bulkCategory} onChangeText={setBulkCategory} placeholder={t.category} placeholderTextColor={Colors.textSecondary} />
-            <View style={styles.bulkInputRow}>
-              <TextInput style={[styles.textInput, styles.bulkHalfInput]} value={bulkQuantity} onChangeText={setBulkQuantity} placeholder="Quantity" keyboardType="numeric" placeholderTextColor={Colors.textSecondary} />
-              <TextInput style={[styles.textInput, styles.bulkHalfInput]} value={bulkUnitPrice} onChangeText={setBulkUnitPrice} placeholder="Unit price (₹)" keyboardType="numeric" placeholderTextColor={Colors.textSecondary} />
-            </View>
-            <TextInput style={styles.textInput} value={bulkLeadTime} onChangeText={setBulkLeadTime} placeholder="Production / dispatch lead time" placeholderTextColor={Colors.textSecondary} />
-            <TextInput style={[styles.textInput, styles.textArea]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder="Packaging, customization, certifications, quality sample notes..." placeholderTextColor={Colors.textSecondary} />
-            <TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}>
-              <Text style={styles.primaryActionText}>{tx('submitRfq')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryButton} onPress={saveBulkDraft}>
-              <Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text>
-            </TouchableOpacity>
-            {bulkDrafts.length > 0 && (
-              <View>
-                <Text style={styles.helperText}>{bulkDrafts.length} bulk draft(s) saved on this device.</Text>
-                <TouchableOpacity onPress={() => restoreBulkDraft(bulkDrafts[0])}>
-                  <Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-          <View style={styles.card}>
-            <Text style={styles.stepLabel}>{tx('step')} 2</Text>
-            <Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text>
-            <Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text>
-            <View style={styles.bulkPricingCard}>
-              <View style={styles.bulkPricingHeader}>
-                <Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text>
-                <Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text>
-              </View>
-              <Text style={styles.bulkPricingHint}>
-                Based on {bulkQuantityNumber || 0} units at ₹{bulkUnitPriceNumber.toLocaleString('en-IN')} base price
-              </Text>
-              {bulkPricingTiers.map(tier => (
-                <View key={tier.volume} style={styles.bulkPricingRow}>
-                  <Text style={styles.bulkPricingVolume}>{tier.volume}</Text>
-                  <Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text>
-                  <Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>
-                    {bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}
-                  </Text>
-                </View>
-              ))}
-            </View>
-            <View style={styles.bulkToolRow}>
-              <TouchableOpacity style={styles.bulkToolButton} onPress={() => {
-                if (!bulkQuantityNumber || !bulkUnitPriceNumber) {
-                  Alert.alert('Bulk pricing', 'Enter both quantity and unit price to calculate your live bulk total.');
-                  return;
-                }
-                const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0;
-                const tier = bulkPricingTiers[tierIndex];
-                const total = Math.round(tier.price) * bulkQuantityNumber;
-                const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber));
-                Alert.alert('Bulk pricing', `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`);
-              }}>
-                <Text style={styles.bulkToolText}>📊 Bulk pricing calculator</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.bulkToolButton} onPress={() => Alert.alert('RFQ pitch', `Create a buyer pitch for ${bulkCategory}, ${bulkQuantity} units at ₹${bulkUnitPrice} each.`)}>
-                <Text style={styles.bulkToolText}>✉️ Generate RFQ pitch</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.bulkToolRow}>
-              <TouchableOpacity style={styles.bulkToolButton} onPress={() => Alert.alert('GeM export', 'Your RFQ details are ready to be copied into a GeM-compliant CSV.')}>
-                <Text style={styles.bulkToolText}>📦 GeM-ready export</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.bulkToolButton} onPress={() => Alert.alert('ONDC export', 'Your RFQ details are ready for an ONDC Beckn JSON payload.')}>
-                <Text style={styles.bulkToolText}>⚡ ONDC JSON</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          <View style={styles.card}>
-            <Text style={styles.stepLabel}>{tx('step')} 3</Text>
-            <Text style={styles.profileSectionTitle}>{tx('connectChannels')}</Text>
-            <Text style={styles.bulkHelpText}>{tx('connectHelp')}</Text>
-            <View style={styles.bulkChannelRow}>
-              <TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://gem.gov.in/')}><Text style={styles.bulkToolText}>GeM ↗</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://ondc.org/')}><Text style={styles.bulkToolText}>ONDC ↗</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://trifed.tribal.gov.in/')}><Text style={styles.bulkToolText}>TRIFED ↗</Text></TouchableOpacity>
-            </View>
-            <TouchableOpacity style={styles.secondaryAction} onPress={() => openBulkChannel('mailto:kalasetu24824.9@gmail.com?subject=KalaSetu%20Bulk%20Buyer%20Support')}>
-              <Text style={styles.secondaryActionText}>{tx('emailSupport')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        ) : activeTab === 'account' ? (
-          <View style={styles.marketContainer}>
-            {!isLoggedIn ? (
-              <View style={styles.authCard}>
-                <Text style={styles.marketHeroTitle}>{t.loginTitle}</Text>
-                <Text style={styles.authSubtitle}>{t.loginSubtitle}</Text>
-                <TextInput style={styles.searchBar} value={authEmail} onChangeText={setAuthEmail} placeholder={t.email} keyboardType="email-address" autoCapitalize="none" />
-                <TextInput style={styles.searchBar} value={authPassword} onChangeText={setAuthPassword} placeholder={t.password} secureTextEntry />
-                <TouchableOpacity style={styles.primaryAction} onPress={handleGuestLogin}>
-                  <Text style={styles.primaryActionText}>{t.signIn}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.profileCard}>
-                <Text style={styles.marketHeroTitle}>{tx('account')}</Text>
-                <Text style={styles.profileName}>{currentUser?.name}</Text>
-                <Text style={styles.profileMeta}>{currentUser?.email} · {currentUser?.city}</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.accountSubnav}>
-                  {([
-                    ['profile', tx('profile')], ['history', tx('history')], ['orders', t.tabOrders],
-                    ['requests', tx('requests')], ['wishlist', t.tabWishlist], ['notifications', tx('notifications')], ['admin', tx('admin')]
-                  ] as const).map(([key, label]) => (
-                    <TouchableOpacity key={key} style={[styles.accountSubnavButton, accountView === key && styles.accountSubnavButtonActive]} onPress={() => setAccountView(key)}>
-                      <Text style={[styles.accountSubnavText, accountView === key && styles.accountSubnavTextActive]}>{label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-                {accountView === 'profile' && (
-                  <View>
-                    <Text style={styles.profileSectionTitle}>{tx('profile')}</Text>
-                    <Text style={styles.notificationText}>{tx('role')}: {roleLabel}</Text>
-                    <Text style={styles.notificationText}>{tx('publishedListings')}: {publishedProducts.length}</Text>
-                    <Text style={styles.notificationText}>{tx('savedCrafts')}: {wishlist.length}</Text>
-                    <TouchableOpacity style={styles.secondaryAction} onPress={handleLogout}><Text style={styles.secondaryActionText}>{tx('logout')}</Text></TouchableOpacity>
-                  </View>
-                )}
-                {accountView === 'history' && (
-                  <View>
-                    <Text style={styles.profileSectionTitle}>{tx('activityHistory')}</Text>
-                    <Text style={styles.notificationText}>{orders.length} {tx('purchaseOrders')}</Text>
-                    <Text style={styles.notificationText}>{publishedProducts.length} {tx('publishedListing')}</Text>
-                    {orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>• {order.productName} — {order.status}</Text>)}
-                    {publishedProducts.slice(0, 5).map(product => <Text key={`published-${product.id}`} style={styles.notificationText}>• Published: {product.name} — ₹{product.price}</Text>)}
-                  </View>
-                )}
-                {accountView === 'orders' && (
-                  <View>
-                    <Text style={styles.profileSectionTitle}>{tx('ordersByMe')}</Text>
-                    {orders.filter(order => order.status.toLowerCase() !== 'cancelled').length === 0 ? <Text style={styles.emptyStateText}>{tx('noActiveOrders')}</Text> : orders.filter(order => order.status.toLowerCase() !== 'cancelled').map(order => (
-                      <View key={order.id} style={styles.orderCard}>
-                        <Text style={styles.orderTitle}>{order.productName}</Text>
-                        <Text style={styles.orderMeta}>₹{order.price} · {order.status}</Text>
-                        <TouchableOpacity style={styles.secondaryAction} onPress={() => handleCancelOrder(order.id)}><Text style={styles.secondaryActionText}>{tx('cancelOrder')}</Text></TouchableOpacity>
-                      </View>
-                    ))}
-                    <Text style={styles.profileSectionTitle}>{tx('ordersPublishedByMe')}</Text>
-                    {publishedProducts.map(product => <View key={product.id} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} · {product.category}</Text><TouchableOpacity style={[styles.deleteProductButton, deletingProductId === product.id && styles.disabledButton]} onPress={() => removeOwnProduct(product)} disabled={deletingProductId === product.id}><Text style={styles.deleteProductButtonText}>{deletingProductId === product.id ? 'Removing...' : tx('removePublished')}</Text></TouchableOpacity></View>)}
-                  </View>
-                )}
-                {accountView === 'requests' && (
-                  <View>
-                    <Text style={styles.profileSectionTitle}>{tx('bulkRequests')}</Text>
-                    <TextInput style={styles.textInput} value={bulkBuyerType} onChangeText={setBulkBuyerType} placeholder={tx('forBuyers')} />
-                    <TextInput style={[styles.textInput, styles.textArea]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder={tx('bulkHelp')} />
-                    <TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}><Text style={styles.primaryActionText}>{tx('sendRequest')}</Text></TouchableOpacity>
-                  </View>
-                )}
-                {accountView === 'wishlist' && (
-                  <View>
-                    <Text style={styles.profileSectionTitle}>{tx('savedCraftsTitle')}</Text>
-                    {products.filter(product => wishlist.includes(product.id)).map(product => <View key={product.id} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} · {product.artisan_name}</Text></View>)}
-                    {wishlist.length === 0 && <Text style={styles.emptyStateText}>{tx('noSavedCrafts')}</Text>}
-                  </View>
-                )}
-                {accountView === 'notifications' && (
-                  <View style={styles.notificationCard}>
-                    <Text style={styles.notificationTitle}>{tx('notifications')}</Text>
-                    {orders.length ? orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>{tx('orderUpdate')}: {order.productName} is {order.status}.</Text>) : <Text style={styles.notificationText}>{tx('noNotifications')}</Text>}
-                  </View>
-                )}
-                {accountView === 'admin' && (
-                  <View>
-                    <Text style={styles.profileSectionTitle}>{tx('adminReview')}</Text>
-                    {!adminToken ? (
-                      <View>
-                        <Text style={styles.bulkHelpText}>{tx('reviewRequests')}</Text>
-                        <TextInput style={styles.textInput} value={adminEmail} onChangeText={setAdminEmail} placeholder={tx('adminEmail')} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.textSecondary} />
-                        <TextInput style={styles.textInput} value={adminPassword} onChangeText={setAdminPassword} placeholder={tx('adminPassword')} secureTextEntry placeholderTextColor={Colors.textSecondary} />
-                        {!!adminStatus && <Text style={styles.orderActionMessage}>{adminStatus}</Text>}
-                        <TouchableOpacity style={styles.primaryAction} onPress={handleAdminLogin}>
-                          <Text style={styles.primaryActionText}>{tx('signInAdmin')}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <View>
-                        <View style={styles.adminHeaderRow}>
-                          <Text style={styles.bulkHelpText}>{tx('requestQueue')}</Text>
-                          <TouchableOpacity onPress={handleAdminLogout}><Text style={styles.offlineDraftRemove}>Logout</Text></TouchableOpacity>
-                        </View>
-                        {adminRequests.length === 0 ? <Text style={styles.emptyStateText}>No institutional requests yet.</Text> : adminRequests.map(request => (
-                          <View key={request.id} style={styles.orderCard}>
-                            <Text style={styles.orderTitle}>{request.artisan_name} · {request.product_category || 'Craft request'}</Text>
-                            <Text style={styles.orderMeta}>{request.email} · Qty {request.quantity || 1} · {request.target_market || 'Bulk'}</Text>
-                            <Text style={styles.orderMeta}>{request.requirements || 'No requirements'}</Text>
-                            <View style={styles.adminStatusRow}>
-                              {['New', 'In Review', 'Approved', 'Rejected'].map(status => (
-                                <TouchableOpacity key={status} style={[styles.adminStatusButton, request.status === status && styles.adminStatusButtonActive]} onPress={() => handleAdminUpdate(request.id, status)}>
-                                  <Text style={[styles.adminStatusText, request.status === status && styles.adminStatusTextActive]}>{status}</Text>
-                                </TouchableOpacity>
-                              ))}
-                            </View>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-        ) : activeTab === 'wishlist' ? (
-          <View style={styles.marketContainer}>
-            <Text style={styles.marketHeroTitle}>{t.wishlistTitle}</Text>
-            {wishlist.length === 0 ? (
-              <View style={styles.emptyStateCard}>
-                <Text style={styles.emptyStateText}>Save products you like to build your shortlist.</Text>
-              </View>
-            ) : (
-              <View style={styles.productsFeed}>
-                {products.filter(p => wishlist.includes(p.id)).map(product => (
-                  <View key={product.id} style={styles.productCard}>
-                    <View style={styles.productImageWrapper}>
-                      <Image source={{ uri: product.image_url }} style={styles.productImage} />
-                      <View style={styles.priceBadge}>
-                        <Text style={styles.priceBadgeText}>₹{product.price}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.productCardBody}>
-                      <Text style={styles.productCardTitle}>{product.name}</Text>
-                      <TouchableOpacity style={styles.whatsAppButton} onPress={() => requestOrder(product)}>
-                        <Text style={styles.whatsAppButtonText}>{t.buyNow}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        ) : activeTab === 'orders' ? (
-          <View style={styles.marketContainer}>
-            <Text style={styles.marketHeroTitle}>{t.ordersTitle}</Text>
-            {!isLoggedIn ? (
-              <View style={styles.emptyStateCard}>
-                <Text style={styles.emptyStateText}>Sign in to track your purchase requests and delivery updates.</Text>
-              </View>
-            ) : orders.length === 0 && publishedProducts.length === 0 ? (
-              <View style={styles.emptyStateCard}>
-                <Text style={styles.emptyStateText}>No orders yet. Your recent requests will appear here.</Text>
-              </View>
-            ) : (
-              <View style={styles.productsFeed}>
-                <Text style={styles.orderTitle}>{tx('ordersByMe')}</Text>
-                {orders.length === 0 ? <Text style={styles.emptyStateText}>{tx('noActiveOrders')}</Text> : orders.map((order) => (
-                  <View key={order.id} style={styles.orderCard}>
-                    <Text style={styles.orderTitle}>{order.productName}</Text>
-                    <Text style={styles.orderMeta}>₹{order.price} • {order.customerName}</Text>
-                    <Text style={styles.orderMeta}>{t.orderStatus}: {order.status}</Text>
-                    <Text style={styles.orderMeta}>{t.deliveryEta}: {order.eta}</Text>
-                    <TextInput
-                      style={styles.searchBar}
-                      value={cancelReason}
-                      onChangeText={setCancelReason}
-                      placeholder="Why cancel this order?"
-                    />
-                    <TouchableOpacity style={styles.secondaryAction} onPress={() => handleCancelOrder(order.id)}>
-                      <Text style={styles.secondaryActionText}>{tx('cancelOrder')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-                <Text style={styles.orderTitle}>{tx('ordersPublishedByMe')}</Text>
-                {publishedProducts.length === 0 ? <Text style={styles.emptyStateText}>{tx('noPublishedProducts')}</Text> : publishedProducts.map(product => (
-                  <View key={`published-${product.id}`} style={styles.orderCard}>
-                    <Text style={styles.orderTitle}>{product.name}</Text>
-                    <Text style={styles.orderMeta}>₹{product.price} • {product.category} • Qty {product.quantity || 0}</Text>
-                    <TouchableOpacity style={styles.deleteProductButton} onPress={() => removeOwnProduct(product)}>
-                      <Text style={styles.deleteProductButtonText}>{tx('removePublished')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        ) : (
-          <View style={styles.marketContainer}>
-            {!isLoggedIn ? (
-              <View style={styles.authCard}>
-                <Text style={styles.marketHeroTitle}>{t.loginTitle}</Text>
-                <Text style={styles.authSubtitle}>{t.loginSubtitle}</Text>
-                <View style={styles.authToggleRow}>
-                  <TouchableOpacity style={[styles.authToggle, authMode === 'login' && styles.authToggleActive]} onPress={() => setAuthMode('login')}>
-                    <Text style={[styles.authToggleText, authMode === 'login' && styles.authToggleTextActive]}>{t.signIn}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.authToggle, authMode === 'register' && styles.authToggleActive]} onPress={() => setAuthMode('register')}>
-                    <Text style={[styles.authToggleText, authMode === 'register' && styles.authToggleTextActive]}>{t.register}</Text>
-                  </TouchableOpacity>
-                </View>
-                <TextInput style={styles.searchBar} value={authName} onChangeText={setAuthName} placeholder={t.fullName} placeholderTextColor={Colors.textSecondary} />
-                <TextInput style={styles.searchBar} value={authEmail} onChangeText={setAuthEmail} placeholder={t.email} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.textSecondary} />
-                <TextInput style={styles.searchBar} value={authPassword} onChangeText={setAuthPassword} placeholder={t.password} secureTextEntry placeholderTextColor={Colors.textSecondary} />
-                <TextInput style={styles.searchBar} value={artisanLocation} onChangeText={setArtisanLocation} placeholder={t.artisanLocation} placeholderTextColor={Colors.textSecondary} />
-                <View style={styles.roleRow}>
-                  <TouchableOpacity style={[styles.roleChip, authRole === 'buyer' && styles.roleChipActive]} onPress={() => setAuthRole('buyer')}>
-                    <Text style={[styles.roleChipText, authRole === 'buyer' && styles.roleChipTextActive]}>{t.continueAsBuyer}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.roleChip, authRole === 'artisan' && styles.roleChipActive]} onPress={() => setAuthRole('artisan')}>
-                    <Text style={[styles.roleChipText, authRole === 'artisan' && styles.roleChipTextActive]}>{t.continueAsSeller}</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity style={styles.primaryAction} onPress={handleGuestLogin}>
-                  <Text style={styles.primaryActionText}>{authMode === 'login' ? t.signIn : t.register}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.profileCard}>
-                <Text style={styles.marketHeroTitle}>{t.profileTitle}</Text>
-                <View style={styles.profileSummary}>
-                  <Text style={styles.profileName}>{currentUser?.name}</Text>
-                  <Text style={styles.profileMeta}>{currentUser?.email}</Text>
-                  <Text style={styles.profileMeta}>{currentUser?.city}</Text>
-                  <Text style={styles.profileMeta}>Role: {currentUser?.role || 'both'} · Seller & Buyer</Text>
-                </View>
-
-                <Text style={styles.profileSectionTitle}>History & notifications</Text>
-                <View style={styles.notificationCard}>
-                  <Text style={styles.notificationTitle}>Recent activity</Text>
-                  <Text style={styles.notificationText}>{orders.length} {tx('purchaseHistory')}</Text>
-                  <Text style={styles.notificationText}>{publishedProducts.length} {tx('publishedManage')}</Text>
-                  {orders.slice(0, 3).map(order => (
-                    <Text key={`notification-${order.id}`} style={styles.notificationText}>• {order.productName}: {order.status}</Text>
-                  ))}
-                </View>
-
-                <Text style={styles.profileSectionTitle}>Bulk Requests</Text>
-                <View style={styles.bulkRequestGrid}>
-                  <View style={styles.bulkRequestColumn}>
-                    <Text style={styles.bulkRequestColumnTitle}>Bulk request from other buyers</Text>
-                    <View style={styles.bulkRequestList}>
-                      <Text style={styles.bulkRequestItem}>Retail Chain RFQ • 120 pcs</Text>
-                      <Text style={styles.bulkRequestItem}>Government Supply Notice • 500 pcs</Text>
-                      <Text style={styles.bulkRequestItem}>Corporate Gifting • 250 pcs</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.bulkRequestColumn}>
-                    <Text style={styles.bulkRequestColumnTitle}>Bulk sell request by me</Text>
-                    <View style={styles.bulkRequestList}>
-                      <Text style={styles.bulkRequestItem}>My textile lot • 300 pcs</Text>
-                      <Text style={styles.bulkRequestItem}>My craft supply • 80 pcs</Text>
-                      <Text style={styles.bulkRequestItem}>My institutional lot • 600 pcs</Text>
-                    </View>
-                  </View>
-                </View>
-
-                <TouchableOpacity style={styles.secondaryAction} onPress={handleLogout}>
-                  <Text style={styles.secondaryActionText}>Log out</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.supportButton} onPress={() => Linking.openURL('mailto:kalasetu24824.9@gmail.com?subject=KalaSetu%20Support')}>
-                  <Text style={styles.supportButtonText}>Help & Support: kalasetu24824.9@gmail.com</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        )}
-
+        {renderMainContent()}
       </ScrollView>
 
       {/* Bottom Tab Navigation Bar */}
@@ -1965,7 +1480,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.35)',
     alignItems: 'flex-end',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) + 52 : 42,
+    paddingTop: Platform.OS === 'android' ? 76 : 42,
     paddingRight: 12,
   },
   languageMenu: {

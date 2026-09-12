@@ -43,9 +43,13 @@ def translate_text_with_gemini(text: str, source_language: str = "Kannada", targ
         "Preserve craft names, materials, techniques and cultural meaning. Return only the translated text.\n\n"
         f"{text.strip()}"
     )
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY,
+    }
     response = requests.post(
         GEMINI_API_URL,
-        params={"key": GEMINI_API_KEY},
+        headers=headers,
         json={
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.1, "maxOutputTokens": 512},
@@ -143,9 +147,10 @@ Return ONLY a valid JSON object matching this exact schema:
   "care_instructions": "One simple sentence advising the buyer on how to care for this handmade product."
 }}
 """
-
-    headers = {"Content-Type": "application/json"}
-    params = {"key": GEMINI_API_KEY}
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY,
+    }
 
     payload = {
         "contents": [
@@ -173,7 +178,6 @@ Return ONLY a valid JSON object matching this exact schema:
         response = requests.post(
             GEMINI_API_URL,
             headers=headers,
-            params=params,
             json=payload,
             timeout=25
         )

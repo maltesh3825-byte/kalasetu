@@ -4,11 +4,27 @@ Smart India Hackathon 2026 - SIH26090
 """
 import sqlite3
 import json
-from backend.config import DATABASE_PATH
+from backend.config import DATABASE_PATH, DATABASE_URL
 
 
 def get_db_connection():
-    """Create a thread-safe connection to the SQLite database."""
+    """
+    Create a thread-safe database connection.
+    If DATABASE_URL is set (e.g. Supabase/PostgreSQL), connects via psycopg2.
+    Otherwise, gracefully falls back to local SQLite database.
+    """
+    if DATABASE_URL and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
+        try:
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            pg_url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+            conn = psycopg2.connect(pg_url, cursor_factory=RealDictCursor)
+            return conn
+        except ImportError:
+            print("[DATABASE WARNING] DATABASE_URL provided but psycopg2 is not installed. Falling back to SQLite.")
+        except Exception as err:
+            print(f"[DATABASE ERROR] Could not connect to PostgreSQL ({err}). Falling back to SQLite.")
+
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row
     return conn

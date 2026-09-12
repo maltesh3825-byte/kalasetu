@@ -2,14 +2,30 @@
  * API Service for KalaSetu Mobile App
  * Connects to FastAPI Backend with Automatic Heuristic Fallback
  */
+import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-// Override through a public Expo environment variable for deployed backends.
-// Example: EXPO_PUBLIC_BACKEND_URL=https://your-render-app.onrender.com
+// Determine local vs production backend URL:
+// In development, automatically point to local server:
+// - Web: http://localhost:8000
+// - Phone (Expo Go): http://<YOUR_LOCAL_IP>:8000
+// - Android Emulator: http://10.0.2.2:8000
+const getDevBackendUrl = () => {
+  if (Platform.OS === 'web') {
+    return 'http://localhost:8000';
+  }
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const ip = hostUri.split(':')[0];
+    return `http://${ip}:8000`;
+  }
+  return 'http://10.0.2.2:8000';
+};
+
 const configuredBackendUrl =
   Constants.expoConfig?.extra?.backendUrl ||
   process.env.EXPO_PUBLIC_BACKEND_URL ||
-  'https://kalakriti-api-nmnz.onrender.com';
+  (__DEV__ ? getDevBackendUrl() : 'https://kalakriti-api-nmnz.onrender.com');
 
 export const BACKEND_URL = configuredBackendUrl;
 
@@ -227,8 +243,14 @@ export async function analyzeProductPhoto(
     const match = /\.(\w+)$/.exec(filename);
     const type = match ? `image/${match[1]}` : `image/jpeg`;
 
-    // @ts-ignore: React Native FormData file format
-    formData.append('file', { uri: imageUri, name: filename, type });
+    if (Platform.OS === 'web' && (imageUri.startsWith('blob:') || imageUri.startsWith('data:'))) {
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      formData.append('file', blob, filename);
+    } else {
+      // @ts-ignore: React Native FormData file format
+      formData.append('file', { uri: imageUri, name: filename, type });
+    }
     if (notes) formData.append('notes', notes);
     if (priceHint) formData.append('price_hint', priceHint);
 
@@ -243,6 +265,8 @@ export async function analyzeProductPhoto(
     if (res.ok) {
       return await res.json();
     }
+    const errData = await res.json().catch(() => ({}));
+    console.warn("Backend vision API returned HTTP error:", res.status, errData);
   } catch (err) {
     console.warn("Error calling backend vision API, using local intelligent simulation:", err);
   }
@@ -336,206 +360,229 @@ export async function loginUser(email: string, password: string, role: UserRole 
         return data.user as AppUser;
       }
 
+    } 
+    catch (err) {
+      console.error('Authentication request failed:', err);
+      throw new Error('Unable to connect to authentication server. Please check your network connection.');
     }
-  } catch (err) {
-    console.warn('Auth backend unavailable, using local fallback demo login:', err);
-  }
 
-  if (email.toLowerCase().includes('artisan')) {
-    return {
-      id: 2,
-      name: 'Seema Devi',
-      email,
-      role: 'both',
-      phone: '+919876543210',
-      city: 'Madhubani, Bihar',
-      language: 'hi'
-    };
+    // Reject unauthenticated access. Never auto-authenticate with mock credentials in production.
+    throw new Error('Invalid email or password.');
   }
+}
 
-  return {
-    id: 1,
-    name: 'Aarav Sharma',
-    email,
-    role: 'both',
-    phone: '+919800112233',
-    city: 'Bhopal, Madhya Pradesh',
-    language: 'en'
-  };
+export async function loginWithPhone(phone: string, pin: string): Promise<AppUser> {
+  const res = await fetch(`${BACKEND_URL}/api/auth/phone-login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, password: pin })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.user) {
+    throw new Error(data.detail || 'Invalid phone number or PIN');
+  }
+  return data.user as AppUser;
+}
+
+export async function registerWithPhone(params: {
+  phone: string;
+  pin: string;
+  name: string;
+  role?: UserRole;
+  city?: string;
+  language?: string;
+}): Promise<AppUser> {
+  const res = await fetch(`${BACKEND_URL}/api/auth/phone-register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      phone: params.phone,
+      password: params.pin,
+      name: params.name,
+      role: params.role || 'artisan',
+      city: params.city || '',
+      language: params.language || 'hi'
+    })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.user) {
+    throw new Error(data.detail || 'Phone registration failed');
+  }
+  return data.user as AppUser;
 }
 
 export async function loginAdmin(email: string, password: string): Promise<string> {
-  const res = await fetch(`${BACKEND_URL}/api/admin/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.admin_token) throw new Error(data.detail || 'Invalid admin credentials');
-  return data.admin_token;
-}
-
-export async function fetchAdminRequests(token: string): Promise<AdminRequest[]> {
-  const res = await fetch(`${BACKEND_URL}/api/admin/institutional-requests`, {
-    headers: { 'X-Admin-Token': token }
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || 'Admin review queue could not be loaded');
-  return data.requests || [];
-}
-
-export async function updateAdminRequest(token: string, requestId: number, status: string, adminNotes: string): Promise<void> {
-  const res = await fetch(`${BACKEND_URL}/api/admin/institutional-requests/${requestId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': token },
-    body: JSON.stringify({ status, admin_notes: adminNotes })
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || 'Admin review could not be saved');
-}
-
-export async function createOrder(input: {
-  userId: number;
-  productId: number;
-  productName: string;
-  price: number;
-  quantity: number;
-  customerName: string;
-  recipientName: string;
-  recipientPhone: string;
-  addressLine: string;
-  city: string;
-  state: string;
-  pincode: string;
-}): Promise<OrderRecord> {
-  const order: OrderRecord = {
-    id: Date.now(),
-    productId: input.productId,
-    productName: input.productName,
-    price: input.price,
-    quantity: input.quantity,
-    status: 'Confirmed',
-    eta: '2-4 working days',
-    customerName: input.customerName
-  };
-
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/orders`, {
+    const res = await fetch(`${BACKEND_URL}/api/admin/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: input.userId,
-        product_id: input.productId,
-        product_name: input.productName,
-        quantity: input.quantity,
-        total: input.price * input.quantity,
-        status: order.status,
-        eta: order.eta,
-        recipient_name: input.recipientName,
-        recipient_phone: input.recipientPhone,
-        address_line: input.addressLine,
-        city: input.city,
-        state: input.state,
-        pincode: input.pincode
-      })
+      body: JSON.stringify({ email, password })
     });
-
-    if (res.ok) {
-      const data = await res.json();
-      return { ...order, id: Number(data.order_id) || order.id, quantity: input.quantity };
-    }
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || 'Could not place the order request.');
-
-  } catch (err) {
-    if (!(err instanceof Error) || err.message === 'Failed to fetch') {
-      console.warn('Order API unavailable, saved in app state only:', err);
-    } else {
-      throw err;
-    }
+    if (!res.ok || !data.admin_token) throw new Error(data.detail || 'Invalid admin credentials');
+    return data.admin_token;
   }
 
-  return { ...order, quantity: input.quantity };
-}
-
-export async function deleteProduct(productId: number, userId: number): Promise<void> {
-  const res = await fetch(`${BACKEND_URL}/api/products/${productId}`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId })
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || 'Product could not be deleted');
-}
-
-export async function fetchPublishedProducts(userId: number): Promise<CraftProduct[]> {
-  const res = await fetch(`${BACKEND_URL}/api/products/${userId}/published`);
-  if (!res.ok) throw new Error('Published products could not be loaded');
-  const data = await res.json();
-  return data.products || [];
-}
-
-export async function fetchOrdersForUser(userId: number): Promise<OrderRecord[]> {
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/orders/${userId}`, { method: 'GET' });
-    if (!res.ok) {
-      throw new Error('Backend orders unavailable');
-    }
-    const data = await res.json();
-    return (data.orders || []).map((row: any) => ({
-      id: row.id,
-      productId: row.product_id,
-      productName: row.product_name,
-      price: Number(row.total || row.price || 0),
-      status: String(row.status || 'Confirmed'),
-      eta: row.eta || '2-4 working days',
-      customerName: row.buyer_name || 'Verified Buyer',
-      quantity: Number(row.quantity || 1)
-    }));
-  } catch (err) {
-    console.warn('Falling back to mobile demo orders:', err);
-  }
-
-  return [
-    {
-      id: 101,
-      productId: 1,
-      productName: 'Terracotta Hand-Painted Surahi',
-      price: 650,
-      status: 'In Transit',
-      eta: 'Tomorrow',
-      customerName: 'Aarav Sharma',
-      quantity: 1
-    },
-    {
-      id: 102,
-      productId: 3,
-      productName: 'Mirrorwork Wall Hanging',
-      price: 1400,
-      status: 'Packed',
-      eta: '2 days',
-      customerName: 'Aarav Sharma',
-      quantity: 1
-    }
-  ];
-}
-
-export async function cancelOrderApi(orderId: number, reason: string): Promise<CancelOrderResponse | null> {
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/orders/${orderId}/cancel`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason })
+  export async function fetchAdminRequests(token: string): Promise<AdminRequest[]> {
+    const res = await fetch(`${BACKEND_URL}/api/admin/institutional-requests`, {
+      headers: { 'X-Admin-Token': token }
     });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail || 'Cancel order failed');
-    }
-    return await res.json();
-  } catch (err) {
-    if (err instanceof TypeError) {
-      return { status: 'success', order_id: orderId, restored_quantity: 0, reason, localOnly: true };
-    }
-    throw err instanceof Error ? err : new Error('Order cancellation failed');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Admin review queue could not be loaded');
+    return data.requests || [];
   }
-}
+
+  export async function updateAdminRequest(token: string, requestId: number, status: string, adminNotes: string): Promise<void> {
+    const res = await fetch(`${BACKEND_URL}/api/admin/institutional-requests/${requestId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': token },
+      body: JSON.stringify({ status, admin_notes: adminNotes })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Admin review could not be saved');
+  }
+
+  export async function createOrder(input: {
+    userId: number;
+    productId: number;
+    productName: string;
+    price: number;
+    quantity: number;
+    customerName: string;
+    recipientName: string;
+    recipientPhone: string;
+    addressLine: string;
+    city: string;
+    state: string;
+    pincode: string;
+  }): Promise<OrderRecord> {
+    const order: OrderRecord = {
+      id: Date.now(),
+      productId: input.productId,
+      productName: input.productName,
+      price: input.price,
+      quantity: input.quantity,
+      status: 'Confirmed',
+      eta: '2-4 working days',
+      customerName: input.customerName
+    };
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: input.userId,
+          product_id: input.productId,
+          product_name: input.productName,
+          quantity: input.quantity,
+          total: input.price * input.quantity,
+          status: order.status,
+          eta: order.eta,
+          recipient_name: input.recipientName,
+          recipient_phone: input.recipientPhone,
+          address_line: input.addressLine,
+          city: input.city,
+          state: input.state,
+          pincode: input.pincode
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        return { ...order, id: Number(data.order_id) || order.id, quantity: input.quantity };
+      }
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || 'Could not place the order request.');
+
+    } catch (err) {
+      if (!(err instanceof Error) || err.message === 'Failed to fetch') {
+        console.warn('Order API unavailable, saved in app state only:', err);
+      } else {
+        throw err;
+      }
+    }
+
+    return { ...order, quantity: input.quantity };
+  }
+
+  export async function deleteProduct(productId: number, userId: number): Promise<void> {
+    const res = await fetch(`${BACKEND_URL}/api/products/${productId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Product could not be deleted');
+  }
+
+  export async function fetchPublishedProducts(userId: number): Promise<CraftProduct[]> {
+    const res = await fetch(`${BACKEND_URL}/api/products/${userId}/published`);
+    if (!res.ok) throw new Error('Published products could not be loaded');
+    const data = await res.json();
+    return data.products || [];
+  }
+
+  export async function fetchOrdersForUser(userId: number): Promise<OrderRecord[]> {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/orders/${userId}`, { method: 'GET' });
+      if (!res.ok) {
+        throw new Error('Backend orders unavailable');
+      }
+      const data = await res.json();
+      return (data.orders || []).map((row: any) => ({
+        id: row.id,
+        productId: row.product_id,
+        productName: row.product_name,
+        price: Number(row.total || row.price || 0),
+        status: String(row.status || 'Confirmed'),
+        eta: row.eta || '2-4 working days',
+        customerName: row.buyer_name || 'Verified Buyer',
+        quantity: Number(row.quantity || 1)
+      }));
+    } catch (err) {
+      console.warn('Falling back to mobile demo orders:', err);
+    }
+
+    return [
+      {
+        id: 101,
+        productId: 1,
+        productName: 'Terracotta Hand-Painted Surahi',
+        price: 650,
+        status: 'In Transit',
+        eta: 'Tomorrow',
+        customerName: 'Aarav Sharma',
+        quantity: 1
+      },
+      {
+        id: 102,
+        productId: 3,
+        productName: 'Mirrorwork Wall Hanging',
+        price: 1400,
+        status: 'Packed',
+        eta: '2 days',
+        customerName: 'Aarav Sharma',
+        quantity: 1
+      }
+    ];
+  }
+
+  export async function cancelOrderApi(orderId: number, reason: string): Promise<CancelOrderResponse | null> {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/orders/${orderId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'Cancel order failed');
+      }
+      return await res.json();
+    } catch (err) {
+      if (err instanceof TypeError) {
+        return { status: 'success', order_id: orderId, restored_quantity: 0, reason, localOnly: true };
+      }
+      throw err instanceof Error ? err : new Error('Order cancellation failed');
+    }
+  }
