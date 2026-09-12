@@ -20,8 +20,17 @@ import {
   Linking,
   Platform,
   Switch,
-  ImageStyle
+  ImageStyle,
+  Animated,
+  Easing,
+  Dimensions
 } from 'react-native';
+import Svg, {
+  Path,
+  Defs,
+  LinearGradient as SvgGradient,
+  Stop
+} from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import * as Speech from 'expo-speech';
@@ -39,6 +48,7 @@ import {
   AiAnalysisResult,
   fetchMarketplaceProducts,
   analyzeProductPhoto,
+  NetworkError,
   publishProductToApi,
   SEED_PRODUCTS,
   AppUser,
@@ -75,9 +85,368 @@ type BrowserSpeechRecognition = {
 
 type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
 
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
+interface InteractivePopupConfig {
+  visible: boolean;
+  type: 'network' | 'welcome' | 'success' | 'alert' | 'error';
+  title: string;
+  subtitle?: string;
+  message: string;
+  primaryText?: string;
+  primaryAction?: () => void;
+  secondaryText?: string;
+  secondaryAction?: () => void;
+}
+
+function SplashScreenView({ onFinish }: { onFinish: () => void }) {
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const strokeDanda = useRef(new Animated.Value(0)).current;
+  const strokeLeft = useRef(new Animated.Value(0)).current;
+  const strokeRight = useRef(new Animated.Value(0)).current;
+  const strokeShiro = useRef(new Animated.Value(0)).current;
+  const brandAnim = useRef(new Animated.Value(0)).current;
+  const subtitleAnim = useRef(new Animated.Value(0)).current;
+  const scaleLogo = useRef(new Animated.Value(0.85)).current;
+
+  useEffect(() => {
+    // Sequential stroke-by-stroke drawing of Devanagari Hindi character 'क'
+    Animated.sequence([
+      // 1. Danda (vertical spine straight down)
+      Animated.timing(strokeDanda, {
+        toValue: 1,
+        duration: 480,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      // 2. Left closed belly loop
+      Animated.timing(strokeLeft, {
+        toValue: 1,
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      // 3. Right open hook curving downward
+      Animated.timing(strokeRight, {
+        toValue: 1,
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      // 4. Shirorekha (top header bar sweeping across)
+      Animated.timing(strokeShiro, {
+        toValue: 1,
+        duration: 400,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: false,
+      }),
+      // Logo bounce and Brand title reveal: "Kalasetu"
+      Animated.parallel([
+        Animated.spring(scaleLogo, {
+          toValue: 1,
+          friction: 6,
+          tension: 40,
+          useNativeDriver: true,
+        }),
+        Animated.timing(brandAnim, {
+          toValue: 1,
+          duration: 500,
+          easing: Easing.out(Easing.back(1.5)),
+          useNativeDriver: true,
+        }),
+      ]),
+      // Subtitle reveal: "Ai studio and market linkage"
+      Animated.timing(subtitleAnim, {
+        toValue: 1,
+        duration: 450,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      // Pause so user sees the completed animation
+      Animated.delay(700),
+      // Smooth fade transition into main home interface
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      onFinish();
+    });
+  }, []);
+
+  const dandaOffset = strokeDanda.interpolate({
+    inputRange: [0, 1],
+    outputRange: [120, 0],
+  });
+  const leftOffset = strokeLeft.interpolate({
+    inputRange: [0, 1],
+    outputRange: [180, 0],
+  });
+  const rightOffset = strokeRight.interpolate({
+    inputRange: [0, 1],
+    outputRange: [160, 0],
+  });
+  const shiroOffset = strokeShiro.interpolate({
+    inputRange: [0, 1],
+    outputRange: [130, 0],
+  });
+
+  return (
+    <Animated.View style={[splashStyles.container, { opacity: fadeAnim }]}>
+      <StatusBar style="light" />
+
+      {/* Quick Skip button */}
+      <TouchableOpacity style={splashStyles.skipButton} onPress={onFinish} activeOpacity={0.7}>
+        <Text style={splashStyles.skipText}>Skip ›</Text>
+      </TouchableOpacity>
+
+      <View style={splashStyles.centerContent}>
+        {/* Animated Drawing Canvas for Hindi letter 'क' */}
+        <Animated.View style={[splashStyles.logoWrapper, { transform: [{ scale: scaleLogo }] }]}>
+          <Svg width={200} height={200} viewBox="0 0 200 200">
+            <Defs>
+              <SvgGradient id="splashGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <Stop offset="0%" stopColor="#FB923C" />
+                <Stop offset="50%" stopColor="#EA580C" />
+                <Stop offset="100%" stopColor="#C2410C" />
+              </SvgGradient>
+            </Defs>
+
+            {/* 1. Danda (Vertical Spine) */}
+            <AnimatedPath
+              d="M 100 42 L 100 162"
+              stroke="url(#splashGrad)"
+              strokeWidth={12}
+              strokeLinecap="round"
+              fill="none"
+              strokeDasharray={[120, 120]}
+              strokeDashoffset={dandaOffset}
+            />
+
+            {/* 2. Left Belly Loop */}
+            <AnimatedPath
+              d="M 100 78 C 65 78 48 93 48 110 C 48 127 65 142 100 142"
+              stroke="url(#splashGrad)"
+              strokeWidth={12}
+              strokeLinecap="round"
+              fill="none"
+              strokeDasharray={[180, 180]}
+              strokeDashoffset={leftOffset}
+            />
+
+            {/* 3. Right Hook */}
+            <AnimatedPath
+              d="M 100 84 C 135 84 152 98 152 116 C 152 134 142 148 128 156"
+              stroke="url(#splashGrad)"
+              strokeWidth={12}
+              strokeLinecap="round"
+              fill="none"
+              strokeDasharray={[160, 160]}
+              strokeDashoffset={rightOffset}
+            />
+
+            {/* 4. Top Shirorekha Bar */}
+            <AnimatedPath
+              d="M 36 42 L 164 42"
+              stroke="url(#splashGrad)"
+              strokeWidth={12}
+              strokeLinecap="round"
+              fill="none"
+              strokeDasharray={[130, 130]}
+              strokeDashoffset={shiroOffset}
+            />
+          </Svg>
+        </Animated.View>
+
+        {/* Brand App Name: Kalasetu */}
+        <Animated.View
+          style={{
+            opacity: brandAnim,
+            transform: [
+              {
+                translateY: brandAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [16, 0],
+                }),
+              },
+            ],
+            alignItems: 'center',
+            marginTop: 22,
+          }}
+        >
+          <Text style={splashStyles.brandTitle}>Kalasetu</Text>
+        </Animated.View>
+
+        {/* Subtitle: Ai studio and market linkage */}
+        <Animated.View
+          style={{
+            opacity: subtitleAnim,
+            transform: [
+              {
+                translateY: subtitleAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [10, 0],
+                }),
+              },
+            ],
+            alignItems: 'center',
+            marginTop: 10,
+          }}
+        >
+          <Text style={splashStyles.brandSubtitle}>Ai studio and market linkage</Text>
+        </Animated.View>
+      </View>
+
+      {/* Bottom Attribution */}
+      <View style={splashStyles.bottomStrip}>
+        <Text style={splashStyles.bottomText}>SIH 2026 • Ministry of Social Justice & Empowerment</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+function InteractiveModal({
+  config,
+  onClose,
+}: {
+  config: InteractivePopupConfig;
+  onClose: () => void;
+}) {
+  const scaleAnim = useRef(new Animated.Value(0.85)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (config.visible) {
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 6,
+          tension: 65,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      scaleAnim.setValue(0.85);
+      opacityAnim.setValue(0);
+    }
+  }, [config.visible]);
+
+  if (!config.visible) return null;
+
+  const iconByType: Record<string, string> = {
+    network: '📡',
+    welcome: '🎉',
+    success: '✅',
+    alert: '⚠️',
+    error: '❌',
+  };
+
+  const badgeBgByType: Record<string, string> = {
+    network: '#FEF3C7',
+    welcome: '#FFEDD5',
+    success: '#DCFCE7',
+    alert: '#FEF3C7',
+    error: '#FEE2E2',
+  };
+
+  const badgeBorderByType: Record<string, string> = {
+    network: '#F59E0B',
+    welcome: '#EA580C',
+    success: '#16A34A',
+    alert: '#F59E0B',
+    error: '#EF4444',
+  };
+
+  return (
+    <Modal visible={config.visible} transparent animationType="none" onRequestClose={onClose}>
+      <View style={modalStyles.backdrop}>
+        <Animated.View
+          style={[
+            modalStyles.card,
+            {
+              opacity: opacityAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          {/* Top Decorative Icon Badge */}
+          <View
+            style={[
+              modalStyles.iconBadge,
+              {
+                backgroundColor: badgeBgByType[config.type] || '#FFF7ED',
+                borderColor: badgeBorderByType[config.type] || '#EA580C',
+              },
+            ]}
+          >
+            <Text style={modalStyles.iconText}>{iconByType[config.type] || '💡'}</Text>
+          </View>
+
+          {/* Title & Subtitle */}
+          <Text style={modalStyles.title}>{config.title}</Text>
+          {config.subtitle ? <Text style={modalStyles.subtitle}>{config.subtitle}</Text> : null}
+
+          {/* Message Body */}
+          <Text style={modalStyles.message}>{config.message}</Text>
+
+          {/* Action Buttons */}
+          <View style={modalStyles.buttonRow}>
+            {config.secondaryText ? (
+              <TouchableOpacity
+                style={modalStyles.secondaryBtn}
+                onPress={config.secondaryAction || onClose}
+                activeOpacity={0.7}
+              >
+                <Text style={modalStyles.secondaryBtnText}>{config.secondaryText}</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={[
+                modalStyles.primaryBtn,
+                config.type === 'network' && { backgroundColor: '#EA580C' },
+                !config.secondaryText && { flex: 1 },
+              ]}
+              onPress={config.primaryAction || onClose}
+              activeOpacity={0.8}
+            >
+              <Text style={modalStyles.primaryBtnText}>{config.primaryText || 'OK'}</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function App() {
   const catalogDraftKey = 'kalasetu_catalog_drafts';
   const bulkDraftKey = 'kalasetu_bulk_drafts';
+
+  // Launch Fullscreen Splash Animation State
+  const [showSplash, setShowSplash] = useState(true);
+
+  // Interactive Popup Modal State
+  const [popupConfig, setPopupConfig] = useState<InteractivePopupConfig>({
+    visible: false,
+    type: 'network',
+    title: '',
+    message: '',
+  });
+
+  const showCustomPopup = (config: Omit<InteractivePopupConfig, 'visible'>) => {
+    setPopupConfig({ ...config, visible: true });
+  };
+
+  const hideCustomPopup = () => {
+    setPopupConfig(prev => ({ ...prev, visible: false }));
+  };
+
   // Navigation & Language State
   const [activeTab, setActiveTab] = useState<'home' | 'studio' | 'market' | 'institutional' | 'account' | 'wishlist' | 'orders' | 'profile'>('home');
   const [accountView, setAccountView] = useState<'profile' | 'history' | 'orders' | 'requests' | 'wishlist' | 'notifications' | 'admin'>('profile');
@@ -391,7 +760,14 @@ export default function App() {
         user = await loginUser(authEmail.trim(), authPassword, authRole);
       }
       if (!user) {
-        Alert.alert('Login Error', 'Invalid credentials or unable to reach backend.');
+        showCustomPopup({
+          type: 'error',
+          title: lang === 'hi' ? 'लॉगिन त्रुटि' : 'Login Error',
+          subtitle: 'Invalid Credentials',
+          message: lang === 'hi' ? 'अमान्य क्रेडेंशियल्स या सर्वर से संपर्क नहीं हो सका।' : 'Invalid credentials or unable to reach backend server.',
+          primaryText: 'OK',
+          primaryAction: hideCustomPopup
+        });
         return;
       }
       setCurrentUser(user);
@@ -401,13 +777,41 @@ export default function App() {
       setIsLoggedIn(true);
       setAuthMode('login');
       setActiveTab('home');
+
+      // Trigger interactive celebration / welcome popup!
+      showCustomPopup({
+        type: 'welcome',
+        title: lang === 'hi' ? `नमस्ते, ${user.name || 'कारीगर'}!` : `Welcome, ${user.name || 'Artisan'}! 🎉`,
+        subtitle: lang === 'hi' ? 'कलासेतु में आपका स्वागत है' : 'Logged in to Kalasetu AI Studio',
+        message: lang === 'hi'
+          ? `आपका खाता (${user.phone || user.email}) सफलतापूर्वक सक्रिय हो गया है। आपका शिल्प कैटलॉग और खरीदार संपर्क तैयार हैं।`
+          : `You are logged in as ${user.phone || user.email}. Your artisan craft studio, smart cataloging, and direct buyer orders are ready.`,
+        primaryText: lang === 'hi' ? '🎨 शिल्प स्टूडियो' : '🎨 Open AI Studio',
+        primaryAction: () => {
+          hideCustomPopup();
+          setActiveTab('studio');
+        },
+        secondaryText: lang === 'hi' ? '🛍️ बाज़ार देखें' : '🛍️ Explore Market',
+        secondaryAction: () => {
+          hideCustomPopup();
+          setActiveTab('market');
+        }
+      });
+
       try {
         await refreshAccountData(user);
       } catch (error) {
         console.warn('Account activity unavailable:', error);
       }
     } catch (err: any) {
-      Alert.alert('Sign-In Failed', err?.message || 'Please check your phone number/password.');
+      showCustomPopup({
+        type: 'error',
+        title: lang === 'hi' ? 'साइन-इन विफल' : 'Sign-In Failed',
+        subtitle: 'Authentication Error',
+        message: err?.message || 'Please check your phone number and password.',
+        primaryText: 'OK',
+        primaryAction: hideCustomPopup
+      });
     }
   };
 
@@ -661,8 +1065,44 @@ export default function App() {
       setEditDescEn(result.description_en);
       setEditDescHi(result.description_hi);
       setTags(result.tags || []);
-    } catch (err) {
-      Alert.alert("Analysis Error", "Could not complete AI analysis. Try again.");
+    } catch (err: any) {
+      console.warn("AI Analysis error encountered:", err);
+      const isOffline =
+        err instanceof NetworkError ||
+        err?.isNetworkError ||
+        err?.message === 'NO_NETWORK' ||
+        err?.message?.includes('Network request failed') ||
+        err?.message?.includes('Failed to fetch') ||
+        (Platform.OS === 'web' && typeof navigator !== 'undefined' && !navigator.onLine);
+
+      if (isOffline) {
+        showCustomPopup({
+          type: 'network',
+          title: lang === 'hi' ? '📡 नेटवर्क उपलब्ध नहीं है' : '📡 No Network Connection',
+          subtitle: lang === 'hi' ? 'इंटरनेट कनेक्शन आवश्यक है' : 'Internet Required for AI Vision',
+          message: lang === 'hi'
+            ? 'कलासेतु AI विज़न को शिल्प की बनावट का विश्लेषण करने और उचित कारीगर मूल्य तैयार करने के लिए एक सक्रिय इंटरनेट कनेक्शन की आवश्यकता है। कृपया अपना नेटवर्क चेक करें।'
+            : 'KalaSetu AI Vision requires an active internet connection to analyze craft textures and calculate fair artisan prices. Please check your Wi-Fi or mobile data and try again.',
+          primaryText: lang === 'hi' ? '🔄 पुनः प्रयास करें' : '🔄 Try Again',
+          primaryAction: () => {
+            hideCustomPopup();
+            setTimeout(() => {
+              void handleAnalyze();
+            }, 300);
+          },
+          secondaryText: lang === 'hi' ? 'रद्द करें' : 'Dismiss',
+          secondaryAction: hideCustomPopup,
+        });
+      } else {
+        showCustomPopup({
+          type: 'error',
+          title: lang === 'hi' ? 'विश्लेषण त्रुटि' : 'Analysis Error',
+          subtitle: lang === 'hi' ? 'सर्वर से संपर्क नहीं हो सका' : 'Could not complete AI analysis',
+          message: err?.message || 'Could not complete AI analysis. Please check your backend connection and try again.',
+          primaryText: lang === 'hi' ? 'ठीक है' : 'OK',
+          primaryAction: hideCustomPopup,
+        });
+      }
     } finally {
       setIsAnalyzing(false);
       setAnalysisProgress('');
@@ -1579,9 +2019,16 @@ export default function App() {
     }
   };
 
+  if (showSplash) {
+    return <SplashScreenView onFinish={() => setShowSplash(false)} />;
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
+
+      {/* Interactive Custom Animated Popup */}
+      <InteractiveModal config={popupConfig} onClose={hideCustomPopup} />
 
       {Platform.OS === 'android' && (
         <View style={[styles.statusBarSpacer, { height: topSafeInset, backgroundColor: Colors.secondary }]} />
@@ -3317,5 +3764,183 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '800',
+  },
+});
+
+const splashStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0B1120',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  skipButton: {
+    position: 'absolute',
+    top: 50,
+    right: 24,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    zIndex: 10,
+  },
+  skipText: {
+    color: '#E2E8F0',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  centerContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoWrapper: {
+    width: 200,
+    height: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(234, 88, 12, 0.08)',
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 88, 12, 0.25)',
+    shadowColor: '#EA580C',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4,
+    shadowRadius: 28,
+    elevation: 8,
+  },
+  brandTitle: {
+    fontSize: 40,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+    textAlign: 'center',
+  },
+  brandSubtitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#CBD5E1',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+  bottomStrip: {
+    position: 'absolute',
+    bottom: 36,
+    alignItems: 'center',
+  },
+  bottomText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+});
+
+const modalStyles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(11, 17, 32, 0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 26,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 22,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.28,
+    shadowRadius: 22,
+    elevation: 12,
+    borderWidth: 1.5,
+    borderColor: '#FED7AA',
+  },
+  iconBadge: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    marginBottom: 16,
+    shadowColor: '#EA580C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  iconText: {
+    fontSize: 32,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E293B',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#EA580C',
+    textAlign: 'center',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  message: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#475569',
+    textAlign: 'center',
+    marginBottom: 22,
+    paddingHorizontal: 4,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 10,
+  },
+  secondaryBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  secondaryBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  primaryBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 14,
+    backgroundColor: '#EA580C',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#EA580C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  primaryBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

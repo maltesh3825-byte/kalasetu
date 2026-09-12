@@ -239,11 +239,25 @@ export async function addProductReview(
   return { rating: data.rating, reviews: data.reviews || [] };
 }
 
+export class NetworkError extends Error {
+  isNetworkError: boolean;
+  constructor(message: string = "NO_NETWORK") {
+    super(message);
+    this.name = "NetworkError";
+    this.isNetworkError = true;
+  }
+}
+
 export async function analyzeProductPhoto(
   imageUri: string,
   notes: string = "",
   priceHint: string = ""
 ): Promise<AiAnalysisResult> {
+  // Offline pre-check in web environment
+  if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new NetworkError("NO_NETWORK");
+  }
+
   try {
     const formData = new FormData();
     const filename = imageUri.split('/').pop() || 'photo.jpg';
@@ -274,61 +288,22 @@ export async function analyzeProductPhoto(
     }
     const errData = await res.json().catch(() => ({}));
     console.warn("Backend vision API returned HTTP error:", res.status, errData);
-  } catch (err) {
-    console.warn("Error calling backend vision API, using local intelligent simulation:", err);
+    throw new Error(errData?.detail || `Server returned ${res.status}`);
+  } catch (err: any) {
+    console.warn("Error calling backend vision API:", err);
+    const msg = String(err?.message || '');
+    if (
+      msg.includes('Network request failed') ||
+      msg.includes('Failed to fetch') ||
+      msg.includes('NetworkError') ||
+      msg === 'NO_NETWORK' ||
+      err?.name === 'TypeError' ||
+      (Platform.OS === 'web' && typeof navigator !== 'undefined' && !navigator.onLine)
+    ) {
+      throw new NetworkError("NO_NETWORK");
+    }
+    throw err;
   }
-
-  // Local Offline Simulation if backend server is not active
-  const lowerNotes = notes.toLowerCase();
-  if (lowerNotes.includes('brass') || lowerNotes.includes('metal')) {
-    return {
-      category: "Brass & Metalcraft",
-      suggested_title: "Handcrafted Bell-Metal Figurine",
-      tags: ["BrassCraft", "LostWax", "Handmade", "Heritage"],
-      description_en: "Ancient lost-wax cast metal artefact handcrafted by traditional metalworkers. Durable, historic, and beautifully detailed.",
-      description_hi: "पारंपरिक कारीगरों द्वारा प्राचीन धातु ढलाई तकनीक से हस्तनिर्मित अनूठी कलाकृति।",
-      pricing: {
-        fair_min: 1500,
-        fair_max: 2100,
-        suggested: priceHint ? Number(priceHint) : 1750,
-        justification: "Calculated based on 18 hours of manual clay wax modeling and pure brass smelting."
-      },
-      is_ai_simulated: true,
-      ai_engine: "Mobile On-Device AI Engine"
-    };
-  } else if (lowerNotes.includes('cloth') || lowerNotes.includes('saree') || lowerNotes.includes('textile') || lowerNotes.includes('weave')) {
-    return {
-      category: "Handloom & Textiles",
-      suggested_title: "Artisan Handwoven Heritage Textile",
-      tags: ["Handloom", "NaturalDye", "OrganicCotton", "ArtisanDirect"],
-      description_en: "Pure handloom textile hand-woven on traditional wooden looms. Natural organic fibers with heritage geometric motifs.",
-      description_hi: "पारंपरिक करघे पर हाथ से बुना गया वस्त्र। 100% प्राकृतिक धागों से निर्मित और पर्यावरण-अनुकूल।",
-      pricing: {
-        fair_min: 1100,
-        fair_max: 1600,
-        suggested: priceHint ? Number(priceHint) : 1350,
-        justification: "Fair compensation covering 14 hours of manual loom work and organic dye extraction."
-      },
-      is_ai_simulated: true,
-      ai_engine: "Mobile On-Device AI Engine"
-    };
-  }
-
-  return {
-    category: "Pottery & Terracotta",
-    suggested_title: "Traditional Handcrafted Clay Artefact",
-    tags: ["Terracotta", "ClayCraft", "EcoFriendly", "Handmade"],
-    description_en: "Hand-thrown on traditional potter's wheel using natural alluvial river clay. Natural cooling properties and chemical-free.",
-    description_hi: "पारंपरिक चाक पर शुद्ध नदी की मिट्टी से बना हस्तशिल्प। पूर्णतः प्राकृतिक और पर्यावरण अनुकूल।",
-    pricing: {
-      fair_min: 480,
-      fair_max: 750,
-      suggested: priceHint ? Number(priceHint) : 580,
-      justification: "Pricing accounts for clay refinement, solar drying, kiln firing, and fair artisan wage."
-    },
-    is_ai_simulated: true,
-    ai_engine: "Mobile On-Device AI Engine"
-  };
 }
 
 export async function publishProductToApi(product: Omit<CraftProduct, 'id'>): Promise<boolean> {

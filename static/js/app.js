@@ -30,6 +30,141 @@ const state = {
   adminToken: localStorage.getItem('kalakriti_admin_token') || ''
 };
 
+// Fullscreen Opening Animation Controller
+function dismissSplashScreen() {
+  const splash = document.getElementById('splashScreen');
+  if (!splash) return;
+  splash.style.opacity = '0';
+  splash.style.pointerEvents = 'none';
+  setTimeout(() => {
+    splash.classList.add('hidden');
+  }, 520);
+}
+
+// Auto dismiss splash screen after animation completes (~3.1 seconds)
+if (typeof window !== 'undefined') {
+  window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+      dismissSplashScreen();
+    }, 3100);
+  });
+}
+
+// Interactive Custom Modal System
+let currentModalPrimaryAction = null;
+let currentModalSecondaryAction = null;
+
+function showInteractiveModal(options) {
+  const modal = document.getElementById('interactiveModal');
+  const badge = document.getElementById('interactiveModalBadge');
+  const title = document.getElementById('interactiveModalTitle');
+  const subtitle = document.getElementById('interactiveModalSubtitle');
+  const message = document.getElementById('interactiveModalMessage');
+  const primaryBtn = document.getElementById('interactiveModalPrimaryBtn');
+  const secondaryBtn = document.getElementById('interactiveModalSecondaryBtn');
+
+  if (!modal) {
+    alert(options.message || options.title || 'Notice');
+    return;
+  }
+
+  const typeIcons = {
+    network: '📡',
+    welcome: '🎉',
+    success: '✅',
+    alert: '⚠️',
+    error: '❌'
+  };
+
+  const typeBadgeColors = {
+    network: 'bg-amber-100 border-amber-400 text-amber-600',
+    welcome: 'bg-orange-100 border-orange-400 text-orange-600',
+    success: 'bg-emerald-100 border-emerald-400 text-emerald-600',
+    alert: 'bg-amber-100 border-amber-400 text-amber-600',
+    error: 'bg-red-100 border-red-400 text-red-600'
+  };
+
+  if (badge) {
+    badge.textContent = typeIcons[options.type] || '💡';
+    badge.className = `w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl border-2 mb-4 shadow-sm ${typeBadgeColors[options.type] || 'bg-orange-50 border-orange-400 text-orange-600'}`;
+  }
+
+  if (title) title.textContent = options.title || 'Notice';
+  
+  if (subtitle) {
+    if (options.subtitle) {
+      subtitle.textContent = options.subtitle;
+      subtitle.classList.remove('hidden');
+    } else {
+      subtitle.classList.add('hidden');
+    }
+  }
+
+  if (message) message.textContent = options.message || '';
+
+  if (primaryBtn) {
+    primaryBtn.textContent = options.primaryText || 'OK';
+    if (options.type === 'network') {
+      primaryBtn.className = 'flex-1 py-3 px-4 rounded-xl text-sm font-extrabold text-white bg-amber-600 hover:bg-amber-700 shadow-md transition-colors';
+    } else {
+      primaryBtn.className = 'flex-1 py-3 px-4 rounded-xl text-sm font-extrabold text-white bg-orange-600 hover:bg-orange-700 shadow-md transition-colors';
+    }
+    currentModalPrimaryAction = options.onPrimary || null;
+  }
+
+  if (secondaryBtn) {
+    if (options.secondaryText) {
+      secondaryBtn.textContent = options.secondaryText;
+      secondaryBtn.classList.remove('hidden');
+      currentModalSecondaryAction = options.onSecondary || null;
+    } else {
+      secondaryBtn.classList.add('hidden');
+      currentModalSecondaryAction = null;
+    }
+  }
+
+  modal.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    modal.classList.add('interactive-modal-open');
+    modal.classList.remove('opacity-0');
+  });
+}
+
+function closeInteractiveModal() {
+  const modal = document.getElementById('interactiveModal');
+  if (!modal) return;
+  modal.classList.remove('interactive-modal-open');
+  modal.classList.add('opacity-0');
+  setTimeout(() => {
+    modal.classList.add('hidden');
+  }, 220);
+}
+
+// Global hook for interactive modal actions
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'interactiveModalPrimaryBtn') {
+      if (typeof currentModalPrimaryAction === 'function') {
+        const fn = currentModalPrimaryAction;
+        currentModalPrimaryAction = null;
+        closeInteractiveModal();
+        fn();
+      } else {
+        closeInteractiveModal();
+      }
+    } else if (e.target && e.target.id === 'interactiveModalSecondaryBtn') {
+      if (typeof currentModalSecondaryAction === 'function') {
+        const fn = currentModalSecondaryAction;
+        currentModalSecondaryAction = null;
+        closeInteractiveModal();
+        fn();
+      } else {
+        closeInteractiveModal();
+      }
+    }
+  });
+}
+
 // Demo sample craft photos for instant jury testing
 const SAMPLE_PRESETS = [
   {
@@ -563,14 +698,33 @@ async function loginAccount(event) {
     }
 
     switchTab('home');
-    const userName = state.currentUser?.name || state.currentUser?.email || email || 'user';
+    const userName = state.currentUser?.name || state.currentUser?.email || email || 'Artisan';
     showToast(`Logged in as ${userName}`);
+
+    // Trigger interactive welcome popup
+    showInteractiveModal({
+      type: 'welcome',
+      title: `Welcome, ${userName}! 🎉`,
+      subtitle: 'Logged in to KalaSetu AI Studio',
+      message: `Your account (${state.currentUser?.email || email}) is successfully active. Your smart craft studio and direct marketplace orders are ready.`,
+      primaryText: '✨ Explore Marketplace',
+      onPrimary: () => switchTab('marketplace'),
+      secondaryText: '🎨 Open AI Studio',
+      onSecondary: () => switchTab('studio')
+    });
   } catch (error) {
     if (status) {
       status.textContent = 'Sign in failed. Demo buyer: demo@kalakriti.in / demo123';
       status.className = 'mt-4 text-sm font-semibold text-red-700';
       status.classList.remove('hidden');
     }
+    showInteractiveModal({
+      type: 'error',
+      title: 'Sign-In Failed',
+      subtitle: 'Authentication Error',
+      message: error.message || 'Please check your email and password.',
+      primaryText: 'OK'
+    });
   }
 }
 
@@ -1220,6 +1374,10 @@ async function triggerAiAnalysis() {
   }, 900);
 
   try {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw new Error('NO_NETWORK');
+    }
+
     const formData = new FormData();
     if (state.selectedFile) {
       formData.append('file', state.selectedFile);
@@ -1265,7 +1423,35 @@ async function triggerAiAnalysis() {
   } catch (err) {
     clearInterval(progressInterval);
     console.error("AI Analysis error:", err);
-    alert("AI Analysis encountered an error. Please try again or check your server logs.");
+    const isOffline =
+      err?.message === 'NO_NETWORK' ||
+      err?.message?.includes('Failed to fetch') ||
+      err?.message?.includes('NetworkError') ||
+      (typeof navigator !== 'undefined' && !navigator.onLine);
+
+    if (isOffline) {
+      showInteractiveModal({
+        type: 'network',
+        title: currentLanguage === 'hi' ? '📡 नेटवर्क उपलब्ध नहीं है' : '📡 No Network Connection',
+        subtitle: currentLanguage === 'hi' ? 'इंटरनेट कनेक्शन आवश्यक है' : 'Internet Required for AI Vision',
+        message: currentLanguage === 'hi'
+          ? 'कलासेतु AI विज़न को शिल्प की बनावट का विश्लेषण करने और उचित कारीगर मूल्य तैयार करने के लिए एक सक्रिय इंटरनेट कनेक्शन की आवश्यकता है। कृपया अपना नेटवर्क चेक करें।'
+          : 'KalaSetu AI Vision requires an active internet connection to analyze craft textures and calculate fair artisan pricing. Please check your Wi-Fi or mobile data and try again.',
+        primaryText: currentLanguage === 'hi' ? '🔄 पुनः प्रयास करें' : '🔄 Try Again',
+        onPrimary: () => {
+          setTimeout(() => analyzeCraftPhoto(), 300);
+        },
+        secondaryText: currentLanguage === 'hi' ? 'रद्द करें' : 'Dismiss'
+      });
+    } else {
+      showInteractiveModal({
+        type: 'error',
+        title: currentLanguage === 'hi' ? 'विश्लेषण त्रुटि' : 'Analysis Error',
+        subtitle: currentLanguage === 'hi' ? 'सर्वर से संपर्क नहीं हो सका' : 'Could not complete AI analysis',
+        message: err.message || 'AI analysis encountered an error. Please verify backend connectivity.',
+        primaryText: 'OK'
+      });
+    }
   } finally {
     if (analyzeBtn) analyzeBtn.disabled = false;
     if (analyzeSpinner) analyzeSpinner.classList.add('hidden');

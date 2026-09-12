@@ -45,6 +45,66 @@
 </head>
 <body class="bg-[#faf8f5] text-slate-800 antialiased min-h-screen flex flex-col pb-20 sm:pb-8" contenteditable="false" spellcheck="false">
 
+  <!-- Fullscreen Animated Splash Screen with Hindi 'क' Drawing -->
+  <div id="splashScreen" class="fixed inset-0 z-[9999] bg-[#0B1120] flex flex-col items-center justify-center transition-opacity duration-500 text-white select-none">
+    <button onclick="dismissSplashScreen()" class="absolute top-6 right-6 px-4 py-1.5 text-xs font-bold text-slate-300 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full transition-all">
+      Skip ›
+    </button>
+    
+    <div class="flex flex-col items-center justify-center text-center px-4">
+      <div class="w-48 h-48 sm:w-56 sm:h-56 rounded-full bg-orange-600/10 border border-orange-500/30 flex items-center justify-center relative shadow-[0_0_50px_rgba(234,88,12,0.35)] splash-halo">
+        <svg class="w-36 h-36 sm:w-44 sm:h-44" viewBox="0 0 200 200">
+          <defs>
+            <linearGradient id="webSplashGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#FB923C" />
+              <stop offset="50%" stop-color="#EA580C" />
+              <stop offset="100%" stop-color="#C2410C" />
+            </linearGradient>
+          </defs>
+          <!-- 1. Danda (Vertical Spine) -->
+          <path class="web-stroke-danda" d="M 100 42 L 100 162" stroke="url(#webSplashGrad)" stroke-width="12" stroke-linecap="round" fill="none" />
+          <!-- 2. Left Belly Loop -->
+          <path class="web-stroke-left" d="M 100 78 C 65 78 48 93 48 110 C 48 127 65 142 100 142" stroke="url(#webSplashGrad)" stroke-width="12" stroke-linecap="round" fill="none" />
+          <!-- 3. Right Hook -->
+          <path class="web-stroke-right" d="M 100 84 C 135 84 152 98 152 116 C 152 134 142 148 128 156" stroke="url(#webSplashGrad)" stroke-width="12" stroke-linecap="round" fill="none" />
+          <!-- 4. Top Shirorekha Bar -->
+          <path class="web-stroke-shiro" d="M 36 42 L 164 42" stroke="url(#webSplashGrad)" stroke-width="12" stroke-linecap="round" fill="none" />
+        </svg>
+      </div>
+
+      <h1 class="splash-brand-title text-4xl sm:text-5xl font-black tracking-tight text-white mt-6 drop-shadow-md">
+        Kalasetu
+      </h1>
+      <p class="splash-brand-subtitle text-xs sm:text-sm font-bold text-slate-300 uppercase tracking-widest mt-2">
+        Ai studio and market linkage
+      </p>
+    </div>
+
+    <div class="absolute bottom-6 text-[11px] font-semibold text-slate-500 tracking-wide">
+      Smart India Hackathon 2026 • Ministry of Social Justice & Empowerment
+    </div>
+  </div>
+
+  <!-- Interactive Custom Modal Overlay -->
+  <div id="interactiveModal" class="fixed inset-0 z-[9998] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 transition-opacity duration-200 hidden opacity-0">
+    <div id="interactiveModalCard" class="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border-2 border-orange-200 transform transition-all duration-300 scale-95 text-center relative">
+      <div id="interactiveModalBadge" class="w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl border-2 mb-4 shadow-sm bg-orange-50 border-orange-400">
+        💡
+      </div>
+      <h3 id="interactiveModalTitle" class="text-xl font-extrabold text-slate-900 mb-1">Notice</h3>
+      <p id="interactiveModalSubtitle" class="text-xs font-bold text-orange-600 uppercase tracking-wide mb-2 hidden"></p>
+      <p id="interactiveModalMessage" class="text-sm text-slate-600 leading-relaxed mb-6"></p>
+      <div id="interactiveModalActions" class="flex items-center justify-center gap-3">
+        <button id="interactiveModalSecondaryBtn" onclick="closeInteractiveModal()" class="hidden flex-1 py-3 px-4 rounded-xl text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-colors">
+          Cancel
+        </button>
+        <button id="interactiveModalPrimaryBtn" onclick="closeInteractiveModal()" class="flex-1 py-3 px-4 rounded-xl text-sm font-extrabold text-white bg-orange-600 hover:bg-orange-700 shadow-md transition-colors">
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Top Government & Hackathon Announcement Strip -->
   <header class="bg-indigoGov-900 text-white text-xs py-2 px-4 shadow-sm border-b border-indigo-950">
     <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
