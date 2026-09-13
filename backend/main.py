@@ -1305,7 +1305,9 @@ def sync_offline_drafts(payload: OfflineSyncRequest):
 def admin_list_institutional_requests(x_admin_token: Optional[str] = Header(None)):
     require_admin(x_admin_token)
     conn = get_db_connection()
-    rows = conn.execute("SELECT * FROM institutional_requests ORDER BY id DESC").fetchall()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM institutional_requests ORDER BY id DESC")
+    rows = cursor.fetchall()
     conn.close()
     return {"requests": [dict(row) for row in rows]}
 
@@ -1319,12 +1321,105 @@ def admin_update_institutional_request(request_id: int, payload: AdminRequestUpd
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE institutional_requests SET status = ?, admin_notes = ? WHERE id = ?", (payload.status, payload.admin_notes.strip(), request_id))
-    if cursor.rowcount != 1:
+    affected = getattr(cursor, 'rowcount', None)
+    try:
+        affected = affected if affected is not None else cursor._cursor.rowcount
+    except Exception:
+        affected = 1
+    if affected != 1:
         conn.close()
         raise HTTPException(status_code=404, detail="Request not found")
     conn.commit()
     conn.close()
     return {"status": "success", "request_id": request_id}
+
+
+@app.get("/api/admin/artisan-quota")
+def admin_get_artisan_quota(artisan_name: str, x_admin_token: Optional[str] = Header(None)):
+    """Check how many listings an artisan has published this month (max 3)."""
+    require_admin(x_admin_token)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+    from backend.config import DATABASE_URL as _DB_URL
+    if _DB_URL and "postgres" in _DB_URL:
+        cursor.execute(
+            "SELECT id, name, created_at FROM products WHERE lower(artisan_name) = lower(%s) AND TO_CHAR(created_at, 'YYYY-MM') = %s ORDER BY id ASC",
+            (artisan_name.strip(), current_month),
+        )
+    else:
+        cursor.execute(
+            "SELECT id, name, created_at FROM products WHERE lower(artisan_name) = lower(?) AND substr(created_at, 1, 7) = ? ORDER BY id ASC",
+            (artisan_name.strip(), current_month),
+        )
+    rows = cursor.fetchall()
+    conn.close()
+    return {
+        "artisan_name": artisan_name,
+        "month": current_month,
+        "listings_this_month": len(rows),
+        "limit": 3,
+        "remaining": max(0, 3 - len(rows)),
+        "products": [dict(r) for r in rows],
+    }
+
+
+@app.delete("/api/admin/artisan-quota/reset")
+def admin_reset_artisan_quota(artisan_name: str, product_id: Optional[int] = None, x_admin_token: Optional[str] = Header(None)):
+    """
+    Admin: restore one listing slot for an artisan this month.
+    - If product_id is provided, deletes that specific product.
+    - Otherwise, deletes their oldest listing from this month.
+    """
+    require_admin(x_admin_token)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+        from backend.config import DATABASE_URL as _DB_URL
+        if product_id:
+            # Delete a specific product by ID, must belong to this artisan
+            cursor.execute(
+                "SELECT id, name FROM products WHERE id = ? AND lower(artisan_name) = lower(?)",
+                (product_id, artisan_name.strip()),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Product not found for this artisan")
+            cursor.execute("DELETE FROM wishlist WHERE product_id = ?", (product_id,))
+            cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
+            deleted_name = row[1]
+        else:
+            # Delete their oldest listing this month to free up one slot
+            if _DB_URL and "postgres" in _DB_URL:
+                cursor.execute(
+                    "SELECT id, name FROM products WHERE lower(artisan_name) = lower(%s) AND TO_CHAR(created_at, 'YYYY-MM') = %s ORDER BY id ASC LIMIT 1",
+                    (artisan_name.strip(), current_month),
+                )
+            else:
+                cursor.execute(
+                    "SELECT id, name FROM products WHERE lower(artisan_name) = lower(?) AND substr(created_at, 1, 7) = ? ORDER BY id ASC LIMIT 1",
+                    (artisan_name.strip(), current_month),
+                )
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return {"status": "no_action", "message": "This artisan has no listings this month to remove"}
+            cursor.execute("DELETE FROM wishlist WHERE product_id = ?", (row[0],))
+            cursor.execute("DELETE FROM products WHERE id = ?", (row[0],))
+            deleted_name = row[1]
+        conn.commit()
+        return {"status": "success", "message": f"Deleted listing '{deleted_name}' — artisan now has one more slot this month"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import traceback; traceback.print_exc()
+        try: conn.rollback()
+        except Exception: pass
+        raise HTTPException(status_code=500, detail=f"Reset failed: {exc}")
+    finally:
+        try: conn.close()
+        except Exception: pass
 
 
 @app.get("/api/institutional-requests/{user_id}")
