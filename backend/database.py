@@ -233,7 +233,7 @@ def init_db():
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL,
+                password TEXT DEFAULT '',  -- Auto-generated internally for passwordless auth
                 role TEXT DEFAULT 'buyer',
                 phone TEXT,
                 city TEXT,
@@ -397,7 +397,7 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL,
+                password TEXT DEFAULT '',  -- Auto-generated internally for passwordless auth
                 role TEXT DEFAULT 'buyer',
                 phone TEXT,
                 city TEXT,

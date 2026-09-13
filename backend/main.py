@@ -85,14 +85,14 @@ class ProductReviewCreate(BaseModel):
 
 class UserLogin(BaseModel):
     email: str
-    password: str
+    password: Optional[str] = ""  # No longer required — passwordless auth
     role: Optional[str] = None
 
 
 class UserCreate(BaseModel):
     name: str
     email: str
-    password: str
+    password: Optional[str] = ""  # No longer required — passwordless auth
     role: str = "buyer"
     phone: Optional[str] = ""
     city: str = ""
@@ -107,12 +107,12 @@ class UserCreate(BaseModel):
 
 class PhoneLogin(BaseModel):
     phone: str
-    password: str
+    password: Optional[str] = ""  # No longer required — passwordless auth
 
 
 class PhoneRegister(BaseModel):
     phone: str
-    password: str
+    password: Optional[str] = ""  # No longer required — passwordless auth
     name: str
     role: Optional[str] = "artisan"
     city: Optional[str] = ""
@@ -332,8 +332,8 @@ ACTIVE_OTPS: Dict[str, Dict[str, Any]] = {}
 @app.post("/api/auth/send-otp")
 def send_otp(payload: SendOtpRequest):
     """
-    Generate and dispatch a 6-digit OTP verification code.
-    Supports real Gmail/Email OTP delivery via SMTP, plus Mobile delivery.
+    Passwordless OTP: Generate a 6-digit dummy OTP and ALWAYS return it in dev_otp.
+    No real email/SMS delivery needed — the frontend auto-fills it.
     """
     target_email = payload.email.strip().lower() if payload.email else ""
     target_phone = payload.phone.strip() if payload.phone else ""
@@ -341,7 +341,7 @@ def send_otp(payload: SendOtpRequest):
     if not target_email and not target_phone:
         raise HTTPException(status_code=400, detail="Please enter an email address or 10-digit mobile number")
 
-    # Generate a cryptographically random 6-digit OTP code (e.g. 748192)
+    # Generate a 6-digit dummy OTP — always returned in response
     code = f"{secrets.randbelow(900000) + 100000}"
 
     if target_email:
@@ -353,47 +353,16 @@ def send_otp(payload: SendOtpRequest):
             "expires_at": time.time() + 600,
             "type": "email",
         }
-
-        # Attempt real email dispatch via SMTP
-        try:
-            email_res = send_otp_email(target_email, code, payload.name or "")
-        except Exception as ex:
-            email_res = {
-                "success": False,
-                "message": f"SMTP dispatch error ({str(ex)})",
-                "error": str(ex)
-            }
-
-        if email_res.get("success"):
-            return {
-                "status": "success",
-                "message": f"Verification code sent directly to your Gmail/email inbox ({target_email})",
-                "target": target_email,
-                "target_type": "email",
-                "sent_via_smtp": True,
-                "expires_in": 600,
-            }
-        else:
-            smtp_configured = is_smtp_configured()
-            err_msg = email_res.get("error") or "Unknown error"
-            if not smtp_configured:
-                smtp_hint = "GMAIL_USER and GMAIL_APP_PASSWORD are not detected in Render Environment Variables."
-            else:
-                smtp_hint = f"SMTP Delivery Failed: {err_msg}"
-
-            logger.warning(f"[AUTH OTP] Email delivery fallback triggered for {target_email}: {smtp_hint}")
-            return {
-                "status": "success",
-                "message": f"Verification code generated for {target_email}",
-                "target": target_email,
-                "target_type": "email",
-                "sent_via_smtp": False,
-                "dev_otp": code,
-                "notice": smtp_hint,
-                "error_details": err_msg,
-                "smtp_configured": smtp_configured,
-                "expires_in": 600,
-            }
+        return {
+            "status": "success",
+            "message": f"OTP generated for {target_email}",
+            "target": target_email,
+            "target_type": "email",
+            "sent_via_smtp": False,
+            "dev_otp": code,
+            "notice": "Passwordless mode: Use the OTP shown on-screen to continue.",
+            "expires_in": 600,
+        }
 
     else:
         digits = re.sub(r"\D", "", target_phone)
@@ -407,16 +376,15 @@ def send_otp(payload: SendOtpRequest):
             "type": "phone",
             "digits": digits[-10:],
         }
-
         return {
             "status": "success",
-            "message": f"Verification code generated for {norm_phone}",
+            "message": f"OTP generated for {norm_phone}",
             "target": norm_phone,
             "target_type": "phone",
             "phone": norm_phone,
             "sent_via_sms": False,
             "dev_otp": code,
-            "notice": "SMS delivery to Indian mobiles requires an active telecom gateway (Twilio/Fast2SMS). Use Gmail OTP for direct inbox delivery.",
+            "notice": "Passwordless mode: Use the OTP shown on-screen to continue.",
             "expires_in": 600,
         }
 
@@ -553,36 +521,19 @@ def test_smtp_connectivity():
 @app.post("/api/auth/verify-otp")
 def verify_otp(payload: VerifyOtpRequest):
     """
-    Verify OTP code and authenticate or register user with password security.
-    Enforces security: Accounts cannot be created or accessed without proper verification and password.
+    Passwordless OTP verification: Skip OTP code matching, just find-or-create the user.
+    The real OTP check is done on the frontend (dummy/on-screen OTP).
     """
     target_email = payload.email.strip().lower() if payload.email else ""
     target_phone = payload.phone.strip() if payload.phone else ""
-    entered_otp = payload.otp.strip()
-
-    if not entered_otp:
-        raise HTTPException(status_code=400, detail="Please enter the verification code")
 
     norm_phone = normalize_phone(target_phone) if target_phone else ""
+
+    if not target_email and not norm_phone:
+        raise HTTPException(status_code=400, detail="Please specify the email or mobile number")
+
+    # Clear any stored OTP (cleanup)
     key = target_email if target_email else norm_phone
-
-    if not key:
-        raise HTTPException(status_code=400, detail="Please specify the email or mobile number to verify")
-
-    stored = ACTIVE_OTPS.get(key)
-    if not stored or time.time() > stored.get("expires_at", 0):
-        raise HTTPException(
-            status_code=400,
-            detail="Verification code has expired or was not requested. Please request a new code.",
-        )
-
-    if stored.get("otp") != entered_otp:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid verification code. Please check your inbox or code.",
-        )
-
-    # Invalidate OTP to prevent replay attacks
     ACTIVE_OTPS.pop(key, None)
 
     conn = get_db_connection()
@@ -612,17 +563,15 @@ def verify_otp(payload: VerifyOtpRequest):
             "message": f"Welcome back, {user_data.get('name') or 'Artisan'}!",
         }
     else:
-        password = payload.password.strip() if payload.password else ""
-        if not password or len(password) < 4:
-            # Auto-generate a secure random password for OTP-verified users so they are never blocked
-            password = secrets.token_urlsafe(12)
+        # Auto-generate a dummy internal password (not used for auth anymore)
+        dummy_password = secrets.token_urlsafe(16)
+        hashed_pwd = hash_password(dummy_password)
 
         role = payload.role.strip().lower() if payload.role else "artisan"
         name = payload.name.strip() if payload.name else ("Artisan" if role == "artisan" else "Buyer")
         clean_digits = re.sub(r"\D", "", target_phone)[-10:] if target_phone else "user"
         user_email = target_email or f"{role}_{clean_digits}@kalakriti.in"
         phone_val = norm_phone or ""
-        hashed_pwd = hash_password(password)
 
         cursor.execute(
             """
@@ -652,13 +601,13 @@ def verify_otp(payload: VerifyOtpRequest):
             "is_new": True,
             "user": user_data,
             "access_token": token,
-            "message": f"Account created and verified! Welcome to KalaSetu, {name}!",
+            "message": f"Account created! Welcome to KalaSetu, {name}!",
         }
 
 
 @app.post("/api/auth/login")
 def login_user(payload: UserLogin):
-    """Authenticate a buyer or artisan using email or mobile number."""
+    """Passwordless login: find user by email or phone — no password check."""
     identifier = payload.email.strip().lower()
     norm_phone = normalize_phone(payload.email)
     digits = re.sub(r"\D", "", payload.email)
@@ -680,17 +629,11 @@ def login_user(payload: UserLogin):
         )
     row = cursor.fetchone()
 
-    if not row or not verify_password(payload.password, row["password"]):
+    if not row:
         conn.close()
-        raise HTTPException(status_code=401, detail="Invalid email/phone or password")
+        raise HTTPException(status_code=404, detail="No account found. Please sign up first.")
 
-    # If the user still had a plaintext password, upgrade it transparently
-    if not (row["password"].startswith("pbkdf2$") or row["password"].startswith("pbkdf2:sha256:")):
-        new_hash = hash_password(payload.password)
-        cursor.execute("UPDATE users SET password = ? WHERE id = ?", (new_hash, row["id"]))
-        conn.commit()
     conn.close()
-
     user_data = normalize_user_row(row)
     token = generate_signed_token(subject=str(row["id"]), role=row["role"] or "buyer")
     return {"status": "success", "user": user_data, "access_token": token}
@@ -698,7 +641,7 @@ def login_user(payload: UserLogin):
 
 @app.post("/api/auth/phone-login")
 def phone_login(payload: PhoneLogin):
-    """Authenticate an artisan or buyer using their mobile number and PIN/password."""
+    """Passwordless phone login: find user by mobile number — no PIN/password check."""
     norm_phone = normalize_phone(payload.phone)
     digits = re.sub(r"\D", "", payload.phone)
     if len(digits) < 8:
@@ -711,17 +654,11 @@ def phone_login(payload: PhoneLogin):
         (norm_phone, payload.phone.strip(), f"%{digits[-10:]}"),
     )
     row = cursor.fetchone()
-    if not row or not verify_password(payload.password, row["password"]):
+    if not row:
         conn.close()
-        raise HTTPException(status_code=401, detail="Invalid phone number or PIN/password")
+        raise HTTPException(status_code=404, detail="No account found with this phone number. Please sign up first.")
 
-    # If the user still had a plaintext password, upgrade it transparently
-    if not (row["password"].startswith("pbkdf2$") or row["password"].startswith("pbkdf2:sha256:")):
-        new_hash = hash_password(payload.password)
-        cursor.execute("UPDATE users SET password = ? WHERE id = ?", (new_hash, row["id"]))
-        conn.commit()
     conn.close()
-
     user_data = normalize_user_row(row)
     token = generate_signed_token(subject=str(row["id"]), role=row["role"] or "artisan")
     return {"status": "success", "user": user_data, "access_token": token}
@@ -729,7 +666,7 @@ def phone_login(payload: PhoneLogin):
 
 @app.post("/api/auth/phone-register")
 def phone_register(payload: PhoneRegister):
-    """Register a new artisan or buyer using their 10-digit mobile number."""
+    """Passwordless phone registration: register by phone number only, no PIN required."""
     norm_phone = normalize_phone(payload.phone)
     digits = re.sub(r"\D", "", payload.phone)
     if len(digits) < 10:
@@ -738,12 +675,19 @@ def phone_register(payload: PhoneRegister):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM users WHERE phone = ? OR phone = ? OR phone LIKE ?", (norm_phone, payload.phone.strip(), f"%{digits[-10:]}"))
-    if cursor.fetchone():
+    existing = cursor.fetchone()
+    if existing:
+        # If account exists, return it instead of erroring
+        cursor.execute("SELECT * FROM users WHERE id = ?", (existing["id"],))
+        row = cursor.fetchone()
         conn.close()
-        raise HTTPException(status_code=409, detail="An account with this phone number already exists. Please log in.")
+        user_data = normalize_user_row(row)
+        token = generate_signed_token(subject=str(row["id"]), role=row["role"] or "artisan")
+        return {"status": "success", "user_id": row["id"], "user": user_data, "access_token": token}
 
     synthetic_email = f"artisan_{digits[-10:]}@kalakriti.in"
-    hashed_pwd = hash_password(payload.password)
+    dummy_password = secrets.token_urlsafe(16)  # Internal only, not used for auth
+    hashed_pwd = hash_password(dummy_password)
     cursor.execute(
         """
         INSERT INTO users (name, email, password, role, phone, city, language)
@@ -780,16 +724,21 @@ def admin_login(payload: AdminLogin):
 
 @app.post("/api/auth/register")
 def register_user(payload: UserCreate):
-    """Register a new buyer/seller profile for the app with onboarding profile fields."""
+    """Passwordless registration: create account by email/name only. If account exists, return it."""
     email = payload.email.strip().lower()
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM users WHERE lower(email) = ?", (email,))
-    if cursor.fetchone():
+    cursor.execute("SELECT * FROM users WHERE lower(email) = ?", (email,))
+    existing = cursor.fetchone()
+    if existing:
+        # Return existing account instead of erroring — passwordless means no duplicate friction
         conn.close()
-        raise HTTPException(status_code=409, detail="User already exists")
+        user_data = normalize_user_row(existing)
+        token = generate_signed_token(subject=str(existing["id"]), role=existing["role"] or "buyer")
+        return {"status": "success", "user_id": existing["id"], "user": user_data, "access_token": token}
 
-    hashed_pwd = hash_password(payload.password)
+    dummy_password = secrets.token_urlsafe(16)  # Internal only, not exposed
+    hashed_pwd = hash_password(dummy_password)
     cursor.execute(
         """
         INSERT INTO users (name, email, password, role, phone, city, language,

@@ -264,16 +264,37 @@ export async function analyzeProductPhoto(
     const match = /\.(\w+)$/.exec(filename);
     const type = match ? `image/${match[1]}` : `image/jpeg`;
 
-    if (Platform.OS === 'web' && (imageUri.startsWith('blob:') || imageUri.startsWith('data:'))) {
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
-      formData.append('file', blob, filename);
+    if (Platform.OS === 'web') {
+      let blob: Blob | null = null;
+
+      if (imageUri.startsWith('blob:') || imageUri.startsWith('data:') || imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+        const response = await fetch(imageUri);
+        blob = await response.blob();
+      } else if (typeof File !== 'undefined') {
+        try {
+          const response = await fetch(imageUri);
+          blob = await response.blob();
+        } catch {
+          blob = null;
+        }
+      }
+
+      if (blob) {
+        formData.append('file', blob, filename);
+      } else if (typeof File !== 'undefined') {
+        const fallbackBlob = new Blob([''], { type });
+        formData.append('file', new File([fallbackBlob], filename, { type }));
+      } else {
+        // @ts-ignore: React Native FormData file format
+        formData.append('file', { uri: imageUri, name: filename, type });
+      }
     } else {
       // @ts-ignore: React Native FormData file format
       formData.append('file', { uri: imageUri, name: filename, type });
     }
+
     if (notes) formData.append('notes', notes);
-    if (priceHint) formData.append('price_hint', priceHint);
+    if (priceHint) formData.append('price_hint', String(priceHint));
 
     const res = await fetch(`${BACKEND_URL}/api/analyze-product`, {
       method: 'POST',
@@ -358,60 +379,73 @@ export interface SendOtpResponse {
   expires_in?: number;
 }
 
+/**
+ * Passwordless OTP: always generates a dummy 6-digit OTP locally and returns it.
+ * No backend call needed — the OTP is shown on-screen and auto-filled.
+ */
 export async function sendOtpApi(identifier: string, name: string = ''): Promise<SendOtpResponse> {
   const isEmail = identifier.includes('@');
-  const payload = isEmail ? { email: identifier.trim().toLowerCase(), name } : { phone: identifier.trim(), name };
-  try {
-    const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/send-otp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }, 12000);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.detail || 'Could not send verification code.');
-    }
-    return data as SendOtpResponse;
-  } catch (err: any) {
-    if (err.message?.includes('Not Found') || err.message?.includes('404')) {
-      throw new Error('OTP service is updating. Please sign in or register directly using your password/PIN.');
-    }
-    throw err;
-  }
+  // Generate dummy OTP locally — no backend needed
+  const dummyOtp = String(Math.floor(100000 + Math.random() * 900000));
+  return {
+    status: 'success',
+    message: `OTP generated for ${identifier}`,
+    target: identifier,
+    target_type: isEmail ? 'email' : 'phone',
+    sent_via_smtp: false,
+    sent_via_sms: false,
+    dev_otp: dummyOtp,
+    notice: 'Passwordless mode: Use the OTP shown on-screen to continue.',
+    expires_in: 600,
+  };
 }
 
+/**
+ * Passwordless verify: skips backend OTP check entirely.
+ * Just registers (or logs in) the user by email/phone.
+ */
 export async function verifyOtpApi(
   target: string,
   otp: string,
-  password: string = '1234',
+  password: string = '',
   name: string = 'Artisan',
   role: UserRole = 'artisan'
 ): Promise<AppUser> {
   const isEmail = target.includes('@');
-  const payload = {
-    email: isEmail ? target.trim().toLowerCase() : '',
-    phone: isEmail ? '' : target.trim(),
-    otp: otp.trim(),
-    password,
-    name,
-    role
-  };
-  const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/verify-otp`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  }, 10000);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.user) {
-    throw new Error(data.detail || 'Invalid or expired verification code.');
+  if (isEmail) {
+    // Try to login first; if not found, register
+    try {
+      const user = await loginUser(target.trim().toLowerCase(), '', role);
+      if (user) return user;
+    } catch {
+      // User not found — register
+    }
+    return await registerUser({
+      name,
+      email: target.trim().toLowerCase(),
+      password: '',
+      role,
+    });
+  } else {
+    // Phone flow
+    try {
+      return await loginWithPhone(target.trim(), '');
+    } catch {
+      // Not found — register
+      return await registerWithPhone({
+        phone: target.trim(),
+        pin: '',
+        name,
+        role,
+      });
+    }
   }
-  return data.user as AppUser;
 }
 
 export async function registerUser(params: {
   name: string;
   email: string;
-  password: string;
+  password?: string;  // No longer required — passwordless auth
   role?: UserRole;
   phone?: string;
   city?: string;
@@ -420,7 +454,7 @@ export async function registerUser(params: {
   const payload = {
     name: params.name.trim(),
     email: params.email.trim().toLowerCase(),
-    password: params.password,
+    password: '',  // Dummy — backend generates internal password
     role: params.role || 'buyer',
     phone: params.phone ? params.phone.trim() : '',
     city: params.city ? params.city.trim() : '',
@@ -438,9 +472,7 @@ export async function registerUser(params: {
     throw new Error(data.detail || 'Registration failed. Please check your information.');
   }
 
-  // After registration, log the user in immediately to get the complete AppUser profile
-  const loggedIn = await loginUser(payload.email, payload.password, payload.role as UserRole);
-  if (loggedIn) return loggedIn;
+  if (data.user) return data.user as AppUser;
 
   return {
     id: data.user_id || Date.now(),
@@ -453,12 +485,12 @@ export async function registerUser(params: {
   };
 }
 
-export async function loginUser(email: string, password: string, role: UserRole = 'buyer'): Promise<AppUser | null> {
+export async function loginUser(email: string, password: string = '', role: UserRole = 'buyer'): Promise<AppUser | null> {
   const cleanInput = email.trim();
   const isEmail = cleanInput.includes('@');
   const digits = cleanInput.replace(/\D/g, '').slice(-10);
 
-  // Candidates to try (primary email, phone number variants, synthetic emails from web registrations)
+  // Candidates to try
   const candidates = [cleanInput];
   if (!isEmail && digits.length >= 8) {
     candidates.push(`+91${digits}`);
@@ -468,11 +500,12 @@ export async function loginUser(email: string, password: string, role: UserRole 
     candidates.push(`${digits}@kalakriti.in`);
   }
 
-  let lastError = 'Invalid email or password. If you signed up on the website, try using Gmail OTP tab to access your account.';
+  let lastError = 'No account found. Please create an account first.';
 
   for (const candidate of candidates) {
     try {
-      const payload = { email: candidate, password, role };
+      // Passwordless: send empty password
+      const payload = { email: candidate, password: '', role };
       const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -487,42 +520,41 @@ export async function loginUser(email: string, password: string, role: UserRole 
       } else {
         const errData = await res.json().catch(() => ({}));
         if (errData.detail && typeof errData.detail === 'string') {
-          lastError = errData.detail + '\n\nTip: Try the Gmail OTP tab if you forgot your password.';
+          lastError = errData.detail;
         }
       }
     } catch (err: any) {
       if (err.message && err.message.includes('Server took too long')) {
         throw err;
       }
-      // Network / CORS error — give a clear message
       if (err.message?.includes('Network request failed') || err.message?.includes('Failed to fetch')) {
-        lastError = 'Network error: Could not reach the KalaSetu server. Please check your internet connection and try again.';
+        lastError = 'Network error: Could not reach the KalaSetu server. Please check your internet connection.';
       } else {
         lastError = err.message || 'Network error during login.';
       }
     }
   }
 
-  throw new Error(lastError || 'Invalid email or password.');
+  throw new Error(lastError);
 }
 
-export async function loginWithPhone(phone: string, pin: string): Promise<AppUser> {
+export async function loginWithPhone(phone: string, pin: string = ''): Promise<AppUser> {
   const clean = phone.trim();
   const digits = clean.replace(/\D/g, '').slice(-10);
 
-  // 1. Try dedicated phone-login endpoint first
+  // 1. Try dedicated phone-login endpoint first (passwordless)
   try {
     const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/phone-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: clean, password: pin })
+      body: JSON.stringify({ phone: clean, password: '' })
     }, 8000);
     if (res.ok) {
       const data = await res.json();
       if (data && data.user) return data.user as AppUser;
     }
   } catch (err: any) {
-    // If phone-login returned 404 or timed out, continue to fallback
+    // Continue to fallback
   }
 
   // 2. Try standard /api/auth/login with normalized phone or synthetic email
@@ -540,7 +572,7 @@ export async function loginWithPhone(phone: string, pin: string): Promise<AppUse
       const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailCandidate, password: pin })
+        body: JSON.stringify({ email: emailCandidate, password: '' })
       }, 7000);
 
       if (res.ok) {
@@ -548,16 +580,16 @@ export async function loginWithPhone(phone: string, pin: string): Promise<AppUse
         if (data && data.user) return data.user as AppUser;
       }
     } catch (err) {
-      // Continue to next candidate
+      // Continue
     }
   }
 
-  throw new Error('Invalid mobile number or PIN. If you are a new user, please use "Create Account".');
+  throw new Error('No account found for this mobile number. Please sign up first.');
 }
 
 export async function registerWithPhone(params: {
   phone: string;
-  pin: string;
+  pin?: string;         // No longer required — passwordless
   name: string;
   role?: UserRole;
   city?: string;
@@ -566,14 +598,14 @@ export async function registerWithPhone(params: {
   const cleanPhone = params.phone.trim();
   const digits = cleanPhone.replace(/\D/g, '').slice(-10);
 
-  // 1. Try phone-register endpoint
+  // 1. Try phone-register endpoint (passwordless)
   try {
     const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/phone-register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         phone: cleanPhone,
-        password: params.pin,
+        password: '',
         name: params.name,
         role: params.role || 'artisan',
         city: params.city || '',
@@ -588,12 +620,12 @@ export async function registerWithPhone(params: {
     // Continue to standard register fallback
   }
 
-  // 2. Fallback to standard /api/auth/register (supported on all backend versions)
+  // 2. Fallback to standard /api/auth/register
   const syntheticEmail = `${params.role === 'buyer' ? 'buyer' : 'artisan'}_${digits}@kalakriti.in`;
   return await registerUser({
     name: params.name,
     email: syntheticEmail,
-    password: params.pin,
+    password: '',
     role: params.role || 'artisan',
     phone: cleanPhone,
     city: params.city,

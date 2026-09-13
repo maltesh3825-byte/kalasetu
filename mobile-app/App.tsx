@@ -387,7 +387,6 @@ export default function App() {
   const [authMethod, setAuthMethod] = useState<'password' | 'email' | 'phone'>('password');
   const [authPhone, setAuthPhone] = useState('+919876543210');
   const [authEmail, setAuthEmail] = useState('demo@kalakriti.in');
-  const [authPassword, setAuthPassword] = useState('1234');
   const [authName, setAuthName] = useState('Aarav Sharma');
   const [authRole, setAuthRole] = useState<UserRole>('buyer');
   const [authCity, setAuthCity] = useState('');
@@ -703,29 +702,22 @@ export default function App() {
           if (cleanDigits.length < 8) {
             throw new Error(lang === 'hi' ? 'कृपया एक वैध 10-अंकीय मोबाइल नंबर दर्ज करें।' : 'Please enter a valid 10-digit mobile number.');
           }
-          if (!authPassword.trim()) {
-            throw new Error(lang === 'hi' ? 'कृपया एक 4-अंकीय पिन या पासवर्ड सेट करें।' : 'Please set a PIN or password.');
-          }
+          // Passwordless — no PIN needed
           user = await registerWithPhone({
             phone: authPhone.trim(),
-            pin: authPassword.trim(),
             name: authName.trim(),
             role: authRole,
             city: authCity.trim() || 'India',
             language: lang
           });
         } else {
-          // 'email' or 'password' method — both use email + password
+          // 'email' or 'password' method — email only, no password
           if (!authEmail.trim() || !authEmail.includes('@')) {
             throw new Error(lang === 'hi' ? 'कृपया एक वैध ईमेल पता दर्ज करें।' : 'Please enter a valid email address.');
-          }
-          if (!authPassword.trim()) {
-            throw new Error(lang === 'hi' ? 'कृपया एक पासवर्ड सेट करें।' : 'Please set a password.');
           }
           user = await registerUser({
             name: authName.trim(),
             email: authEmail.trim(),
-            password: authPassword.trim(),
             role: authRole,
             phone: authPhone.trim(),
             city: authCity.trim() || 'India',
@@ -737,13 +729,13 @@ export default function App() {
           if (!authPhone.trim()) {
             throw new Error(lang === 'hi' ? 'कृपया अपना मोबाइल नंबर दर्ज करें।' : 'Please enter your mobile number.');
           }
-          user = await loginWithPhone(authPhone.trim(), authPassword.trim());
+          user = await loginWithPhone(authPhone.trim());
         } else {
-          // 'email' or 'password' method — both use email + password
+          // 'email' or 'password' method — email only, no password
           if (!authEmail.trim()) {
             throw new Error(lang === 'hi' ? 'कृपया अपना ईमेल पता दर्ज करें।' : 'Please enter your email address.');
           }
-          user = await loginUser(authEmail.trim(), authPassword.trim(), authRole);
+          user = await loginUser(authEmail.trim(), '', authRole);
         }
       }
 
@@ -808,7 +800,7 @@ export default function App() {
   const handleSendOtp = async () => {
     const target = authMethod === 'phone' ? authPhone.trim() : authEmail.trim();
     if (!target) {
-      Alert.alert('Required', authMethod === 'phone' ? 'Please enter your mobile number' : 'Please enter your Gmail / email');
+      Alert.alert('Required', authMethod === 'phone' ? 'Please enter your mobile number' : 'Please enter your email');
       return;
     }
 
@@ -817,12 +809,13 @@ export default function App() {
     setAuthOtp('');
 
     try {
+      // Generate dummy OTP locally — no backend needed
       const generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
       setDemoOtpCode(generatedOtp);
-      setAuthOtp(generatedOtp);
+      setAuthOtp(generatedOtp);  // Auto-fill
       setShowOtpSection(true);
-      setDevOtpNotice(`Use this OTP on-screen: ${generatedOtp}`);
-      Alert.alert('OTP Ready', `Use OTP ${generatedOtp} on this screen to continue.`);
+      setDevOtpNotice(generatedOtp);
+      Alert.alert('✅ OTP Ready', `Your OTP is: ${generatedOtp}\n\nIt has been auto-filled. Just tap Verify to continue.`);
     } catch (err: any) {
       Alert.alert('Notice', err?.message || 'Could not generate OTP.');
     } finally {
@@ -838,17 +831,36 @@ export default function App() {
     }
 
     const expectedOtp = demoOtpCode || (devOtpNotice.match(/\d{6}/)?.[0] ?? '');
-    if (!expectedOtp || authOtp.trim() !== expectedOtp) {
-      Alert.alert('Verification Failed', `Use the OTP displayed on this screen: ${expectedOtp || 'missing'}`);
+    if (expectedOtp && authOtp.trim() !== expectedOtp) {
+      Alert.alert('Verification Failed', `OTP mismatch. Expected: ${expectedOtp}`);
       return;
     }
 
     setAuthLoading(true);
     try {
-      await handleAuthSubmit();
+      // verifyOtpApi handles login/register directly without password
+      const user = await verifyOtpApi(target, authOtp.trim(), '', authName.trim() || 'KalaSetu User', authRole);
       setShowOtpSection(false);
+      setCurrentUser(user);
+      if (user.phone) setArtisanPhone(user.phone);
+      if (user.name) setArtisanName(user.name);
+      if (user.city) setArtisanLocation(user.city);
+      setIsLoggedIn(true);
+      setActiveTab('home');
+      showCustomPopup({
+        type: 'welcome',
+        title: lang === 'hi' ? `नमस्ते, ${user.name}! 🎉` : `Welcome, ${user.name}! 🎉`,
+        subtitle: lang === 'hi' ? 'कलासेतु में आपका स्वागत है' : 'KalaSetu AI Studio',
+        message: lang === 'hi'
+          ? `आपका खाता (${user.phone || user.email}) सफलतापूर्वक सक्रिय हो गया है।`
+          : `Logged in as ${user.phone || user.email}.`,
+        primaryText: user.role === 'buyer' ? '🛍️ Explore Market' : '🎨 Open AI Studio',
+        primaryAction: () => { hideCustomPopup(); setActiveTab(user.role === 'buyer' ? 'market' : 'studio'); },
+        secondaryText: 'OK',
+        secondaryAction: hideCustomPopup
+      });
     } catch (err: any) {
-      Alert.alert('Verification Failed', err?.message || 'Invalid or expired OTP');
+      Alert.alert('Verification Failed', err?.message || 'Could not verify. Please try again.');
     } finally {
       setAuthLoading(false);
     }
@@ -1805,27 +1817,16 @@ export default function App() {
                       placeholderTextColor={Colors.placeholder}
                     />
 
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <Text style={styles.authFieldLabel}>Password or Security PIN</Text>
-                      <TouchableOpacity onPress={() => { setAuthMethod('email'); setDevOtpNotice(''); }}>
-                        <Text style={{ fontSize: 10, fontWeight: '700', color: Colors.primary }}>Verify via Gmail OTP instead</Text>
-                      </TouchableOpacity>
+                    <View style={styles.authInfoBox}>
+                      <Text style={styles.authInfoText}>🔓 <Text style={{ fontWeight: '700' }}>Passwordless:</Text> No password needed. Just enter your email/phone and tap Sign In.</Text>
                     </View>
-                    <TextInput
-                      style={styles.authInput}
-                      value={authPassword}
-                      onChangeText={setAuthPassword}
-                      placeholder={authMode === 'register' ? 'Create a password (min 4 chars)' : '••••••••'}
-                      secureTextEntry
-                      placeholderTextColor={Colors.placeholder}
-                    />
 
                     {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
 
                     <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleAuthSubmit} disabled={authLoading}>
                       {authLoading
                         ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>{authMode === 'register' ? 'Creating...' : 'Signing In...'}</Text></View>
-                        : <Text style={styles.primaryActionText}>{authMode === 'register' ? '✨ Create Account' : '🔑 Sign In with Password'}</Text>
+                        : <Text style={styles.primaryActionText}>{authMode === 'register' ? '✨ Create Account' : '🔑 Sign In'}</Text>
                       }
                     </TouchableOpacity>
 
@@ -1834,10 +1835,10 @@ export default function App() {
                       <View style={styles.demoPillsBox}>
                         <Text style={styles.demoPillsLabel}>⚡ 1-Click Demo Accounts:</Text>
                         <View style={styles.demoPillsRow}>
-                          <TouchableOpacity style={styles.demoPill} onPress={() => { setAuthEmail('demo@kalakriti.in'); setAuthPassword('demo123'); }}>
+                          <TouchableOpacity style={styles.demoPill} onPress={() => { setAuthEmail('demo@kalakriti.in'); }}>
                             <Text style={styles.demoPillText}>🛍️ Buyer: demo@kalakriti.in</Text>
                           </TouchableOpacity>
-                          <TouchableOpacity style={styles.demoPill} onPress={() => { setAuthEmail('artisan@kalakriti.in'); setAuthPassword('artisan123'); }}>
+                          <TouchableOpacity style={styles.demoPill} onPress={() => { setAuthEmail('artisan@kalakriti.in'); }}>
                             <Text style={styles.demoPillText}>🎨 Artisan: artisan@kalakriti.in</Text>
                           </TouchableOpacity>
                         </View>
@@ -1855,7 +1856,7 @@ export default function App() {
                       <Text style={styles.authInfoText}>📧 <Text style={{ fontWeight: '700' }}>Direct Inbox Delivery:</Text> Verification codes are dispatched directly to your Gmail inbox.</Text>
                     </View>
 
-                    {/* Sign Up only: Name + Role + Optional Password */}
+                    {/* Sign Up only: Name + Role */}
                     {authMode === 'register' && (
                       <View style={{ marginBottom: 4 }}>
                         <Text style={styles.authFieldLabel}>Your Full Name</Text>
@@ -1869,9 +1870,6 @@ export default function App() {
                             <Text style={[styles.roleChipText, authRole === 'buyer' && { color: '#FFF', fontWeight: 'bold' }]}>🛍️ Craft Buyer</Text>
                           </TouchableOpacity>
                         </View>
-                        <Text style={styles.authFieldLabel}>Set Account Password / PIN <Text style={{ fontWeight: '400', color: '#94A3B8' }}>(optional)</Text></Text>
-                        <TextInput style={styles.authInput} value={authPassword} onChangeText={setAuthPassword} placeholder="Create a password for your account (optional)" secureTextEntry placeholderTextColor={Colors.placeholder} />
-                        <Text style={{ fontSize: 10, color: '#94A3B8', marginBottom: 8 }}>Allows you to sign in with password in the future.</Text>
                       </View>
                     )}
 
@@ -1882,26 +1880,24 @@ export default function App() {
                         {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
                         <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleSendOtp} disabled={authLoading}>
                           {authLoading
-                            ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Sending...</Text></View>
-                            : <Text style={styles.primaryActionText}>📩 Send OTP to Gmail Inbox</Text>
+                            ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Generating...</Text></View>
+                            : <Text style={styles.primaryActionText}>📩 Generate OTP</Text>
                           }
                         </TouchableOpacity>
                       </View>
                     ) : (
                       <View>
                         <View style={styles.otpSentBox}>
-                          <Text style={styles.otpSentText}>Verification code sent to <Text style={{ fontWeight: '800', color: '#0F172A' }}>{authEmail}</Text></Text>
-                          <Text style={styles.otpSentSub}>Please check your inbox (and spam/promotions folder).</Text>
+                          <Text style={styles.otpSentText}>✅ OTP auto-filled for <Text style={{ fontWeight: '800', color: '#0F172A' }}>{authEmail}</Text></Text>
+                          <Text style={styles.otpSentSub}>Your OTP has been auto-filled below. Just tap Verify to continue.</Text>
                           {devOtpNotice ? (
-                            <TouchableOpacity style={styles.demoPill} onPress={() => { const m = devOtpNotice.match(/\d{6}/); if (m) setAuthOtp(m[0]); }}>
-                              <Text style={styles.demoPillText}>💡 Dev Code: {devOtpNotice} (Tap to fill)</Text>
+                            <TouchableOpacity style={styles.demoPill} onPress={() => setAuthOtp(devOtpNotice)}>
+                              <Text style={styles.demoPillText}>💡 OTP: {devOtpNotice} (Tap to fill)</Text>
                             </TouchableOpacity>
                           ) : null}
                         </View>
-                        <Text style={styles.authFieldLabel}>Enter 6-Digit Verification Code</Text>
+                        <Text style={styles.authFieldLabel}>6-Digit OTP</Text>
                         <TextInput style={[styles.authInput, { textAlign: 'center', fontSize: 22, fontWeight: '900', letterSpacing: 8 }]} value={authOtp} onChangeText={setAuthOtp} placeholder="123456" keyboardType="number-pad" maxLength={6} placeholderTextColor={Colors.placeholder} />
-                        <Text style={styles.authFieldLabel}>Set Password / PIN <Text style={{ fontWeight: '400', color: '#94A3B8' }}>(optional for future password login)</Text></Text>
-                        <TextInput style={styles.authInput} value={authPassword} onChangeText={setAuthPassword} placeholder="Create a password (optional, min 4 chars)" secureTextEntry placeholderTextColor={Colors.placeholder} />
                         {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
                         <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleVerifyOtp} disabled={authLoading}>
                           {authLoading
@@ -1927,7 +1923,7 @@ export default function App() {
                       <Text style={[styles.authInfoText, { color: '#92400E' }]}>ℹ️ <Text style={{ fontWeight: '700' }}>Telecom SMS Notice:</Text> For guaranteed instant delivery switch to <Text style={{ fontWeight: '700' }}>Gmail OTP</Text> above.</Text>
                     </View>
 
-                    {/* Sign Up only: Name + Role + Optional Password */}
+                    {/* Sign Up only: Name + Role */}
                     {authMode === 'register' && (
                       <View style={{ marginBottom: 4 }}>
                         <Text style={styles.authFieldLabel}>Your Full Name</Text>
@@ -1941,8 +1937,6 @@ export default function App() {
                             <Text style={[styles.roleChipText, authRole === 'buyer' && { color: '#FFF', fontWeight: 'bold' }]}>🛍️ Craft Buyer</Text>
                           </TouchableOpacity>
                         </View>
-                        <Text style={styles.authFieldLabel}>Set Account Password / PIN <Text style={{ fontWeight: '400', color: '#94A3B8' }}>(optional)</Text></Text>
-                        <TextInput style={styles.authInput} value={authPassword} onChangeText={setAuthPassword} placeholder="Create a password (optional)" secureTextEntry placeholderTextColor={Colors.placeholder} />
                       </View>
                     )}
 
@@ -1958,8 +1952,8 @@ export default function App() {
                         {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
                         <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleSendOtp} disabled={authLoading}>
                           {authLoading
-                            ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Sending...</Text></View>
-                            : <Text style={styles.primaryActionText}>📲 Generate Mobile OTP</Text>
+                            ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Generating...</Text></View>
+                            : <Text style={styles.primaryActionText}>📲 Generate OTP</Text>
                           }
                         </TouchableOpacity>
                         {/* Quick Demo Phones */}
@@ -1980,17 +1974,16 @@ export default function App() {
                     ) : (
                       <View>
                         <View style={styles.otpSentBox}>
-                          <Text style={styles.otpSentText}>OTP code for <Text style={{ fontWeight: '800', color: '#0F172A' }}>{authPhone}</Text></Text>
+                          <Text style={styles.otpSentText}>✅ OTP auto-filled for <Text style={{ fontWeight: '800', color: '#0F172A' }}>{authPhone}</Text></Text>
+                          <Text style={styles.otpSentSub}>Your OTP has been auto-filled below. Just tap Verify to continue.</Text>
                           {devOtpNotice ? (
-                            <TouchableOpacity style={styles.demoPill} onPress={() => { const m = devOtpNotice.match(/\d{6}/); if (m) setAuthOtp(m[0]); }}>
-                              <Text style={styles.demoPillText}>💡 Code: {devOtpNotice} (Tap to fill)</Text>
+                            <TouchableOpacity style={styles.demoPill} onPress={() => setAuthOtp(devOtpNotice)}>
+                              <Text style={styles.demoPillText}>💡 OTP: {devOtpNotice} (Tap to fill)</Text>
                             </TouchableOpacity>
                           ) : null}
                         </View>
-                        <Text style={styles.authFieldLabel}>Enter 6-Digit OTP</Text>
+                        <Text style={styles.authFieldLabel}>6-Digit OTP</Text>
                         <TextInput style={[styles.authInput, { textAlign: 'center', fontSize: 22, fontWeight: '900', letterSpacing: 8 }]} value={authOtp} onChangeText={setAuthOtp} placeholder="123456" keyboardType="number-pad" maxLength={6} placeholderTextColor={Colors.placeholder} />
-                        <Text style={styles.authFieldLabel}>Set Password / PIN <Text style={{ fontWeight: '400', color: '#94A3B8' }}>(optional for future password login)</Text></Text>
-                        <TextInput style={styles.authInput} value={authPassword} onChangeText={setAuthPassword} placeholder="Create a password (optional, min 4 chars)" secureTextEntry placeholderTextColor={Colors.placeholder} />
                         {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
                         <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleVerifyOtp} disabled={authLoading}>
                           {authLoading
