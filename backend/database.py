@@ -295,6 +295,12 @@ def init_db():
             """,
             conn=conn,
         )
+        # Core column migrations (in case table was created with an older schema)
+        safe_add_column_pg(cursor, conn, "orders", "product_name", "TEXT NOT NULL DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "orders", "quantity", "INTEGER DEFAULT 1")
+        safe_add_column_pg(cursor, conn, "orders", "total", "INTEGER NOT NULL DEFAULT 0")
+        safe_add_column_pg(cursor, conn, "orders", "status", "TEXT DEFAULT 'Confirmed'")
+        safe_add_column_pg(cursor, conn, "orders", "eta", "TEXT DEFAULT '2-4 working days'")
         safe_add_column_pg(cursor, conn, "orders", "cancel_reason", "TEXT DEFAULT ''")
         safe_add_column_pg(cursor, conn, "orders", "cancelled_at", "TIMESTAMPTZ NULL")
         safe_add_column_pg(cursor, conn, "orders", "recipient_name", "TEXT DEFAULT ''")
