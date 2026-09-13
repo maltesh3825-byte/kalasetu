@@ -845,7 +845,8 @@ def get_incoming_orders(user_id: int):
     """Orders placed by buyers for products belonging to this artisan."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    user_row = cursor.execute("SELECT name, phone FROM users WHERE id = ?", (user_id,)).fetchone()
+    cursor.execute("SELECT name, phone FROM users WHERE id = ?", (user_id,))
+    user_row = cursor.fetchone()
     if not user_row:
         conn.close()
         return {"orders": []}
@@ -888,7 +889,8 @@ def get_published_products(user_id: int):
     """Return marketplace listings published under the signed-in artisan's name or phone."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    user_row = cursor.execute("SELECT name, phone FROM users WHERE id = ?", (user_id,)).fetchone()
+    cursor.execute("SELECT name, phone FROM users WHERE id = ?", (user_id,))
+    user_row = cursor.fetchone()
     if not user_row:
         conn.close()
         return {"products": []}
@@ -946,7 +948,8 @@ def get_notifications(user_id: int):
 @app.post("/api/notifications/{user_id}/read")
 def mark_notifications_read(user_id: int):
     conn = get_db_connection()
-    conn.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ?", (user_id,))
+    cursor = conn.cursor()
+    cursor.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
     return {"status": "success"}
@@ -954,6 +957,7 @@ def mark_notifications_read(user_id: int):
 
 @app.post("/api/orders")
 def create_order(payload: OrderCreate):
+    import traceback
     if not all(value.strip() for value in (
         payload.recipient_name, payload.recipient_phone, payload.address_line,
         payload.city, payload.state, payload.pincode,
@@ -964,72 +968,92 @@ def create_order(payload: OrderCreate):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    if payload.quantity < 1 or payload.quantity > 10:
-        conn.close()
-        raise HTTPException(status_code=422, detail="You can buy between 1 and 10 items per order")
-    requested_quantity = payload.quantity
-    cursor.execute("SELECT quantity, artisan_name, name, price FROM products WHERE id = ?", (payload.product_id,))
-    product_row = cursor.fetchone()
-    if not product_row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Product not found")
-    available_quantity = int(product_row[0] or 0)
-    if available_quantity < requested_quantity:
-        conn.close()
-        raise HTTPException(status_code=409, detail="This product is no longer available in the requested quantity")
+    try:
+        if payload.quantity < 1 or payload.quantity > 10:
+            raise HTTPException(status_code=422, detail="You can buy between 1 and 10 items per order")
+        requested_quantity = payload.quantity
+        cursor.execute("SELECT quantity, artisan_name, name, price FROM products WHERE id = ?", (payload.product_id,))
+        product_row = cursor.fetchone()
+        if not product_row:
+            raise HTTPException(status_code=404, detail="Product not found")
+        available_quantity = int(product_row[0] or 0)
+        if available_quantity < requested_quantity:
+            raise HTTPException(status_code=409, detail="This product is no longer available in the requested quantity")
 
-    cursor.execute(
-        "UPDATE products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?",
-        (requested_quantity, payload.product_id, requested_quantity),
-    )
-    if cursor.rowcount != 1:
-        conn.rollback()
-        conn.close()
-        raise HTTPException(status_code=409, detail="This product was just reserved by another buyer")
-    cursor.execute(
-        """
-        INSERT INTO orders (
-            user_id, product_id, product_name, quantity, total, status, eta,
-            recipient_name, recipient_phone, address_line, city, state, pincode
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            payload.user_id,
-            payload.product_id,
-            payload.product_name,
-            requested_quantity,
-            payload.total * requested_quantity,
-            payload.status,
-            payload.eta,
-            payload.recipient_name.strip(),
-            payload.recipient_phone.strip(),
-            payload.address_line.strip(),
-            payload.city.strip(),
-            payload.state.strip(),
-            payload.pincode.strip(),
-        ),
-    )
-    order_id = cursor.lastrowid
-    cursor.execute(
-        "SELECT id FROM users WHERE lower(name) = lower(?) AND role = 'artisan' LIMIT 1",
-        (product_row[1],),
-    )
-    artisan_row = cursor.fetchone()
-    if artisan_row:
         cursor.execute(
-            "INSERT INTO notifications (user_id, kind, title, message, related_id) VALUES (?, ?, ?, ?, ?)",
+            "UPDATE products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?",
+            (requested_quantity, payload.product_id, requested_quantity),
+        )
+        affected = getattr(cursor, 'rowcount', None)
+        if affected is None:
+            try:
+                affected = cursor._cursor.rowcount
+            except Exception:
+                affected = 1  # assume success if rowcount unavailable
+        if affected != 1:
+            conn.rollback()
+            raise HTTPException(status_code=409, detail="This product was just reserved by another buyer")
+        # Total from frontend is already price * qty; store price-per-unit * requested_quantity
+        unit_price = int(product_row[3] or payload.total)
+        order_total = unit_price * requested_quantity
+        cursor.execute(
+            """
+            INSERT INTO orders (
+                user_id, product_id, product_name, quantity, total, status, eta,
+                recipient_name, recipient_phone, address_line, city, state, pincode
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
             (
-                artisan_row[0],
-                "buyer_order",
-                "New buyer order request",
-                f"A buyer requested {requested_quantity} unit(s) of {payload.product_name}.",
-                order_id,
+                payload.user_id,
+                payload.product_id,
+                payload.product_name,
+                requested_quantity,
+                order_total,
+                payload.status,
+                payload.eta,
+                payload.recipient_name.strip(),
+                payload.recipient_phone.strip(),
+                payload.address_line.strip(),
+                payload.city.strip(),
+                payload.state.strip(),
+                payload.pincode.strip(),
             ),
         )
-    conn.commit()
-    conn.close()
-    remaining_quantity = available_quantity - requested_quantity
-    return {"status": "success", "order_id": order_id, "remaining_quantity": remaining_quantity}
+        order_id = cursor.lastrowid
+        cursor.execute(
+            "SELECT id FROM users WHERE lower(name) = lower(?) AND role = 'artisan' LIMIT 1",
+            (product_row[1],),
+        )
+        artisan_row = cursor.fetchone()
+        if artisan_row:
+            cursor.execute(
+                "INSERT INTO notifications (user_id, kind, title, message, related_id) VALUES (?, ?, ?, ?, ?)",
+                (
+                    artisan_row[0],
+                    "buyer_order",
+                    "New buyer order request",
+                    f"A buyer requested {requested_quantity} unit(s) of {payload.product_name}.",
+                    order_id,
+                ),
+            )
+        conn.commit()
+        remaining_quantity = available_quantity - requested_quantity
+        return {"status": "success", "order_id": order_id, "remaining_quantity": remaining_quantity}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[ORDER ERROR] create_order failed: {exc}")
+        traceback.print_exc()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Order failed: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 @app.delete("/api/products/{product_id}")
