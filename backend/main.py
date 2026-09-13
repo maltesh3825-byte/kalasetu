@@ -843,7 +843,7 @@ def get_orders(user_id: int):
 
 @app.get("/api/orders/{user_id}/incoming")
 def get_incoming_orders(user_id: int):
-    """Orders placed by buyers for products belonging to this artisan."""
+    """Orders placed by buyers for products belonging to this artisan — matched by seller_id, owner_user_id, or name/phone."""
     import traceback
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -857,6 +857,39 @@ def get_incoming_orders(user_id: int):
         user_phone = (user_row[1] or "").strip()
         norm_phone = user_phone.replace("+91", "").replace(" ", "").replace("-", "")
 
+        # Auto-claim unowned legacy listings matching this artisan's name or phone
+        cursor.execute(
+            """
+            UPDATE products
+            SET owner_user_id = ?
+            WHERE owner_user_id IS NULL
+              AND (
+                  lower(artisan_name) = lower(?)
+                  OR (
+                      ? != ''
+                      AND artisan_phone IS NOT NULL
+                      AND (artisan_phone = ? OR replace(replace(replace(artisan_phone, '+91', ''), ' ', ''), '-', '') = ?)
+                  )
+              )
+            """,
+            (user_id, user_name, norm_phone, user_phone, norm_phone),
+        )
+        # Also auto-populate seller_id for existing orders of this artisan's products
+        try:
+            cursor.execute(
+                """
+                UPDATE orders
+                SET seller_id = ?
+                WHERE seller_id IS NULL
+                  AND product_id IN (SELECT id FROM products WHERE owner_user_id = ?)
+                """,
+                (user_id, user_id),
+            )
+        except Exception:
+            pass
+        conn.commit()
+
+        # Query orders using seller_id or owner_user_id or name/phone fallback
         cursor.execute(
             """
             SELECT orders.*,
@@ -864,22 +897,29 @@ def get_incoming_orders(user_id: int):
                    COALESCE(NULLIF(orders.recipient_phone, ''), users.phone, '') AS buyer_phone,
                    users.email AS buyer_email
             FROM orders
-            JOIN products ON products.id = orders.product_id
+            LEFT JOIN products ON products.id = orders.product_id
             LEFT JOIN users ON users.id = orders.user_id
             WHERE (
-                lower(products.artisan_name) = lower(?)
+                orders.seller_id = ?
+                OR products.owner_user_id = ?
                 OR (
-                    ? != ''
-                    AND products.artisan_phone IS NOT NULL
+                    products.owner_user_id IS NULL
                     AND (
-                        products.artisan_phone = ?
-                        OR replace(replace(replace(products.artisan_phone, '+91', ''), ' ', ''), '-', '') = ?
+                        lower(products.artisan_name) = lower(?)
+                        OR (
+                            ? != ''
+                            AND products.artisan_phone IS NOT NULL
+                            AND (
+                                products.artisan_phone = ?
+                                OR replace(replace(replace(products.artisan_phone, '+91', ''), ' ', ''), '-', '') = ?
+                            )
+                        )
                     )
                 )
             )
             ORDER BY orders.id DESC
             """,
-            (user_name, norm_phone, user_phone, norm_phone),
+            (user_id, user_id, user_name, norm_phone, user_phone, norm_phone),
         )
         rows = cursor.fetchall()
         return {"orders": [dict(row) for row in rows]}
@@ -910,8 +950,25 @@ def get_published_products(user_id: int):
         user_phone = (user_row[1] or "").strip()
         norm_phone = user_phone.replace("+91", "").replace(" ", "").replace("-", "")
 
-        # Primary: match by owner_user_id (reliable, set when publishing)
-        # Fallback: match by artisan_name or artisan_phone (legacy listings without owner_user_id)
+        # Auto-claim unowned legacy listings matching this artisan's name or phone
+        cursor.execute(
+            """
+            UPDATE products
+            SET owner_user_id = ?
+            WHERE owner_user_id IS NULL
+              AND (
+                  lower(artisan_name) = lower(?)
+                  OR (
+                      ? != ''
+                      AND artisan_phone IS NOT NULL
+                      AND (artisan_phone = ? OR replace(replace(replace(artisan_phone, '+91', ''), ' ', ''), '-', '') = ?)
+                  )
+              )
+            """,
+            (user_id, user_name, norm_phone, user_phone, norm_phone),
+        )
+        conn.commit()
+
         cursor.execute(
             """
             SELECT products.*
@@ -999,7 +1056,7 @@ def create_order(payload: OrderCreate):
         if payload.quantity < 1 or payload.quantity > 10:
             raise HTTPException(status_code=422, detail="You can buy between 1 and 10 items per order")
         requested_quantity = payload.quantity
-        cursor.execute("SELECT quantity, artisan_name, name, price FROM products WHERE id = ?", (payload.product_id,))
+        cursor.execute("SELECT quantity, artisan_name, name, price, owner_user_id, artisan_phone FROM products WHERE id = ?", (payload.product_id,))
         product_row = cursor.fetchone()
         if not product_row:
             raise HTTPException(status_code=404, detail="Product not found")
@@ -1023,12 +1080,38 @@ def create_order(payload: OrderCreate):
         # Total from frontend is already price * qty; store price-per-unit * requested_quantity
         unit_price = int(product_row[3] or payload.total)
         order_total = unit_price * requested_quantity
+
+        # Determine artisan/seller user ID
+        artisan_user_id = product_row[4] if len(product_row) > 4 and product_row[4] is not None else None
+        if not artisan_user_id:
+            # Fallback 1: match phone
+            artisan_phone = (product_row[5] or "").strip() if len(product_row) > 5 else ""
+            norm_artisan_phone = artisan_phone.replace("+91", "").replace(" ", "").replace("-", "")
+            if norm_artisan_phone:
+                cursor.execute(
+                    "SELECT id FROM users WHERE phone = ? OR replace(replace(replace(phone, '+91', ''), ' ', ''), '-', '') = ? LIMIT 1",
+                    (artisan_phone, norm_artisan_phone),
+                )
+                ph_row = cursor.fetchone()
+                if ph_row:
+                    artisan_user_id = ph_row[0]
+        if not artisan_user_id and product_row[1]:
+            # Fallback 2: match name
+            cursor.execute(
+                "SELECT id FROM users WHERE lower(name) = lower(?) LIMIT 1",
+                (str(product_row[1]).strip(),),
+            )
+            name_row = cursor.fetchone()
+            if name_row:
+                artisan_user_id = name_row[0]
+
         cursor.execute(
             """
             INSERT INTO orders (
                 user_id, product_id, product_name, quantity, total, status, eta,
-                recipient_name, recipient_phone, address_line, city, state, pincode
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                recipient_name, recipient_phone, address_line, city, state, pincode,
+                seller_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 payload.user_id,
@@ -1044,25 +1127,35 @@ def create_order(payload: OrderCreate):
                 payload.city.strip(),
                 payload.state.strip(),
                 payload.pincode.strip(),
+                artisan_user_id,
             ),
         )
         order_id = cursor.lastrowid
-        cursor.execute(
-            "SELECT id FROM users WHERE lower(name) = lower(?) LIMIT 1",
-            (product_row[1],),
-        )
-        artisan_row = cursor.fetchone()
-        if artisan_row:
+
+        # Notify the artisan / seller
+        if artisan_user_id:
             cursor.execute(
                 "INSERT INTO notifications (user_id, kind, title, message, related_id) VALUES (?, ?, ?, ?, ?)",
                 (
-                    artisan_row[0],
+                    artisan_user_id,
                     "buyer_order",
                     "New buyer order request",
-                    f"A buyer requested {requested_quantity} unit(s) of {payload.product_name}.",
+                    f"A buyer requested {requested_quantity} unit(s) of '{payload.product_name}'. Total: ₹{order_total}.",
                     order_id,
                 ),
             )
+
+        # Also notify the buyer that order was placed
+        cursor.execute(
+            "INSERT INTO notifications (user_id, kind, title, message, related_id) VALUES (?, ?, ?, ?, ?)",
+            (
+                payload.user_id,
+                "order_placed",
+                "Order request sent",
+                f"Your order request for {requested_quantity} unit(s) of '{payload.product_name}' (Order #{order_id}) has been sent to the artisan.",
+                order_id,
+            ),
+        )
         conn.commit()
         remaining_quantity = available_quantity - requested_quantity
         return {"status": "success", "order_id": order_id, "remaining_quantity": remaining_quantity}
@@ -1127,7 +1220,7 @@ def delete_product(product_id: int, payload: ProductDeleteRequest):
         cursor.execute("DELETE FROM wishlist WHERE product_id = ?", (product_id,))
         cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
         conn.commit()
-        return {"status": "success", "product_id": product_id}
+        return {"status": "success", "product_id": product_id, "message": "Product listing deleted. Your monthly listing quota has been restored."}
     except HTTPException:
         raise
     except Exception as exc:
@@ -1232,43 +1325,59 @@ def update_order_status(order_id: int, payload: OrderStatusUpdate):
 @app.post("/api/orders/{order_id}/cancel")
 def cancel_order(order_id: int, payload: CancelOrderRequest):
     """Cancel an order by record, restore tracked quantity and add a cancellation notice to the buyer profile."""
+    import traceback
     reason = payload.reason.strip() if payload.reason else ""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT user_id, product_id, product_name, quantity, status FROM orders WHERE id = ?",
-        (order_id,),
-    )
-    order_row = cursor.fetchone()
-    if not order_row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Order not found")
+    try:
+        cursor.execute(
+            "SELECT user_id, product_id, product_name, quantity, status FROM orders WHERE id = ?",
+            (order_id,),
+        )
+        order_row = cursor.fetchone()
+        if not order_row:
+            raise HTTPException(status_code=404, detail="Order not found")
 
-    if str(order_row["status"]).lower() == "cancelled":
-        conn.close()
-        raise HTTPException(status_code=409, detail="Order is already cancelled")
+        if str(order_row["status"]).lower() == "cancelled":
+            raise HTTPException(status_code=409, detail="Order is already cancelled")
 
-    cursor.execute(
-        "UPDATE orders SET status = 'Cancelled', cancel_reason = ?, cancelled_at = ? WHERE id = ?",
-        (reason, datetime.now(timezone.utc).isoformat(), order_id),
-    )
-    cursor.execute(
-        "UPDATE products SET quantity = quantity + ? WHERE id = ?",
-        (int(order_row["quantity"]), int(order_row["product_id"])),
-    )
-    cursor.execute(
-        "INSERT INTO notifications (user_id, kind, title, message, related_id) VALUES (?, ?, ?, ?, ?)",
-        (
-            int(order_row["user_id"]),
-            "order_cancelled",
-            "Order cancelled",
-            f"Order #{order_id} for {order_row['product_name']} was cancelled. Reversal restored {order_row['quantity']} unit(s).{(' Reason: ' + reason) if reason else ''}",
-            order_id,
-        ),
-    )
-    conn.commit()
-    conn.close()
-    return {"status": "success", "order_id": order_id, "restored_quantity": int(order_row["quantity"]), "reason": reason}
+        cursor.execute(
+            "UPDATE orders SET status = 'Cancelled', cancel_reason = ? WHERE id = ?",
+            (reason, order_id),
+        )
+        # Restore product quantity
+        cursor.execute(
+            "UPDATE products SET quantity = quantity + ? WHERE id = ?",
+            (int(order_row["quantity"] or 1), int(order_row["product_id"])),
+        )
+        # Notify the buyer
+        cursor.execute(
+            "INSERT INTO notifications (user_id, kind, title, message, related_id) VALUES (?, ?, ?, ?, ?)",
+            (
+                int(order_row["user_id"]),
+                "order_cancelled",
+                "Order cancelled",
+                f"Order #{order_id} for {order_row['product_name'] or 'your item'} was cancelled.{(' Reason: ' + reason) if reason else ''}",
+                order_id,
+            ),
+        )
+        conn.commit()
+        return {"status": "success", "order_id": order_id, "restored_quantity": int(order_row["quantity"] or 1), "reason": reason}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[CANCEL ORDER ERROR] order_id={order_id}: {exc}")
+        traceback.print_exc()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Cancel failed: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def persist_institutional_request(payload: InstitutionalRequestCreate):
@@ -1561,16 +1670,28 @@ def create_product(product: ProductCreate):
 
         # Use DATE_TRUNC for PostgreSQL, substr for SQLite — detect by DATABASE_URL
         from backend.config import DATABASE_URL as _DB_URL
-        if _DB_URL and ("postgres" in _DB_URL):
-            cursor.execute(
-                "SELECT COUNT(*) FROM products WHERE lower(artisan_name) = lower(%s) AND TO_CHAR(created_at, 'YYYY-MM') = %s",
-                (product.artisan_name.strip(), current_month),
-            )
+        if product.owner_user_id:
+            if _DB_URL and ("postgres" in _DB_URL):
+                cursor.execute(
+                    "SELECT COUNT(*) FROM products WHERE owner_user_id = %s AND TO_CHAR(created_at, 'YYYY-MM') = %s",
+                    (product.owner_user_id, current_month),
+                )
+            else:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM products WHERE owner_user_id = ? AND substr(created_at, 1, 7) = ?",
+                    (product.owner_user_id, current_month),
+                )
         else:
-            cursor.execute(
-                "SELECT COUNT(*) FROM products WHERE lower(artisan_name) = lower(?) AND substr(created_at, 1, 7) = ?",
-                (product.artisan_name.strip(), current_month),
-            )
+            if _DB_URL and ("postgres" in _DB_URL):
+                cursor.execute(
+                    "SELECT COUNT(*) FROM products WHERE lower(artisan_name) = lower(%s) AND TO_CHAR(created_at, 'YYYY-MM') = %s",
+                    (product.artisan_name.strip(), current_month),
+                )
+            else:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM products WHERE lower(artisan_name) = lower(?) AND substr(created_at, 1, 7) = ?",
+                    (product.artisan_name.strip(), current_month),
+                )
 
         row = cursor.fetchone()
         monthly_listings = row[0] if row else 0

@@ -310,6 +310,7 @@ def init_db():
         safe_add_column_pg(cursor, conn, "orders", "city", "TEXT DEFAULT ''")
         safe_add_column_pg(cursor, conn, "orders", "state", "TEXT DEFAULT ''")
         safe_add_column_pg(cursor, conn, "orders", "pincode", "TEXT DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "orders", "seller_id", "INTEGER NULL")
 
         safe_execute(
             cursor,
@@ -479,6 +480,7 @@ def init_db():
             "city": "TEXT DEFAULT ''",
             "state": "TEXT DEFAULT ''",
             "pincode": "TEXT DEFAULT ''",
+            "seller_id": "INTEGER NULL",
         }.items():
             if column not in order_columns:
                 cursor.execute(f"ALTER TABLE orders ADD COLUMN {column} {column_type}")

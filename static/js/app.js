@@ -369,8 +369,10 @@ async function initApp() {
     try {
       state.currentUser = JSON.parse(savedUser);
       await loadAccountData();
+      await loadProducts(); // Re-render marketplace with owner delete buttons enabled
       const userName = state.currentUser?.name || state.currentUser?.email || 'user';
       showToast(`Logged in as ${userName}`);
+      syncStudioArtisanInfo();
     } catch (error) {
       localStorage.removeItem('kalakriti_user');
     }
@@ -612,6 +614,22 @@ function setupEventListeners() {
   if (submitReviewBtn) submitReviewBtn.addEventListener('click', submitProductReview);
 }
 
+function syncStudioArtisanInfo() {
+  if (!state.currentUser) return;
+  const nameEl = document.getElementById('artisanName');
+  const phoneEl = document.getElementById('artisanPhone');
+  const locEl = document.getElementById('artisanLocation');
+  if (nameEl && (!nameEl.value || nameEl.value === 'Ramvati Devi')) {
+    nameEl.value = state.currentUser.name || '';
+  }
+  if (phoneEl && (!phoneEl.value || phoneEl.value === '+919876543210')) {
+    phoneEl.value = state.currentUser.phone || '';
+  }
+  if (locEl && (!locEl.value || locEl.value === 'Madhubani, Bihar')) {
+    locEl.value = state.currentUser.city || '';
+  }
+}
+
 // Switch between Studio and Marketplace tabs
 function switchTab(tab) {
   state.currentTab = tab;
@@ -644,6 +662,7 @@ function switchTab(tab) {
     marketSection?.classList.add('hidden');
     institutionalSection?.classList.add('hidden');
     accountSection?.classList.add('hidden');
+    syncStudioArtisanInfo();
   } else if (tab === 'institutional') {
     homeSection?.classList.add('hidden');
     studioSection?.classList.add('hidden');
@@ -657,6 +676,11 @@ function switchTab(tab) {
     institutionalSection?.classList.add('hidden');
     accountSection?.classList.remove('hidden');
     renderAccountShell();
+    if (state.currentUser) {
+      loadAccountData().then(() => {
+        if (state.currentTab === 'account') renderAccountShell();
+      }).catch(err => console.error('Error refreshing account tab:', err));
+    }
   } else {
     homeSection?.classList.add('hidden');
     studioSection?.classList.add('hidden');
@@ -1157,12 +1181,19 @@ async function loadAccountData() {
   ]);
 
   const parseCollection = async (result, fallbackKey) => {
-    if (result.status === 'rejected') return { [fallbackKey]: [] };
-    if (!result.value || !result.value.ok) return { [fallbackKey]: [] };
+    if (result.status === 'rejected') {
+      console.error(`Fetch rejected for ${fallbackKey}:`, result.reason);
+      return { [fallbackKey]: [] };
+    }
+    if (!result.value || !result.value.ok) {
+      console.error(`API error for ${fallbackKey}: status=${result.value?.status}`);
+      return { [fallbackKey]: [] };
+    }
     try {
       const data = await result.value.json();
       return data && typeof data === 'object' ? data : { [fallbackKey]: [] };
     } catch (error) {
+      console.error(`JSON parse error for ${fallbackKey}:`, error);
       return { [fallbackKey]: [] };
     }
   };
@@ -1298,7 +1329,7 @@ function renderOrdersView(content) {
           </div>
         </div>`).join('')
     : `<p class="account-muted">${emptyMessage}</p>`;
-  content.innerHTML = `<div class="account-panel"><h3>${t('account_orders')}</h3><div class="order-switcher"><button class="order-switch ${isMine ? 'order-switch-active' : ''}" data-order-view="mine">Requested by me</button><button class="order-switch ${state.orderView === 'incoming' ? 'order-switch-active' : ''}" data-order-view="incoming">Requests from other buyers</button><button class="order-switch ${isPublished ? 'order-switch-active' : ''}" data-order-view="published">Orders published by me</button></div><div class="order-view-content">${isPublished ? publishedMarkup : rowsMarkup}</div></div>`;
+  content.innerHTML = `<div class="account-panel"><h3>${t('account_orders')}</h3><div class="order-switcher"><button class="order-switch ${isMine ? 'order-switch-active' : ''}" data-order-view="mine">Requested by me (${state.accountOrders.length})</button><button class="order-switch ${state.orderView === 'incoming' ? 'order-switch-active' : ''}" data-order-view="incoming">Requests from other buyers (${state.accountIncomingOrders.length})</button><button class="order-switch ${isPublished ? 'order-switch-active' : ''}" data-order-view="published">Orders published by me (${state.accountPublishedProducts.length})</button></div><div class="order-view-content">${isPublished ? publishedMarkup : rowsMarkup}</div></div>`;
   content.querySelectorAll('[data-order-view]').forEach(button => {
     button.addEventListener('click', () => {
       state.orderView = button.dataset.orderView;
@@ -1366,11 +1397,10 @@ async function cancelMarketplaceOrder(orderId, content) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason: cleanReason })
     });
+    const data = await response.json().catch(() => ({ detail: 'Unable to cancel order' }));
     if (!response.ok) {
-      const detail = await response.json().catch(() => ({ detail: 'Unable to cancel order' }));
-      throw new Error(detail.detail || 'Unable to cancel order');
+      throw new Error(data.detail || 'Unable to cancel order');
     }
-    const data = await response.json();
     await loadAccountData();
     await loadProducts();
     renderAccountView('orders');
@@ -2060,6 +2090,10 @@ async function publishProductToMarketplace() {
     // Reset upload form
     resetArtisanForm();
 
+    // Reload fresh account data and marketplace products
+    await loadAccountData();
+    await loadProducts();
+
     // Switch to Marketplace tab and refresh
     switchTab('marketplace');
 
@@ -2225,7 +2259,9 @@ function renderProducts(products) {
                     class="p-2 rounded-xl ${state.accountWishlist.includes(p.id) ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'} hover:bg-rose-100 hover:text-rose-600 transition-colors"
                     title="Save to wishlist">♥</button>
             ${state.currentUser && (
-              state.currentUser.name?.trim().toLowerCase() === String(p.artisan_name || '').trim().toLowerCase()
+              (p.owner_user_id && Number(p.owner_user_id) === Number(state.currentUser.id))
+              || state.currentUser.name?.trim().toLowerCase() === String(p.artisan_name || '').trim().toLowerCase()
+              || (state.currentUser.phone && p.artisan_phone && state.currentUser.phone.replace(/\D/g,'').slice(-10) === p.artisan_phone.replace(/\D/g,'').slice(-10))
               || state.accountPublishedProducts.some(pub => pub.id === p.id)
             )
                     ? `<button onclick="deleteMarketplaceProduct(${p.id})"
@@ -2277,7 +2313,7 @@ async function deleteMarketplaceProduct(productId) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || 'Product could not be deleted');
-    showToast('Product listing deleted');
+    showToast(data.message || 'Product listing deleted. Monthly listing limit restored.');
     await loadAccountData();
     await loadProducts();
     if (state.currentUser && state.accountView === 'orders') renderAccountView('orders');
