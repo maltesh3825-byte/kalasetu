@@ -2223,7 +2223,10 @@ function renderProducts(products) {
             <button onclick="toggleWishlist(${p.id})"
                     class="p-2 rounded-xl ${state.accountWishlist.includes(p.id) ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'} hover:bg-rose-100 hover:text-rose-600 transition-colors"
                     title="Save to wishlist">♥</button>
-            ${state.currentUser && state.currentUser.name?.trim().toLowerCase() === String(p.artisan_name || '').trim().toLowerCase()
+            ${state.currentUser && (
+              state.currentUser.name?.trim().toLowerCase() === String(p.artisan_name || '').trim().toLowerCase()
+              || state.accountPublishedProducts.some(pub => pub.id === p.id)
+            )
                     ? `<button onclick="deleteMarketplaceProduct(${p.id})"
                              class="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
                              title="Delete your listing">🗑</button>`

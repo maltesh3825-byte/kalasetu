@@ -843,45 +843,54 @@ def get_orders(user_id: int):
 @app.get("/api/orders/{user_id}/incoming")
 def get_incoming_orders(user_id: int):
     """Orders placed by buyers for products belonging to this artisan."""
+    import traceback
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT name, phone FROM users WHERE id = ?", (user_id,))
-    user_row = cursor.fetchone()
-    if not user_row:
-        conn.close()
-        return {"orders": []}
+    try:
+        cursor.execute("SELECT name, phone FROM users WHERE id = ?", (user_id,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            return {"orders": []}
 
-    user_name = (user_row[0] or "").strip()
-    user_phone = (user_row[1] or "").strip()
-    norm_phone = user_phone.replace("+91", "").replace(" ", "").replace("-", "")
+        user_name = (user_row[0] or "").strip()
+        user_phone = (user_row[1] or "").strip()
+        norm_phone = user_phone.replace("+91", "").replace(" ", "").replace("-", "")
 
-    cursor.execute(
-        """
-        SELECT orders.*, 
-               COALESCE(NULLIF(orders.recipient_name, ''), users.name, 'Verified Buyer') AS buyer_name,
-               COALESCE(NULLIF(orders.recipient_phone, ''), users.phone, '') AS buyer_phone,
-               users.email AS buyer_email
-        FROM orders
-        JOIN products ON products.id = orders.product_id
-        LEFT JOIN users ON users.id = orders.user_id
-        WHERE (
-            lower(products.artisan_name) = lower(?)
-            OR (
-                ? != '' 
-                AND products.artisan_phone IS NOT NULL 
-                AND (
-                    products.artisan_phone = ? 
-                    OR replace(replace(replace(products.artisan_phone, '+91', ''), ' ', ''), '-', '') = ?
+        cursor.execute(
+            """
+            SELECT orders.*,
+                   COALESCE(NULLIF(orders.recipient_name, ''), users.name, 'Verified Buyer') AS buyer_name,
+                   COALESCE(NULLIF(orders.recipient_phone, ''), users.phone, '') AS buyer_phone,
+                   users.email AS buyer_email
+            FROM orders
+            JOIN products ON products.id = orders.product_id
+            LEFT JOIN users ON users.id = orders.user_id
+            WHERE (
+                lower(products.artisan_name) = lower(?)
+                OR (
+                    ? != ''
+                    AND products.artisan_phone IS NOT NULL
+                    AND (
+                        products.artisan_phone = ?
+                        OR replace(replace(replace(products.artisan_phone, '+91', ''), ' ', ''), '-', '') = ?
+                    )
                 )
             )
+            ORDER BY orders.id DESC
+            """,
+            (user_name, norm_phone, user_phone, norm_phone),
         )
-        ORDER BY orders.id DESC
-        """,
-        (user_name, norm_phone, user_phone, norm_phone),
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    return {"orders": [dict(row) for row in rows]}
+        rows = cursor.fetchall()
+        return {"orders": [dict(row) for row in rows]}
+    except Exception as exc:
+        print(f"[INCOMING ORDERS ERROR] user_id={user_id}: {exc}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Could not load incoming orders: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 @app.get("/api/products/{user_id}/published")
@@ -1021,7 +1030,7 @@ def create_order(payload: OrderCreate):
         )
         order_id = cursor.lastrowid
         cursor.execute(
-            "SELECT id FROM users WHERE lower(name) = lower(?) AND role = 'artisan' LIMIT 1",
+            "SELECT id FROM users WHERE lower(name) = lower(?) LIMIT 1",
             (product_row[1],),
         )
         artisan_row = cursor.fetchone()
@@ -1058,35 +1067,60 @@ def create_order(payload: OrderCreate):
 
 @app.delete("/api/products/{product_id}")
 def delete_product(product_id: int, payload: ProductDeleteRequest):
+    import traceback
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT p.artisan_name, p.artisan_phone, u.name, u.phone
-        FROM products p
-        JOIN users u ON u.id = ?
-        WHERE p.id = ?
-        """,
-        (payload.user_id, product_id),
-    )
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Product not found")
+    try:
+        cursor.execute(
+            """
+            SELECT p.artisan_name, p.artisan_phone, u.name, u.phone, u.email
+            FROM products p
+            JOIN users u ON u.id = ?
+            WHERE p.id = ?
+            """,
+            (payload.user_id, product_id),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Product not found")
 
-    name_match = (row["artisan_name"] or "").strip().lower() == (row["name"] or "").strip().lower()
-    p_phone = (row["artisan_phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
-    u_phone = (row["phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
-    phone_match = bool(p_phone and u_phone and p_phone == u_phone)
+        artisan_name_norm = (row["artisan_name"] or "").strip().lower()
+        user_name_norm = (row["name"] or "").strip().lower()
+        name_match = artisan_name_norm == user_name_norm
 
-    if not (name_match or phone_match):
-        conn.close()
-        raise HTTPException(status_code=403, detail="Only the seller who posted this product can delete it")
-    cursor.execute("DELETE FROM wishlist WHERE product_id = ?", (product_id,))
-    cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
-    conn.commit()
-    conn.close()
-    return {"status": "success", "product_id": product_id}
+        p_phone = (row["artisan_phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
+        u_phone = (row["phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
+        phone_match = bool(p_phone and u_phone and p_phone == u_phone)
+
+        # Also allow if artisan_name contains the user's name (partial match for nicknames)
+        partial_match = bool(artisan_name_norm and user_name_norm and (
+            user_name_norm in artisan_name_norm or artisan_name_norm in user_name_norm
+        ))
+
+        if not (name_match or phone_match or partial_match):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Only the seller who posted this product can delete it (product artisan: '{row['artisan_name']}', your name: '{row['name']}')"
+            )
+        cursor.execute("DELETE FROM wishlist WHERE product_id = ?", (product_id,))
+        cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
+        conn.commit()
+        return {"status": "success", "product_id": product_id}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[DELETE PRODUCT ERROR] product_id={product_id}: {exc}")
+        traceback.print_exc()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Delete failed: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 @app.post("/api/orders/{order_id}/status")
