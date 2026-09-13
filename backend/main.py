@@ -1373,63 +1373,91 @@ def translate_text(payload: TranslationRequest):
 @app.post("/api/products")
 def create_product(product: ProductCreate):
     """Publish a reviewed artisan listing to the marketplace."""
+    import traceback as _tb
     listing_quantity = product.quantity
     if listing_quantity < 1 or listing_quantity > 10:
         raise HTTPException(status_code=400, detail="Each listing must contain between 1 and 10 items")
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    current_month = datetime.now(timezone.utc).strftime("%Y-%m")
-    cursor.execute(
-        "SELECT COUNT(*) FROM products WHERE lower(artisan_name) = lower(?) AND substr(created_at, 1, 7) = ?",
-        (product.artisan_name.strip(), current_month),
-    )
-    monthly_listings = cursor.fetchone()[0]
-    if monthly_listings >= 3:
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        current_month = datetime.now(timezone.utc).strftime("%Y-%m")
+
+        # Use DATE_TRUNC for PostgreSQL, substr for SQLite — detect by DATABASE_URL
+        from backend.config import DATABASE_URL as _DB_URL
+        if _DB_URL and ("postgres" in _DB_URL):
+            cursor.execute(
+                "SELECT COUNT(*) FROM products WHERE lower(artisan_name) = lower(%s) AND TO_CHAR(created_at, 'YYYY-MM') = %s",
+                (product.artisan_name.strip(), current_month),
+            )
+        else:
+            cursor.execute(
+                "SELECT COUNT(*) FROM products WHERE lower(artisan_name) = lower(?) AND substr(created_at, 1, 7) = ?",
+                (product.artisan_name.strip(), current_month),
+            )
+
+        row = cursor.fetchone()
+        monthly_listings = row[0] if row else 0
+        if monthly_listings >= 3:
+            conn.close()
+            raise HTTPException(status_code=429, detail="This artisan has used all 3 marketplace listings for this month")
+
+        default_image = "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=800&q=80"
+        gallery_json = json.dumps(product.image_gallery or [product.image_url or default_image])
+        reviews_json = json.dumps(product.reviews or [])
+
+        cursor.execute(
+            """
+            INSERT INTO products (
+                name, artisan_name, artisan_phone, artisan_location,
+                category, price, suggested_price_min, suggested_price_max,
+                price_justification, description_en, description_hi,
+                tags, image_url, image_gallery, rating, reviews,
+                is_enhanced, mosje_verified, quantity
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                product.name.strip(),
+                product.artisan_name.strip(),
+                product.artisan_phone or "+919876543210",
+                (product.artisan_location or "Rural Cluster, India").strip(),
+                (product.category or "Handloom & Textiles").strip(),
+                product.price,
+                product.suggested_price_min,
+                product.suggested_price_max,
+                product.price_justification or "",
+                (product.description_en or product.name or "").strip(),
+                product.description_hi or "",
+                json.dumps(product.tags or ["Handmade", "Artisan"]),
+                product.image_url or default_image,
+                gallery_json,
+                product.rating or 4.5,
+                reviews_json,
+                1 if product.is_enhanced else 0,
+                1,
+                listing_quantity,
+            ),
+        )
+
+        new_id = cursor.lastrowid
+        conn.commit()
         conn.close()
-        raise HTTPException(status_code=429, detail="This artisan has used all 3 marketplace listings for this month")
+        return {"status": "success", "product_id": new_id, "message": "Product published to marketplace!"}
 
-    gallery_json = json.dumps(product.image_gallery or [product.image_url or ""])
-    reviews_json = json.dumps(product.reviews or [])
-    default_image = "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=800&q=80"
-    cursor.execute(
-        """
-        INSERT INTO products (
-            name, artisan_name, artisan_phone, artisan_location,
-            category, price, suggested_price_min, suggested_price_max,
-            price_justification, description_en, description_hi,
-            tags, image_url, image_gallery, rating, reviews,
-            is_enhanced, mosje_verified, quantity
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            product.name.strip(),
-            product.artisan_name.strip(),
-            product.artisan_phone or "+919876543210",
-            (product.artisan_location or "Rural Cluster, India").strip(),
-            (product.category or "Handloom & Textiles").strip(),
-            product.price,
-            product.suggested_price_min,
-            product.suggested_price_max,
-            product.price_justification or "",
-            (product.description_en or product.name or "").strip(),
-            product.description_hi or "",
-            json.dumps(product.tags or ["Handmade", "Artisan"]),
-            product.image_url or default_image,
-            gallery_json,
-            product.rating or 4.5,
-            reviews_json,
-            1 if product.is_enhanced else 0,
-            1,
-            listing_quantity,
-        ),
-    )
-
-    new_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-
-    return {"status": "success", "product_id": new_id, "message": "Product published to marketplace!"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if conn:
+            try:
+                conn.rollback()
+                conn.close()
+            except Exception:
+                pass
+        error_detail = f"{type(exc).__name__}: {str(exc)}"
+        print(f"[CREATE_PRODUCT ERROR] {error_detail}")
+        print(_tb.format_exc())
+        raise HTTPException(status_code=500, detail=f"Publish failed: {error_detail}")
 
 
 @app.post("/api/products/{product_id}/reviews")
