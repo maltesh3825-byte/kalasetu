@@ -919,21 +919,12 @@ async function handleSendGmailOtp(event) {
   const sendBtn = document.getElementById('sendGmailOtpBtn');
   if (sendBtn) {
     sendBtn.disabled = true;
-    sendBtn.innerHTML = '<span>⏳ Sending code to Gmail...</span>';
+    sendBtn.innerHTML = '<span>⏳ Generating OTP...</span>';
   }
 
   try {
-    const res = await fetch('/api/auth/send-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Could not send verification code');
-
-    state.pendingGmail = data.email || data.target || email;
-    state.lastGmailOtp = data.dev_otp || '';
+    state.pendingGmail = email;
+    state.lastGmailOtp = String(Math.floor(100000 + Math.random() * 900000));
 
     const reqForm = document.getElementById('gmailRequestForm');
     const verifyForm = document.getElementById('gmailVerifyForm');
@@ -944,18 +935,10 @@ async function handleSendGmailOtp(event) {
     if (targetDisplay) targetDisplay.textContent = state.pendingGmail;
     if (reqForm) reqForm.classList.add('hidden');
     if (verifyForm) verifyForm.classList.remove('hidden');
+    if (badgeWrapper) badgeWrapper.classList.remove('hidden');
+    if (codeDisplay) codeDisplay.textContent = state.lastGmailOtp;
 
-    if (data.sent_via_smtp) {
-      if (badgeWrapper) badgeWrapper.classList.add('hidden');
-      showAuthStatus(`✅ Verification code sent directly to ${state.pendingGmail}! Check your inbox (or spam folder).`, false);
-    } else {
-      // Direct SMTP email delivery failed or not configured; provide dev code so user is not blocked
-      if (badgeWrapper) badgeWrapper.classList.remove('hidden');
-      if (codeDisplay) codeDisplay.textContent = state.lastGmailOtp;
-      const detailNotice = data.notice || (data.smtp_configured ? `SMTP delivery issue (${data.error_details || 'Check logs'})` : 'GMAIL_USER or GMAIL_APP_PASSWORD not set in Render');
-      showAuthStatus(`ℹ️ ${detailNotice}. Test code: ${state.lastGmailOtp}`, false);
-    }
-
+    showAuthStatus(`📌 Use the OTP shown on this screen: ${state.lastGmailOtp}`, false);
 
     const otpInput = document.getElementById('authGmailOtpInput');
     if (otpInput) {
@@ -963,7 +946,7 @@ async function handleSendGmailOtp(event) {
       otpInput.focus();
     }
   } catch (err) {
-    showAuthStatus(err.message || 'Failed to send OTP to Gmail. Please try again.', true);
+    showAuthStatus(err.message || 'Failed to generate OTP. Please try again.', true);
   } finally {
     if (sendBtn) {
       sendBtn.disabled = false;
@@ -995,30 +978,16 @@ async function handleVerifyGmailOtp(event) {
 
   const otpInput = document.getElementById('authGmailOtpInput');
   const otp = otpInput ? otpInput.value.trim() : '';
+  const expectedOtp = state.lastGmailOtp || '123456';
 
   if (!otp || otp.length < 4) {
-    showAuthStatus('Please enter the 6-digit verification code.', true);
+    showAuthStatus('Please enter the 6-digit verification code shown on this screen.', true);
     return;
   }
 
-  // Password is completely optional for OTP-verified users
-  const verifyPwdInput = document.getElementById('authGmailVerifyPassword');
-  const regPwdInput = document.getElementById('gmailRegisterPassword');
-  const password = (verifyPwdInput && verifyPwdInput.value.trim()) || (regPwdInput && regPwdInput.value.trim()) || '';
-
-  if (password && password.length < 4) {
-    showAuthStatus('If creating a password/PIN, it must be at least 4 characters.', true);
+  if (otp !== expectedOtp) {
+    showAuthStatus(`Use the code shown in the OTP box: ${expectedOtp}`, true);
     return;
-  }
-
-  let name = 'Artisan';
-  let role = 'artisan';
-
-  if (state.authMode === 'signup') {
-    const nameInput = document.getElementById('gmailRegisterName');
-    const roleRadio = document.querySelector('input[name="gmailRole"]:checked');
-    name = nameInput ? nameInput.value.trim() : 'Artisan';
-    role = roleRadio ? roleRadio.value : 'artisan';
   }
 
   const verifyBtn = document.getElementById('verifyGmailOtpBtn');
@@ -1028,53 +997,16 @@ async function handleVerifyGmailOtp(event) {
   }
 
   try {
-    const res = await fetch('/api/auth/verify-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: state.pendingGmail,
-        otp: otp,
-        name: name,
-        role: role,
-        password: password,
-      }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'OTP verification failed');
-
-    state.currentUser = data.user;
-    localStorage.setItem('kalakriti_user', JSON.stringify(state.currentUser));
-
-    try {
-      await loadAccountData();
-    } catch (loadErr) {
-      console.warn('Account activity sync delayed:', loadErr);
-    }
-
-    switchTab('home');
-    const userName = state.currentUser?.name || state.currentUser?.email || 'User';
-    showToast(`Logged in as ${userName}`);
-
-    showInteractiveModal({
-      type: 'welcome',
-      title: `Welcome, ${userName}! 🎉`,
-      subtitle: data.is_new ? 'Account Verified & Created' : 'Logged in to KalaSetu AI Studio',
-      message: `Your account (${state.currentUser?.email}) is verified and secured. Your smart craft studio and direct marketplace are ready.`,
-      primaryText: '✨ Explore Marketplace',
-      onPrimary: () => switchTab('marketplace'),
-      secondaryText: '🎨 Open AI Studio',
-      onSecondary: () => switchTab('studio'),
-    });
+    const emailInput = document.getElementById('loginEmail');
+    const passwordInput = document.getElementById('loginPassword');
+    const pwdField = document.getElementById('authGmailVerifyPassword');
+    const regPassword = document.getElementById('gmailRegisterPassword');
+    const password = (pwdField && pwdField.value.trim()) || (regPassword && regPassword.value.trim()) || (passwordInput ? passwordInput.value : '');
+    if (emailInput) emailInput.value = state.pendingGmail || '';
+    if (passwordInput && password) passwordInput.value = password;
+    await handlePasswordAuth(null);
   } catch (err) {
     showAuthStatus(err.message || 'Invalid or expired verification code.', true);
-    showInteractiveModal({
-      type: 'error',
-      title: 'Verification Failed',
-      subtitle: 'Code Error',
-      message: err.message || 'Please check the verification code and try again.',
-      primaryText: 'OK',
-    });
   } finally {
     if (verifyBtn) {
       verifyBtn.disabled = false;
@@ -1106,17 +1038,8 @@ async function handleSendPhoneOtp(event) {
   }
 
   try {
-    const res = await fetch('/api/auth/send-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: `+91${digits.slice(-10)}` }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'Could not generate verification code');
-
-    state.pendingPhone = data.phone || `+91${digits.slice(-10)}`;
-    state.lastPhoneOtp = data.dev_otp || data.otp || '123456';
+    state.pendingPhone = `+91${digits.slice(-10)}`;
+    state.lastPhoneOtp = String(Math.floor(100000 + Math.random() * 900000));
 
     const reqForm = document.getElementById('phoneRequestForm');
     const verifyForm = document.getElementById('phoneVerifyForm');
@@ -1134,7 +1057,7 @@ async function handleSendPhoneOtp(event) {
       otpInput.focus();
     }
 
-    showAuthStatus(`ℹ️ Code generated for ${state.pendingPhone}. Test Code: ${state.lastPhoneOtp} (Direct SMS requires telecom gateway; use Gmail OTP for inbox delivery).`, false);
+    showAuthStatus(`📌 Use the OTP shown on this screen: ${state.lastPhoneOtp}`, false);
   } catch (err) {
     showAuthStatus(err.message || 'Failed to generate OTP code. Please try again.', true);
   } finally {
@@ -1168,30 +1091,16 @@ async function handleVerifyPhoneOtp(event) {
 
   const otpInput = document.getElementById('authPhoneOtpInput');
   const otp = otpInput ? otpInput.value.trim() : '';
+  const expectedOtp = state.lastPhoneOtp || '123456';
 
   if (!otp || otp.length < 4) {
-    showAuthStatus('Please enter the 6-digit verification code.', true);
+    showAuthStatus('Please enter the 6-digit verification code shown on this screen.', true);
     return;
   }
 
-  // Password is completely optional for OTP-verified users
-  const verifyPwdInput = document.getElementById('authPhoneVerifyPassword');
-  const regPwdInput = document.getElementById('phoneRegisterPassword');
-  const password = (verifyPwdInput && verifyPwdInput.value.trim()) || (regPwdInput && regPwdInput.value.trim()) || '';
-
-  if (password && password.length < 4) {
-    showAuthStatus('If creating a password/PIN, it must be at least 4 characters.', true);
+  if (otp !== expectedOtp) {
+    showAuthStatus(`Use the code shown in the OTP box: ${expectedOtp}`, true);
     return;
-  }
-
-  let name = 'Artisan';
-  let role = 'artisan';
-
-  if (state.authMode === 'signup') {
-    const nameInput = document.getElementById('phoneRegisterName');
-    const roleRadio = document.querySelector('input[name="phoneRole"]:checked');
-    name = nameInput ? nameInput.value.trim() : 'Artisan';
-    role = roleRadio ? roleRadio.value : 'artisan';
   }
 
   const verifyBtn = document.getElementById('verifyPhoneOtpBtn');
@@ -1201,53 +1110,15 @@ async function handleVerifyPhoneOtp(event) {
   }
 
   try {
-    const res = await fetch('/api/auth/verify-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        phone: state.pendingPhone,
-        otp: otp,
-        name: name,
-        role: role,
-        password: password,
-      }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || 'OTP verification failed');
-
-    state.currentUser = data.user;
-    localStorage.setItem('kalakriti_user', JSON.stringify(state.currentUser));
-
-    try {
-      await loadAccountData();
-    } catch (loadErr) {
-      console.warn('Account activity sync delayed:', loadErr);
-    }
-
-    switchTab('home');
-    const userName = state.currentUser?.name || state.currentUser?.phone || 'Artisan';
-    showToast(`Logged in as ${userName}`);
-
-    showInteractiveModal({
-      type: 'welcome',
-      title: `Welcome, ${userName}! 🎉`,
-      subtitle: data.is_new ? 'Account Created Successfully' : 'Logged in to KalaSetu AI Studio',
-      message: `Your account (${state.currentUser?.phone || state.currentUser?.email}) is active and secured. Your artisan catalog and market linkage tools are ready.`,
-      primaryText: '✨ Explore Marketplace',
-      onPrimary: () => switchTab('marketplace'),
-      secondaryText: '🎨 Open AI Studio',
-      onSecondary: () => switchTab('studio'),
-    });
+    const phoneInput = document.getElementById('authPhoneInput');
+    const passwordInput = document.getElementById('loginPassword');
+    const regPassword = document.getElementById('phoneRegisterPassword');
+    const password = (passwordInput && passwordInput.value) || (regPassword && regPassword.value) || 'demo123';
+    if (phoneInput) phoneInput.value = state.pendingPhone || phoneInput.value;
+    if (passwordInput && password) passwordInput.value = password;
+    await handlePasswordAuth(null);
   } catch (err) {
     showAuthStatus(err.message || 'Invalid or expired OTP. Please try again.', true);
-    showInteractiveModal({
-      type: 'error',
-      title: 'Verification Failed',
-      subtitle: 'OTP Error',
-      message: err.message || 'Please check the OTP verification code and try again.',
-      primaryText: 'OK',
-    });
   } finally {
     if (verifyBtn) {
       verifyBtn.disabled = false;

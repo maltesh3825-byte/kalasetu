@@ -395,6 +395,7 @@ export default function App() {
   const [authOtp, setAuthOtp] = useState('');
   const [showOtpSection, setShowOtpSection] = useState(false);
   const [devOtpNotice, setDevOtpNotice] = useState('');
+  const [demoOtpCode, setDemoOtpCode] = useState('');
   const [authErrorNotice, setAuthErrorNotice] = useState('');
   const [bulkNeed, setBulkNeed] = useState('');
   const [bulkBuyerType, setBulkBuyerType] = useState('Retail / Institutional Buyer');
@@ -810,22 +811,20 @@ export default function App() {
       Alert.alert('Required', authMethod === 'phone' ? 'Please enter your mobile number' : 'Please enter your Gmail / email');
       return;
     }
+
     setAuthLoading(true);
     setDevOtpNotice('');
+    setAuthOtp('');
+
     try {
-      const res = await sendOtpApi(target, authName);
+      const generatedOtp = String(Math.floor(100000 + Math.random() * 900000));
+      setDemoOtpCode(generatedOtp);
+      setAuthOtp(generatedOtp);
       setShowOtpSection(true);
-      if (res.dev_otp) {
-        setDevOtpNotice(`Test OTP: ${res.dev_otp}`);
-      }
-      Alert.alert(
-        'Code Dispatched',
-        res.sent_via_smtp
-          ? `Verification code sent to ${target}. Please check your inbox or spam folder.`
-          : (res.dev_otp ? `Verification code generated: ${res.dev_otp}` : `Code dispatched for ${target}`)
-      );
+      setDevOtpNotice(`Use this OTP on-screen: ${generatedOtp}`);
+      Alert.alert('OTP Ready', `Use OTP ${generatedOtp} on this screen to continue.`);
     } catch (err: any) {
-      Alert.alert('Notice', err?.message || 'Could not dispatch OTP.');
+      Alert.alert('Notice', err?.message || 'Could not generate OTP.');
     } finally {
       setAuthLoading(false);
     }
@@ -834,19 +833,20 @@ export default function App() {
   const handleVerifyOtp = async () => {
     const target = authMethod === 'phone' ? authPhone.trim() : authEmail.trim();
     if (!authOtp.trim()) {
-      Alert.alert('Required', 'Please enter the 6-digit OTP');
+      Alert.alert('Required', 'Please enter the 6-digit OTP shown on this screen');
       return;
     }
+
+    const expectedOtp = demoOtpCode || (devOtpNotice.match(/\d{6}/)?.[0] ?? '');
+    if (!expectedOtp || authOtp.trim() !== expectedOtp) {
+      Alert.alert('Verification Failed', `Use the OTP displayed on this screen: ${expectedOtp || 'missing'}`);
+      return;
+    }
+
     setAuthLoading(true);
     try {
-      const user = await verifyOtpApi(target, authOtp.trim(), authPassword.trim() || '1234', authName.trim(), authRole);
-      setCurrentUser(user);
-      if (user.phone) setArtisanPhone(user.phone);
-      if (user.name) setArtisanName(user.name);
-      if (user.city) setArtisanLocation(user.city);
-      setIsLoggedIn(true);
-      setActiveTab('home');
-      Alert.alert('Success', `Verified and logged in as ${user.name}!`);
+      await handleAuthSubmit();
+      setShowOtpSection(false);
     } catch (err: any) {
       Alert.alert('Verification Failed', err?.message || 'Invalid or expired OTP');
     } finally {
