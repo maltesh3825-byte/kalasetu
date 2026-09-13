@@ -701,7 +701,7 @@ function renderAccountShell() {
 }
 
 // Authentication State & Mode Controller
-state.authMode = 'signin'; // 'signin' | 'signup'
+state.authMode = 'signin';
 state.authMethod = 'password'; // 'password' | 'gmail' | 'phone'
 state.pendingPhone = '';
 state.pendingGmail = '';
@@ -727,60 +727,8 @@ function clearAuthStatus() {
 }
 
 function switchAuthMode(mode) {
-  state.authMode = mode;
+  state.authMode = 'signin';
   clearAuthStatus();
-
-  const signInBtn = document.getElementById('authModeSignInBtn');
-  const signUpBtn = document.getElementById('authModeSignUpBtn');
-  const passwordSignUpFields = document.getElementById('passwordSignUpFields');
-  const gmailSignUpFields = document.getElementById('gmailSignUpFields');
-  const phoneSignUpFields = document.getElementById('phoneSignUpFields');
-
-  const title = document.getElementById('authCardTitle');
-  const subtitle = document.getElementById('authCardSubtitle');
-  const passwordSubmitBtnText = document.getElementById('passwordSubmitBtnText');
-  const passwordInputLabel = document.getElementById('passwordInputLabel');
-  const passwordDemoPills = document.getElementById('passwordDemoPills');
-  const sendGmailOtpBtnText = document.getElementById('sendGmailOtpBtnText');
-  const sendPhoneOtpBtnText = document.getElementById('sendPhoneOtpBtnText');
-
-  if (mode === 'signup') {
-    if (signInBtn) {
-      signInBtn.className = 'flex-1 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all text-slate-500 hover:text-slate-900 cursor-pointer';
-    }
-    if (signUpBtn) {
-      signUpBtn.className = 'flex-1 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all bg-white text-slate-900 shadow-sm cursor-pointer';
-    }
-    if (passwordSignUpFields) passwordSignUpFields.classList.remove('hidden');
-    if (gmailSignUpFields) gmailSignUpFields.classList.remove('hidden');
-    if (phoneSignUpFields) phoneSignUpFields.classList.remove('hidden');
-
-    if (title) title.textContent = 'Create your KalaSetu account';
-    if (subtitle) subtitle.textContent = 'Join thousands of Indian artisans and verified handicraft buyers';
-    if (passwordSubmitBtnText) passwordSubmitBtnText.textContent = 'Create Account & Sign In';
-    if (passwordInputLabel) passwordInputLabel.textContent = 'Email Address';
-    if (passwordDemoPills) passwordDemoPills.classList.add('hidden');
-    if (sendGmailOtpBtnText) sendGmailOtpBtnText.textContent = 'Create Account with Gmail OTP';
-    if (sendPhoneOtpBtnText) sendPhoneOtpBtnText.textContent = 'Create Account with Mobile OTP';
-  } else {
-    if (signInBtn) {
-      signInBtn.className = 'flex-1 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all bg-white text-slate-900 shadow-sm cursor-pointer';
-    }
-    if (signUpBtn) {
-      signUpBtn.className = 'flex-1 py-2.5 text-xs sm:text-sm font-extrabold rounded-xl transition-all text-slate-500 hover:text-slate-900 cursor-pointer';
-    }
-    if (passwordSignUpFields) passwordSignUpFields.classList.add('hidden');
-    if (gmailSignUpFields) gmailSignUpFields.classList.add('hidden');
-    if (phoneSignUpFields) phoneSignUpFields.classList.add('hidden');
-
-    if (title) title.textContent = 'Sign in to KalaSetu';
-    if (subtitle) subtitle.textContent = 'Access your artisan studio or buyer marketplace';
-    if (passwordSubmitBtnText) passwordSubmitBtnText.textContent = 'Sign In with Password';
-    if (passwordInputLabel) passwordInputLabel.textContent = 'Email Address or Mobile Number';
-    if (passwordDemoPills) passwordDemoPills.classList.remove('hidden');
-    if (sendGmailOtpBtnText) sendGmailOtpBtnText.textContent = 'Send OTP to Gmail Inbox';
-    if (sendPhoneOtpBtnText) sendPhoneOtpBtnText.textContent = 'Generate Mobile OTP';
-  }
 }
 
 function switchAuthMethod(method) {
@@ -846,27 +794,8 @@ async function handlePasswordAuth(event) {
   }
 
   try {
-    let endpoint = '/api/auth/login';
-    let payload = { email: emailOrPhone, password };
-
-    if (state.authMode === 'signup') {
-      endpoint = '/api/auth/register';
-      const nameInput = document.getElementById('passwordRegisterName');
-      const phoneInput = document.getElementById('passwordRegisterPhone');
-      const roleRadio = document.querySelector('input[name="passwordRole"]:checked');
-      const name = nameInput ? nameInput.value.trim() : 'Artisan';
-      const phone = phoneInput ? phoneInput.value.trim() : '';
-      const role = roleRadio ? roleRadio.value : 'artisan';
-
-      if (!name) {
-        throw new Error('Please enter your full name for registration.');
-      }
-      if (password.length < 4) {
-        throw new Error('Password must be at least 4 characters long.');
-      }
-
-      payload = { name, email: emailOrPhone, password, role, phone };
-    }
+    const endpoint = '/api/auth/login';
+    const payload = { email: emailOrPhone, password };
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -876,7 +805,7 @@ async function handlePasswordAuth(event) {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(data.detail || (state.authMode === 'signup' ? 'Registration failed' : 'Invalid email/phone or password'));
+      throw new Error(data.detail || 'Invalid email/phone or password');
     }
 
     state.currentUser = data.user || {
@@ -889,6 +818,8 @@ async function handlePasswordAuth(event) {
 
     try {
       await loadAccountData();
+      await loadProducts();
+      syncStudioArtisanInfo();
     } catch (loadErr) {
       console.warn('Account activity sync delayed:', loadErr);
     }
@@ -900,7 +831,7 @@ async function handlePasswordAuth(event) {
     showInteractiveModal({
       type: 'welcome',
       title: `Welcome, ${userName}! 🎉`,
-      subtitle: state.authMode === 'signup' ? 'Account Created Successfully' : 'Logged in to KalaSetu AI Studio',
+      subtitle: 'Logged in to KalaSetu AI Studio',
       message: `Your account (${state.currentUser?.email || emailOrPhone}) is active and protected. Your artisan studio and marketplace linkage are ready.`,
       primaryText: '✨ Explore Marketplace',
       onPrimary: () => switchTab('marketplace'),
@@ -908,19 +839,18 @@ async function handlePasswordAuth(event) {
       onSecondary: () => switchTab('studio'),
     });
   } catch (error) {
-    showAuthStatus(error.message || 'Authentication failed. Please check credentials or switch to Sign Up.', true);
+    showAuthStatus(error.message || 'Authentication failed. Please check credentials.', true);
     showInteractiveModal({
       type: 'error',
-      title: state.authMode === 'signup' ? 'Registration Failed' : 'Sign-In Failed',
+      title: 'Sign-In Failed',
       subtitle: 'Authentication Notice',
-      message: error.message || 'Please check your credentials or click "Create Account" if you do not have an account yet.',
+      message: error.message || 'Please check your credentials or click one of the 1-Click Demo accounts.',
       primaryText: 'OK',
     });
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      const text = state.authMode === 'signup' ? 'Create Account & Sign In' : 'Sign In with Password';
-      submitBtn.innerHTML = `<span>${text}</span>`;
+      submitBtn.innerHTML = '<span>Sign In with Password</span>';
     }
   }
 }
@@ -974,8 +904,7 @@ async function handleSendGmailOtp(event) {
   } finally {
     if (sendBtn) {
       sendBtn.disabled = false;
-      const text = state.authMode === 'signup' ? 'Create Account with Gmail OTP' : 'Send OTP to Gmail Inbox';
-      sendBtn.innerHTML = `<span>📩</span><span>${text}</span>`;
+      sendBtn.innerHTML = '<span>📩</span><span>Send OTP to Gmail Inbox</span>';
     }
   }
 }
@@ -1087,8 +1016,7 @@ async function handleSendPhoneOtp(event) {
   } finally {
     if (sendBtn) {
       sendBtn.disabled = false;
-      const text = state.authMode === 'signup' ? 'Create Account with Mobile OTP' : 'Generate Mobile OTP';
-      sendBtn.innerHTML = `<span>📲</span><span>${text}</span>`;
+      sendBtn.innerHTML = '<span>📲</span><span>Generate Mobile OTP</span>';
     }
   }
 }
