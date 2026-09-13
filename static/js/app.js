@@ -2035,7 +2035,8 @@ async function publishProductToMarketplace() {
     reviews: [],
     is_enhanced: state.isEnhanced || false,
     mosje_verified: true,
-    quantity
+    quantity,
+    owner_user_id: state.currentUser?.id || null  // Link listing to the publisher's account ID
   };
 
   try {

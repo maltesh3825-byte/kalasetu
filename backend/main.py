@@ -76,6 +76,7 @@ class ProductCreate(BaseModel):
     is_enhanced: Optional[bool] = False
     mosje_verified: Optional[bool] = True
     quantity: int = 1
+    owner_user_id: Optional[int] = None  # The user account ID who published this listing
 
 
 class ProductReviewCreate(BaseModel):
@@ -895,50 +896,67 @@ def get_incoming_orders(user_id: int):
 
 @app.get("/api/products/{user_id}/published")
 def get_published_products(user_id: int):
-    """Return marketplace listings published under the signed-in artisan's name or phone."""
+    """Return marketplace listings published by this user — checks owner_user_id first, then name/phone."""
+    import traceback
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT name, phone FROM users WHERE id = ?", (user_id,))
-    user_row = cursor.fetchone()
-    if not user_row:
-        conn.close()
-        return {"products": []}
+    try:
+        cursor.execute("SELECT name, phone FROM users WHERE id = ?", (user_id,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            return {"products": []}
 
-    user_name = (user_row[0] or "").strip()
-    user_phone = (user_row[1] or "").strip()
-    norm_phone = user_phone.replace("+91", "").replace(" ", "").replace("-", "")
+        user_name = (user_row[0] or "").strip()
+        user_phone = (user_row[1] or "").strip()
+        norm_phone = user_phone.replace("+91", "").replace(" ", "").replace("-", "")
 
-    cursor.execute(
-        """
-        SELECT products.*
-        FROM products
-        WHERE (
-            lower(products.artisan_name) = lower(?)
-            OR (
-                ? != '' 
-                AND products.artisan_phone IS NOT NULL 
-                AND (
-                    products.artisan_phone = ? 
-                    OR replace(replace(replace(products.artisan_phone, '+91', ''), ' ', ''), '-', '') = ?
+        # Primary: match by owner_user_id (reliable, set when publishing)
+        # Fallback: match by artisan_name or artisan_phone (legacy listings without owner_user_id)
+        cursor.execute(
+            """
+            SELECT products.*
+            FROM products
+            WHERE (
+                owner_user_id = ?
+                OR (
+                    owner_user_id IS NULL
+                    AND (
+                        lower(products.artisan_name) = lower(?)
+                        OR (
+                            ? != ''
+                            AND products.artisan_phone IS NOT NULL
+                            AND (
+                                products.artisan_phone = ?
+                                OR replace(replace(replace(products.artisan_phone, '+91', ''), ' ', ''), '-', '') = ?
+                            )
+                        )
+                    )
                 )
             )
+            ORDER BY products.id DESC
+            """,
+            (user_id, user_name, norm_phone, user_phone, norm_phone),
         )
-        ORDER BY products.id DESC
-        """,
-        (user_name, norm_phone, user_phone, norm_phone),
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    products = []
-    for row in rows:
-        product = dict(row)
-        for field in ("tags", "image_gallery", "reviews"):
-            try:
-                product[field] = json.loads(product[field]) if isinstance(product[field], str) else (product[field] or [])
-            except (TypeError, ValueError):
-                product[field] = []
-        products.append(product)
-    return {"products": products}
+        rows = cursor.fetchall()
+        products = []
+        for row in rows:
+            product = dict(row)
+            for field in ("tags", "image_gallery", "reviews"):
+                try:
+                    product[field] = json.loads(product[field]) if isinstance(product[field], str) else (product[field] or [])
+                except (TypeError, ValueError):
+                    product[field] = []
+            products.append(product)
+        return {"products": products}
+    except Exception as exc:
+        print(f"[PUBLISHED PRODUCTS ERROR] user_id={user_id}: {exc}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Could not load published products: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 @app.get("/api/notifications/{user_id}")
@@ -1073,7 +1091,7 @@ def delete_product(product_id: int, payload: ProductDeleteRequest):
     try:
         cursor.execute(
             """
-            SELECT p.artisan_name, p.artisan_phone, u.name, u.phone, u.email
+            SELECT p.artisan_name, p.artisan_phone, p.owner_user_id, u.name, u.phone, u.email
             FROM products p
             JOIN users u ON u.id = ?
             WHERE p.id = ?
@@ -1084,23 +1102,27 @@ def delete_product(product_id: int, payload: ProductDeleteRequest):
         if not row:
             raise HTTPException(status_code=404, detail="Product not found")
 
-        artisan_name_norm = (row["artisan_name"] or "").strip().lower()
-        user_name_norm = (row["name"] or "").strip().lower()
-        name_match = artisan_name_norm == user_name_norm
+        # Primary ownership check: owner_user_id (reliable)
+        owner_id = row["owner_user_id"]
+        if owner_id is not None:
+            is_owner = (owner_id == payload.user_id)
+        else:
+            # Legacy fallback for products published before owner_user_id existed
+            artisan_name_norm = (row["artisan_name"] or "").strip().lower()
+            user_name_norm = (row["name"] or "").strip().lower()
+            name_match = artisan_name_norm == user_name_norm
+            partial_match = bool(artisan_name_norm and user_name_norm and (
+                user_name_norm in artisan_name_norm or artisan_name_norm in user_name_norm
+            ))
+            p_phone = (row["artisan_phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
+            u_phone = (row["phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
+            phone_match = bool(p_phone and u_phone and p_phone == u_phone)
+            is_owner = name_match or phone_match or partial_match
 
-        p_phone = (row["artisan_phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
-        u_phone = (row["phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
-        phone_match = bool(p_phone and u_phone and p_phone == u_phone)
-
-        # Also allow if artisan_name contains the user's name (partial match for nicknames)
-        partial_match = bool(artisan_name_norm and user_name_norm and (
-            user_name_norm in artisan_name_norm or artisan_name_norm in user_name_norm
-        ))
-
-        if not (name_match or phone_match or partial_match):
+        if not is_owner:
             raise HTTPException(
                 status_code=403,
-                detail=f"Only the seller who posted this product can delete it (product artisan: '{row['artisan_name']}', your name: '{row['name']}')"
+                detail=f"Only the seller who posted this product can delete it"
             )
         cursor.execute("DELETE FROM wishlist WHERE product_id = ?", (product_id,))
         cursor.execute("DELETE FROM products WHERE id = ?", (product_id,))
@@ -1567,8 +1589,8 @@ def create_product(product: ProductCreate):
                 category, price, suggested_price_min, suggested_price_max,
                 price_justification, description_en, description_hi,
                 tags, image_url, image_gallery, rating, reviews,
-                is_enhanced, mosje_verified, quantity
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                is_enhanced, mosje_verified, quantity, owner_user_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 product.name.strip(),
@@ -1590,6 +1612,7 @@ def create_product(product: ProductCreate):
                 1 if product.is_enhanced else 0,
                 1,
                 listing_quantity,
+                product.owner_user_id,  # User ID of the publisher — primary ownership key
             ),
         )
 

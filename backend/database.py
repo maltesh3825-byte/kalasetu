@@ -225,6 +225,7 @@ def init_db():
         safe_add_column_pg(cursor, conn, "products", "image_gallery", "TEXT DEFAULT '[]'")
         safe_add_column_pg(cursor, conn, "products", "rating", "REAL DEFAULT 4.5")
         safe_add_column_pg(cursor, conn, "products", "reviews", "TEXT DEFAULT '[]'")
+        safe_add_column_pg(cursor, conn, "products", "owner_user_id", "INTEGER NULL")  # Publisher's user ID
 
         safe_execute(
             cursor,
@@ -393,6 +394,7 @@ def init_db():
             "image_gallery": "TEXT DEFAULT '[]'",
             "rating": "REAL DEFAULT 4.5",
             "reviews": "TEXT DEFAULT '[]'",
+            "owner_user_id": "INTEGER NULL",
         }.items():
             if column not in product_columns:
                 cursor.execute(f"ALTER TABLE products ADD COLUMN {column} {column_type}")
