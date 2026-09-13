@@ -2014,21 +2014,27 @@ async function publishProductToMarketplace() {
   if (publishBtn) publishBtn.disabled = true;
   if (publishSpinner) publishSpinner.classList.remove('hidden');
 
+  const imageUrl = state.uploadedImageUrl || "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=800&q=80";
+
   const payload = {
     name: title,
     artisan_name: artisanName,
     artisan_phone: artisanPhone,
     artisan_location: artisanLoc,
-    category: category,
+    category: category || 'Handloom & Textiles',
     price: price,
     suggested_price_min: state.aiResult?.pricing?.fair_min || Math.round(price * 0.85),
     suggested_price_max: state.aiResult?.pricing?.fair_max || Math.round(price * 1.25),
     price_justification: state.aiResult?.pricing?.justification || "Fair trade calculated based on handcraft labor and materials.",
-    description_en: descEn,
-    description_hi: descHi,
-    tags: currentTags.length > 0 ? currentTags : ["Handmade", "Artisan", category],
-    image_url: state.uploadedImageUrl || "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=800&q=80",
-    is_enhanced: state.isEnhanced,
+    description_en: descEn || title,
+    description_hi: descHi || '',
+    tags: currentTags.length > 0 ? currentTags : ['Handmade', 'Artisan', category || 'Craft'],
+    image_url: imageUrl,
+    image_gallery: [imageUrl],
+    rating: 4.8,
+    reviews: [],
+    is_enhanced: state.isEnhanced || false,
+    mosje_verified: true,
     quantity
   };
 
@@ -2039,10 +2045,14 @@ async function publishProductToMarketplace() {
       body: JSON.stringify(payload)
     });
 
-    if (!res.ok) throw new Error("Failed to save product");
+    // Read response body first so we can show real error if it failed
+    const data = await res.json().catch(() => ({}));
 
-    const data = await res.json();
-    
+    if (!res.ok) {
+      const errMsg = data.detail || data.message || `Server error ${res.status}`;
+      throw new Error(errMsg);
+    }
+
     // Show celebratory toast
     showToast(t('publish_success'));
 
@@ -2054,7 +2064,7 @@ async function publishProductToMarketplace() {
 
   } catch (err) {
     console.error("Publish error:", err);
-    alert("Could not publish product. Please check console.");
+    alert("Could not publish product:\n" + (err.message || 'Unknown error. Check your internet connection.'));
   } finally {
     if (publishBtn) publishBtn.disabled = false;
     if (publishSpinner) publishSpinner.classList.add('hidden');

@@ -60,20 +60,21 @@ class ProductCreate(BaseModel):
     name: str
     artisan_name: str
     artisan_phone: Optional[str] = "+919876543210"
-    artisan_location: str
-    category: str
+    artisan_location: Optional[str] = "Rural Cluster, India"
+    category: Optional[str] = "Handloom & Textiles"
     price: int
     suggested_price_min: Optional[int] = None
     suggested_price_max: Optional[int] = None
     price_justification: Optional[str] = None
-    description_en: str
+    description_en: Optional[str] = ""  # Made optional — frontend may omit if user skips description
     description_hi: Optional[str] = ""
-    tags: List[str]
-    image_url: str
+    tags: Optional[List[str]] = []
+    image_url: Optional[str] = "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=800&q=80"
     image_gallery: Optional[List[str]] = []
     rating: Optional[float] = 4.5
     reviews: Optional[List[dict]] = []
     is_enhanced: Optional[bool] = False
+    mosje_verified: Optional[bool] = True
     quantity: int = 1
 
 
@@ -1388,8 +1389,9 @@ def create_product(product: ProductCreate):
         conn.close()
         raise HTTPException(status_code=429, detail="This artisan has used all 3 marketplace listings for this month")
 
-    gallery_json = json.dumps(product.image_gallery or [product.image_url])
+    gallery_json = json.dumps(product.image_gallery or [product.image_url or ""])
     reviews_json = json.dumps(product.reviews or [])
+    default_image = "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=800&q=80"
     cursor.execute(
         """
         INSERT INTO products (
@@ -1401,19 +1403,19 @@ def create_product(product: ProductCreate):
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            product.name,
-            product.artisan_name,
+            product.name.strip(),
+            product.artisan_name.strip(),
             product.artisan_phone or "+919876543210",
-            product.artisan_location,
-            product.category,
+            (product.artisan_location or "Rural Cluster, India").strip(),
+            (product.category or "Handloom & Textiles").strip(),
             product.price,
             product.suggested_price_min,
             product.suggested_price_max,
             product.price_justification or "",
-            product.description_en,
+            (product.description_en or product.name or "").strip(),
             product.description_hi or "",
-            json.dumps(product.tags),
-            product.image_url,
+            json.dumps(product.tags or ["Handmade", "Artisan"]),
+            product.image_url or default_image,
             gallery_json,
             product.rating or 4.5,
             reviews_json,
