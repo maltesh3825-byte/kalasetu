@@ -12,6 +12,7 @@ class PgRow(dict):
     Row wrapper that supports both dictionary access by column name (row['id'])
     and tuple index access (row[0]), matching sqlite3.Row behavior.
     """
+
     def __getitem__(self, item):
         if isinstance(item, int):
             return list(self.values())[item]
@@ -118,8 +119,10 @@ def get_db_connection():
         try:
             import psycopg2
             from psycopg2.extras import RealDictCursor
+
             pg_url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
             conn = psycopg2.connect(pg_url, cursor_factory=RealDictCursor)
+            conn.autocommit = True
             return PgConnectionWrapper(conn)
         except ImportError:
             print("[DATABASE WARNING] DATABASE_URL provided but psycopg2 is not installed. Falling back to SQLite.")

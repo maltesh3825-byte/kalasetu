@@ -27,7 +27,14 @@ const configuredBackendUrl =
   process.env.EXPO_PUBLIC_BACKEND_URL ||
   (__DEV__ ? getDevBackendUrl() : 'https://kalakriti-api-nmnz.onrender.com');
 
-export const BACKEND_URL = configuredBackendUrl;
+const localBackendCandidates = [
+  'http://localhost:8000',
+  'http://127.0.0.1:8000',
+  'http://10.0.2.2:8000',
+  'http://192.168.1.2:8000',
+];
+
+export const BACKEND_URL = configuredBackendUrl || localBackendCandidates[0];
 
 export interface ProductReview {
   user_name?: string;

@@ -20,6 +20,8 @@ import re
 # Load .env file (override=False ensures Render's dashboard environment variables ALWAYS take priority)
 load_dotenv(BASE_DIR / ".env", override=False)
 
+DATABASE_URL = (os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL") or "").strip()
+
 
 def find_available_port(start_port: int, host: str = "0.0.0.0", max_tries: int = 20) -> int:
     """Return the first free port starting from start_port."""
@@ -51,8 +53,11 @@ if not APP_SECRET_KEY:
     APP_SECRET_KEY = secrets.token_hex(32)
 
 # Gemini Model endpoint: use a currently supported model for new users.
-# Example: gemini-3.6-flash
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+# Avoid unsupported preview models such as gemini-3.6-flash which can return 403s.
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = (os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL) or DEFAULT_GEMINI_MODEL).strip()
+if GEMINI_MODEL in {"gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.6-flash-lite"}:
+    GEMINI_MODEL = DEFAULT_GEMINI_MODEL
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 # Application Settings
