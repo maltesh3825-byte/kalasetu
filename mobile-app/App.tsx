@@ -383,7 +383,8 @@ export default function App() {
   // Unified user account state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authPassword, setAuthPassword] = useState('demo123');
+  const [showPassword, setShowPassword] = useState(false);
   const [authMethod, setAuthMethod] = useState<'password' | 'email' | 'phone'>('password');
   const [authPhone, setAuthPhone] = useState('+919876543210');
   const [authEmail, setAuthEmail] = useState('demo@kalakriti.in');
@@ -692,59 +693,20 @@ export default function App() {
     try {
       let user: AppUser | null = null;
 
-      if (authMode === 'register') {
-        if (!authName.trim()) {
-          throw new Error(lang === 'hi' ? 'कृपया अपना पूरा नाम दर्ज करें।' : 'Please enter your full name.');
+      if (authMethod === 'phone') {
+        if (!authPhone.trim()) {
+          throw new Error(lang === 'hi' ? 'कृपया अपना मोबाइल नंबर दर्ज करें।' : 'Please enter your mobile number.');
         }
-
-        if (authMethod === 'phone') {
-          const cleanDigits = authPhone.trim().replace(/\D/g, '').slice(-10);
-          if (cleanDigits.length < 8) {
-            throw new Error(lang === 'hi' ? 'कृपया एक वैध 10-अंकीय मोबाइल नंबर दर्ज करें।' : 'Please enter a valid 10-digit mobile number.');
-          }
-          // Passwordless — no PIN needed
-          user = await registerWithPhone({
-            phone: authPhone.trim(),
-            name: authName.trim(),
-            role: authRole,
-            city: authCity.trim() || 'India',
-            language: lang
-          });
-        } else {
-          // 'email' or 'password' method — email only, no password
-          if (!authEmail.trim() || !authEmail.includes('@')) {
-            throw new Error(lang === 'hi' ? 'कृपया एक वैध ईमेल पता दर्ज करें।' : 'Please enter a valid email address.');
-          }
-          user = await registerUser({
-            name: authName.trim(),
-            email: authEmail.trim(),
-            role: authRole,
-            phone: authPhone.trim(),
-            city: authCity.trim() || 'India',
-            language: lang
-          });
-        }
+        user = await loginWithPhone(authPhone.trim(), authPassword.trim());
       } else {
-        if (authMethod === 'phone') {
-          if (!authPhone.trim()) {
-            throw new Error(lang === 'hi' ? 'कृपया अपना मोबाइल नंबर दर्ज करें।' : 'Please enter your mobile number.');
-          }
-          user = await loginWithPhone(authPhone.trim());
-        } else {
-          // 'email' or 'password' method — email only, no password
-          if (!authEmail.trim()) {
-            throw new Error(lang === 'hi' ? 'कृपया अपना ईमेल पता दर्ज करें।' : 'Please enter your email address.');
-          }
-          user = await loginUser(authEmail.trim(), '', authRole);
+        if (!authEmail.trim()) {
+          throw new Error(lang === 'hi' ? 'कृपया अपना ईमेल पता दर्ज करें।' : 'Please enter your email address.');
         }
+        user = await loginUser(authEmail.trim(), authPassword.trim(), authRole);
       }
 
       if (!user) {
-        throw new Error(
-          authMode === 'register'
-            ? (lang === 'hi' ? 'खाता निर्माण विफल रहा।' : 'Account creation failed. Please try again.')
-            : (lang === 'hi' ? 'अमान्य क्रेडेंशियल्स। यदि आपके पास खाता नहीं है, तो "साइन अप" चुनें।' : 'Invalid credentials. If you do not have an account, tap "Create Account".')
-        );
+        throw new Error(lang === 'hi' ? 'अमान्य क्रेडेंशियल्स।' : 'Invalid credentials. Please check your details.');
       }
 
       setCurrentUser(user);
@@ -756,17 +718,11 @@ export default function App() {
 
       showCustomPopup({
         type: 'welcome',
-        title: authMode === 'register'
-          ? (lang === 'hi' ? `बधाई हो, ${user.name}! 🎉` : `Account Created! Welcome, ${user.name}! 🎉`)
-          : (lang === 'hi' ? `नमस्ते, ${user.name || 'कारीगर'}!` : `Welcome back, ${user.name || 'Artisan'}! 🎉`),
+        title: lang === 'hi' ? `नमस्ते, ${user.name || 'कारीगर'}!` : `Welcome back, ${user.name || 'Artisan'}! 🎉`,
         subtitle: lang === 'hi' ? 'कलासेतु में आपका स्वागत है' : 'KalaSetu AI Studio',
-        message: authMode === 'register'
-          ? (lang === 'hi'
-              ? `आपका खाता (${user.phone || user.email}) सफलतापूर्वक बन गया है। अब आप शिल्प कैटलॉग जोड़ सकते हैं।`
-              : `Your account (${user.phone || user.email}) has been created successfully. Your craft catalog and buyer tools are ready.`)
-          : (lang === 'hi'
-              ? `आपका खाता (${user.phone || user.email}) सफलतापूर्वक सक्रिय हो गया है।`
-              : `Logged in as ${user.phone || user.email}.`),
+        message: lang === 'hi'
+          ? `आपका खाता (${user.phone || user.email}) सफलतापूर्वक सक्रिय हो गया है।`
+          : `Logged in as ${user.phone || user.email}.`,
         primaryText: user.role === 'buyer' ? (lang === 'hi' ? '🛍️ बाज़ार देखें' : '🛍️ Explore Market') : (lang === 'hi' ? '🎨 शिल्प स्टूडियो' : '🎨 Open AI Studio'),
         primaryAction: () => {
           hideCustomPopup();
@@ -786,8 +742,8 @@ export default function App() {
       setAuthErrorNotice(errMsg);
       showCustomPopup({
         type: 'error',
-        title: authMode === 'register' ? (lang === 'hi' ? 'साइन अप विफल' : 'Sign Up Failed') : (lang === 'hi' ? 'साइन-इन विफल' : 'Sign-In Failed'),
-        subtitle: authMode === 'register' ? 'Registration Error' : 'Invalid Credentials',
+        title: lang === 'hi' ? 'साइन-इन विफल' : 'Sign-In Failed',
+        subtitle: 'Invalid Credentials',
         message: errMsg,
         primaryText: 'OK',
         primaryAction: hideCustomPopup
@@ -1736,10 +1692,10 @@ export default function App() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 18, fontWeight: '900', color: '#0F172A' }}>
-                      {authMode === 'register' ? 'Join KalaSetu' : 'Sign in to KalaSetu'}
+                      Sign in to KalaSetu
                     </Text>
                     <Text style={{ fontSize: 11, color: '#64748B' }}>
-                      {authMode === 'register' ? 'Free account for artisans & buyers' : 'Access your artisan studio or buyer marketplace'}
+                      Access your artisan studio or buyer marketplace
                     </Text>
                   </View>
                   <View style={{ backgroundColor: '#FEF9C3', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#FDE047' }}>
@@ -1747,24 +1703,10 @@ export default function App() {
                   </View>
                 </View>
 
-                {/* ── Sign In / Sign Up Toggle ── */}
-                <View style={{ flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 14, padding: 4, marginBottom: 18 }}>
-                  <TouchableOpacity
-                    style={[{ flex: 1, paddingVertical: 11, alignItems: 'center', borderRadius: 10 }, authMode === 'login' && { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 4, elevation: 2 }]}
-                    onPress={() => { setAuthMode('login'); setAuthErrorNotice(''); setShowOtpSection(false); }}
-                  >
-                    <Text style={{ fontWeight: '800', fontSize: 13, color: authMode === 'login' ? Colors.primary : Colors.textSecondary }}>
-                      🔑 Sign In
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[{ flex: 1, paddingVertical: 11, alignItems: 'center', borderRadius: 10 }, authMode === 'register' && { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 4, elevation: 2 }]}
-                    onPress={() => { setAuthMode('register'); setAuthErrorNotice(''); setShowOtpSection(false); }}
-                  >
-                    <Text style={{ fontWeight: '800', fontSize: 13, color: authMode === 'register' ? Colors.primary : Colors.textSecondary }}>
-                      ✨ Create Account (Sign Up)
-                    </Text>
-                  </TouchableOpacity>
+                {/* ── Demo Access Banner ── */}
+                <View style={{ backgroundColor: '#FFF7ED', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 16, borderWidth: 1, borderColor: '#FFEDD5', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={{ fontSize: 14 }}>⚡</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#C2410C' }}>Demo Sign In Mode — Select a 1-click account or enter details below</Text>
                 </View>
 
                 {/* ── Method Tabs: Password | Gmail OTP | Mobile OTP ── */}
@@ -1787,25 +1729,6 @@ export default function App() {
                 {/* ══════════════════════════════════════════ */}
                 {authMethod === 'password' && (
                   <View>
-                    {/* Sign Up only: Name + Phone + Role */}
-                    {authMode === 'register' && (
-                      <View style={{ marginBottom: 4 }}>
-                        <Text style={styles.authFieldLabel}>Full Name</Text>
-                        <TextInput style={styles.authInput} value={authName} onChangeText={setAuthName} placeholder="e.g. Rameshwar Prajapati" placeholderTextColor={Colors.placeholder} />
-                        <Text style={styles.authFieldLabel}>Mobile Number</Text>
-                        <TextInput style={styles.authInput} value={authPhone} onChangeText={setAuthPhone} placeholder="+91 9876543210" keyboardType="phone-pad" placeholderTextColor={Colors.placeholder} />
-                        <Text style={styles.authFieldLabel}>Account Role</Text>
-                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                          <TouchableOpacity style={[styles.roleChip, authRole === 'artisan' && { backgroundColor: Colors.primary, borderColor: Colors.primary }]} onPress={() => setAuthRole('artisan')}>
-                            <Text style={[styles.roleChipText, authRole === 'artisan' && { color: '#FFF', fontWeight: 'bold' }]}>🎨 Artisan / Seller</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={[styles.roleChip, authRole === 'buyer' && { backgroundColor: Colors.secondary, borderColor: Colors.secondary }]} onPress={() => setAuthRole('buyer')}>
-                            <Text style={[styles.roleChipText, authRole === 'buyer' && { color: '#FFF', fontWeight: 'bold' }]}>🛍️ Craft Buyer</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
-
                     <Text style={styles.authFieldLabel}>Email Address or Mobile Number</Text>
                     <TextInput
                       style={styles.authInput}
@@ -1817,33 +1740,57 @@ export default function App() {
                       placeholderTextColor={Colors.placeholder}
                     />
 
-                    <View style={styles.authInfoBox}>
-                      <Text style={styles.authInfoText}>🔓 <Text style={{ fontWeight: '700' }}>Passwordless:</Text> No password needed. Just enter your email/phone and tap Sign In.</Text>
+                    <Text style={styles.authFieldLabel}>Password / PIN</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 14, marginBottom: 12 }}>
+                      <TextInput
+                        style={{ flex: 1, paddingVertical: 14, fontSize: 15, color: '#0F172A' }}
+                        value={authPassword}
+                        onChangeText={setAuthPassword}
+                        placeholder="demo123"
+                        secureTextEntry={!showPassword}
+                        autoCapitalize="none"
+                        placeholderTextColor={Colors.placeholder}
+                      />
+                      <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 4 }}>
+                        <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '700' }}>{showPassword ? '👁️ Hide' : '👁️ Show'}</Text>
+                      </TouchableOpacity>
                     </View>
 
                     {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
 
                     <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleAuthSubmit} disabled={authLoading}>
                       {authLoading
-                        ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>{authMode === 'register' ? 'Creating...' : 'Signing In...'}</Text></View>
-                        : <Text style={styles.primaryActionText}>{authMode === 'register' ? '✨ Create Account' : '🔑 Sign In'}</Text>
+                        ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Signing In...</Text></View>
+                        : <Text style={styles.primaryActionText}>🔑 Sign In</Text>
                       }
                     </TouchableOpacity>
 
                     {/* 1-Click Demo Pills */}
-                    {authMode === 'login' && (
-                      <View style={styles.demoPillsBox}>
-                        <Text style={styles.demoPillsLabel}>⚡ 1-Click Demo Accounts:</Text>
-                        <View style={styles.demoPillsRow}>
-                          <TouchableOpacity style={styles.demoPill} onPress={() => { setAuthEmail('demo@kalakriti.in'); }}>
-                            <Text style={styles.demoPillText}>🛍️ Buyer: demo@kalakriti.in</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={styles.demoPill} onPress={() => { setAuthEmail('artisan@kalakriti.in'); }}>
-                            <Text style={styles.demoPillText}>🎨 Artisan: artisan@kalakriti.in</Text>
-                          </TouchableOpacity>
-                        </View>
+                    <View style={styles.demoPillsBox}>
+                      <Text style={styles.demoPillsLabel}>⚡ 1-Click Demo Accounts:</Text>
+                      <View style={styles.demoPillsRow}>
+                        <TouchableOpacity
+                          style={styles.demoPill}
+                          onPress={() => {
+                            setAuthEmail('demo@kalakriti.in');
+                            setAuthPassword('demo123');
+                            setAuthRole('buyer');
+                          }}
+                        >
+                          <Text style={styles.demoPillText}>🛍️ Buyer: demo@kalakriti.in</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.demoPill}
+                          onPress={() => {
+                            setAuthEmail('artisan@kalakriti.in');
+                            setAuthPassword('artisan123');
+                            setAuthRole('artisan');
+                          }}
+                        >
+                          <Text style={styles.demoPillText}>🎨 Artisan: artisan@kalakriti.in</Text>
+                        </TouchableOpacity>
                       </View>
-                    )}
+                    </View>
                   </View>
                 )}
 
@@ -1855,23 +1802,6 @@ export default function App() {
                     <View style={styles.authInfoBox}>
                       <Text style={styles.authInfoText}>📧 <Text style={{ fontWeight: '700' }}>Direct Inbox Delivery:</Text> Verification codes are dispatched directly to your Gmail inbox.</Text>
                     </View>
-
-                    {/* Sign Up only: Name + Role */}
-                    {authMode === 'register' && (
-                      <View style={{ marginBottom: 4 }}>
-                        <Text style={styles.authFieldLabel}>Your Full Name</Text>
-                        <TextInput style={styles.authInput} value={authName} onChangeText={setAuthName} placeholder="e.g. Rameshwar Prajapati" placeholderTextColor={Colors.placeholder} />
-                        <Text style={styles.authFieldLabel}>Account Role</Text>
-                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                          <TouchableOpacity style={[styles.roleChip, authRole === 'artisan' && { backgroundColor: Colors.primary, borderColor: Colors.primary }]} onPress={() => setAuthRole('artisan')}>
-                            <Text style={[styles.roleChipText, authRole === 'artisan' && { color: '#FFF', fontWeight: 'bold' }]}>🎨 Artisan / Seller</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={[styles.roleChip, authRole === 'buyer' && { backgroundColor: Colors.secondary, borderColor: Colors.secondary }]} onPress={() => setAuthRole('buyer')}>
-                            <Text style={[styles.roleChipText, authRole === 'buyer' && { color: '#FFF', fontWeight: 'bold' }]}>🛍️ Craft Buyer</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
 
                     {!showOtpSection ? (
                       <View>
@@ -1923,23 +1853,6 @@ export default function App() {
                       <Text style={[styles.authInfoText, { color: '#92400E' }]}>ℹ️ <Text style={{ fontWeight: '700' }}>Telecom SMS Notice:</Text> For guaranteed instant delivery switch to <Text style={{ fontWeight: '700' }}>Gmail OTP</Text> above.</Text>
                     </View>
 
-                    {/* Sign Up only: Name + Role */}
-                    {authMode === 'register' && (
-                      <View style={{ marginBottom: 4 }}>
-                        <Text style={styles.authFieldLabel}>Your Full Name</Text>
-                        <TextInput style={styles.authInput} value={authName} onChangeText={setAuthName} placeholder="e.g. Rameshwar Prajapati" placeholderTextColor={Colors.placeholder} />
-                        <Text style={styles.authFieldLabel}>Account Role</Text>
-                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                          <TouchableOpacity style={[styles.roleChip, authRole === 'artisan' && { backgroundColor: Colors.primary, borderColor: Colors.primary }]} onPress={() => setAuthRole('artisan')}>
-                            <Text style={[styles.roleChipText, authRole === 'artisan' && { color: '#FFF', fontWeight: 'bold' }]}>🎨 Artisan / Seller</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={[styles.roleChip, authRole === 'buyer' && { backgroundColor: Colors.secondary, borderColor: Colors.secondary }]} onPress={() => setAuthRole('buyer')}>
-                            <Text style={[styles.roleChipText, authRole === 'buyer' && { color: '#FFF', fontWeight: 'bold' }]}>🛍️ Craft Buyer</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
-
                     {!showOtpSection ? (
                       <View>
                         <Text style={styles.authFieldLabel}>10-Digit Mobile Number</Text>
@@ -1957,19 +1870,29 @@ export default function App() {
                           }
                         </TouchableOpacity>
                         {/* Quick Demo Phones */}
-                        {authMode === 'login' && (
-                          <View style={styles.demoPillsBox}>
-                            <Text style={styles.demoPillsLabel}>⚡ Quick 1-Click Demo Numbers:</Text>
-                            <View style={styles.demoPillsRow}>
-                              <TouchableOpacity style={styles.demoPill} onPress={() => setAuthPhone('+919876543210')}>
-                                <Text style={styles.demoPillText}>🎨 Demo Artisan (+91 9876543210)</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity style={styles.demoPill} onPress={() => setAuthPhone('+919800112233')}>
-                                <Text style={styles.demoPillText}>🛍️ Demo Buyer (+91 9800112233)</Text>
-                              </TouchableOpacity>
-                            </View>
+                        <View style={styles.demoPillsBox}>
+                          <Text style={styles.demoPillsLabel}>⚡ Quick 1-Click Demo Numbers:</Text>
+                          <View style={styles.demoPillsRow}>
+                            <TouchableOpacity
+                              style={styles.demoPill}
+                              onPress={() => {
+                                setAuthPhone('+919876543210');
+                                setAuthRole('artisan');
+                              }}
+                            >
+                              <Text style={styles.demoPillText}>🎨 Demo Artisan (+91 9876543210)</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.demoPill}
+                              onPress={() => {
+                                setAuthPhone('+919800112233');
+                                setAuthRole('buyer');
+                              }}
+                            >
+                              <Text style={styles.demoPillText}>🛍️ Demo Buyer (+91 9800112233)</Text>
+                            </TouchableOpacity>
                           </View>
-                        )}
+                        </View>
                       </View>
                     ) : (
                       <View>
@@ -2000,18 +1923,7 @@ export default function App() {
                   </View>
                 )}
 
-                {/* ── Switch Mode Link ── */}
-                <TouchableOpacity
-                  style={{ marginTop: 18, alignItems: 'center', paddingVertical: 4 }}
-                  onPress={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setAuthErrorNotice(''); setShowOtpSection(false); }}
-                >
-                  <Text style={{ fontSize: 12, color: Colors.textSecondary }}>
-                    {authMode === 'login'
-                      ? <><Text>Don't have an account? </Text><Text style={{ color: Colors.primary, fontWeight: 'bold' }}>Create Account</Text></>
-                      : <><Text>Already have an account? </Text><Text style={{ color: Colors.primary, fontWeight: 'bold' }}>Sign In</Text></>
-                    }
-                  </Text>
-                </TouchableOpacity>
+
 
               </View>
             ) : (
