@@ -1740,7 +1740,37 @@ def create_product(product: ProductCreate):
         new_id = cursor.lastrowid
         conn.commit()
         conn.close()
-        return {"status": "success", "product_id": new_id, "message": "Product published to marketplace!"}
+
+        # Also sync directly to Supabase REST table if credentials are set in .env
+        from backend.database import sync_to_supabase_rest
+        supabase_item = sync_to_supabase_rest({
+            "name": product.name.strip(),
+            "artisan_name": product.artisan_name.strip(),
+            "artisan_phone": product.artisan_phone or "+919876543210",
+            "artisan_location": (product.artisan_location or "Rural Cluster, India").strip(),
+            "category": (product.category or "Handloom & Textiles").strip(),
+            "price": product.price,
+            "quantity": listing_quantity,
+            "suggested_price_min": product.suggested_price_min,
+            "suggested_price_max": product.suggested_price_max,
+            "price_justification": product.price_justification or "",
+            "description_en": (product.description_en or product.name or "").strip(),
+            "description_hi": product.description_hi or "",
+            "tags": product.tags or ["Handmade", "Artisan"],
+            "image_url": product.image_url or default_image,
+            "image_gallery": product.image_gallery or [product.image_url or default_image],
+            "rating": product.rating or 4.5,
+            "reviews": product.reviews or [],
+            "is_enhanced": product.is_enhanced,
+            "owner_user_id": product.owner_user_id,
+        })
+
+        return {
+            "status": "success",
+            "product_id": new_id,
+            "supabase_synced": bool(supabase_item),
+            "message": "Product published to marketplace!"
+        }
 
     except HTTPException:
         raise

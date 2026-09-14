@@ -4,6 +4,7 @@ Smart India Hackathon 2026 - SIH26090
 """
 import sqlite3
 import json
+from typing import Dict, Any, Optional
 from backend.config import DATABASE_PATH, DATABASE_URL
 
 
@@ -181,6 +182,63 @@ def safe_add_column_pg(cursor, conn, table_name, column_name, column_def):
         except Exception:
             pass
         print(f"[DATABASE NOTICE] Check for column '{table_name}.{column_name}' failed: {e}")
+
+
+def sync_to_supabase_rest(product_dict: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Directly insert a product record into Supabase PostgreSQL table via Supabase PostgREST API.
+    Works seamlessly without requiring psycopg2 or direct database port (5432/6543) access.
+    Triggered whenever SUPABASE_URL and SUPABASE_KEY are provided in .env.
+    """
+    from backend.config import SUPABASE_URL, SUPABASE_KEY
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None
+
+    import requests
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
+    endpoint = f"{SUPABASE_URL}/rest/v1/products"
+
+    # Prepare payload matching supabase_schema.sql
+    payload = {
+        "name": product_dict.get("name", ""),
+        "artisan_name": product_dict.get("artisan_name", ""),
+        "artisan_phone": product_dict.get("artisan_phone", "+919876543210"),
+        "artisan_location": product_dict.get("artisan_location", "Rural Cluster, India"),
+        "category": product_dict.get("category", "Handloom & Textiles"),
+        "price": int(product_dict.get("price", 0)),
+        "quantity": int(product_dict.get("quantity", 1)),
+        "suggested_price_min": product_dict.get("suggested_price_min"),
+        "suggested_price_max": product_dict.get("suggested_price_max"),
+        "price_justification": product_dict.get("price_justification", ""),
+        "description_en": product_dict.get("description_en", ""),
+        "description_hi": product_dict.get("description_hi", ""),
+        "tags": json.dumps(product_dict.get("tags", [])) if isinstance(product_dict.get("tags"), list) else str(product_dict.get("tags", "[]")),
+        "image_url": product_dict.get("image_url", ""),
+        "image_gallery": json.dumps(product_dict.get("image_gallery", [])) if isinstance(product_dict.get("image_gallery"), list) else str(product_dict.get("image_gallery", "[]")),
+        "rating": float(product_dict.get("rating", 4.5)),
+        "reviews": json.dumps(product_dict.get("reviews", [])) if isinstance(product_dict.get("reviews"), list) else str(product_dict.get("reviews", "[]")),
+        "is_enhanced": 1 if product_dict.get("is_enhanced") else 0,
+        "mosje_verified": 1,
+    }
+    if product_dict.get("owner_user_id"):
+        payload["owner_user_id"] = product_dict.get("owner_user_id")
+
+    try:
+        response = requests.post(endpoint, headers=headers, json=payload, timeout=12)
+        if response.status_code in (200, 201):
+            res_data = response.json()
+            print(f"[SUPABASE SUCCESS] Successfully stored product in Supabase: {res_data}")
+            return res_data[0] if isinstance(res_data, list) and res_data else res_data
+        else:
+            print(f"[SUPABASE WARNING] Supabase REST API returned {response.status_code}: {response.text}")
+    except Exception as e:
+        print(f"[SUPABASE ERROR] Failed to sync product to Supabase REST: {e}")
+    return None
 
 
 def init_db():

@@ -10,7 +10,7 @@ import Constants from 'expo-constants';
 // - Web: http://localhost:8000
 // - Phone (Expo Go): http://<YOUR_LOCAL_IP>:8000
 // - Android Emulator: http://10.0.2.2:8000
-const getDevBackendUrl = () => {
+export const getDevBackendUrl = (): string => {
   if (Platform.OS === 'web') {
     return 'http://localhost:8000';
   }
@@ -22,19 +22,47 @@ const getDevBackendUrl = () => {
   return 'http://10.0.2.2:8000';
 };
 
-const configuredBackendUrl =
-  Constants.expoConfig?.extra?.backendUrl ||
-  process.env.EXPO_PUBLIC_BACKEND_URL ||
-  (__DEV__ ? getDevBackendUrl() : 'https://kalakriti-api-nmnz.onrender.com');
+export const CLOUD_BACKEND_URL =
+  Constants.expoConfig?.extra?.backendUrl || 'https://kalakriti-api-nmnz.onrender.com';
 
-const localBackendCandidates = [
-  'http://localhost:8000',
-  'http://127.0.0.1:8000',
-  'http://10.0.2.2:8000',
-  'http://192.168.1.2:8000',
-];
+const resolveInitialBackendUrl = (): string => {
+  if (process.env.EXPO_PUBLIC_BACKEND_URL) {
+    return process.env.EXPO_PUBLIC_BACKEND_URL.trim();
+  }
+  // In development mode (Expo Go, Web, Emulator), prioritize local server:
+  if (__DEV__) {
+    return getDevBackendUrl();
+  }
+  return CLOUD_BACKEND_URL;
+};
 
-export const BACKEND_URL = configuredBackendUrl || localBackendCandidates[0];
+let activeBackendUrl = resolveInitialBackendUrl();
+
+export function getBackendUrl(): string {
+  return activeBackendUrl;
+}
+
+export function setBackendUrl(url: string): void {
+  activeBackendUrl = url.trim().replace(/\/+$/, '');
+}
+
+export const BACKEND_URL = activeBackendUrl;
+
+export const GEMINI_API_KEY =
+  (process.env.EXPO_PUBLIC_GEMINI_API_KEY || Constants.expoConfig?.extra?.geminiApiKey || "")
+    .trim();
+
+export const SUPABASE_URL = (
+  process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  Constants.expoConfig?.extra?.supabaseUrl ||
+  ""
+).trim().replace(/\/+$/, '');
+
+export const SUPABASE_ANON_KEY = (
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  Constants.expoConfig?.extra?.supabaseAnonKey ||
+  ""
+).trim();
 
 export interface ProductReview {
   user_name?: string;
@@ -64,6 +92,7 @@ export interface CraftProduct {
   reviews?: ProductReview[];
   is_enhanced?: boolean;
   mosje_verified?: boolean;
+  owner_user_id?: number;
 }
 
 export interface AiAnalysisResult {
@@ -255,6 +284,138 @@ export class NetworkError extends Error {
   }
 }
 
+function cleanJsonResponse(text: string): any {
+  let cleaned = text.trim();
+  if (cleaned.startsWith("```")) {
+    const lines = cleaned.split("\n");
+    if (lines[0].startsWith("```")) lines.shift();
+    if (lines.length && lines[lines.length - 1].trim() === "```") lines.pop();
+    cleaned = lines.join("\n").trim();
+  }
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (match) cleaned = match[0];
+  return JSON.parse(cleaned);
+}
+
+async function imageUriToBase64(imageUri: string): Promise<{ base64: string; mimeType: string }> {
+  if (imageUri.startsWith("data:")) {
+    const parts = imageUri.split(",");
+    const match = imageUri.match(/data:(.*?);base64/);
+    const mimeType = match ? match[1] : "image/jpeg";
+    return { base64: parts[1] || "", mimeType };
+  }
+
+  const filename = imageUri.split('/').pop() || 'photo.jpg';
+  const match = /\.(\w+)$/.exec(filename);
+  const fallbackMime = match ? `image/${match[1]}` : `image/jpeg`;
+
+  const response = await fetch(imageUri);
+  const blob = await response.blob();
+  const mimeType = blob.type || fallbackMime;
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string;
+      const commaIdx = dataUrl.indexOf(",");
+      const base64 = commaIdx !== -1 ? dataUrl.substring(commaIdx + 1) : dataUrl;
+      resolve({ base64, mimeType });
+    };
+    reader.onerror = (e) => reject(e || new Error("Failed to read image blob"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function analyzeCraftWithGeminiDirect(
+  imageUri: string,
+  notes: string = "",
+  priceHint: string = ""
+): Promise<AiAnalysisResult> {
+  const apiKey = GEMINI_API_KEY;
+  if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE") {
+    throw new Error("No Google Gemini API key configured.");
+  }
+
+  const { base64, mimeType } = await imageUriToBase64(imageUri);
+
+  const prompt = `You are the AI Virtual Business Manager for rural and marginalized Indian artisans and weavers under the Ministry of Social Justice and Empowerment (MoSJE).
+Your mission is to empower low-literacy artisans by analyzing their handmade craft photo and auto-generating an e-commerce catalog entry that commands fair market value.
+
+Context from artisan (if any):
+- Artisan Voice/Text Notes: "${notes || 'None provided'}"
+- Artisan Self-Price Idea: "${priceHint || 'Not specified'}"
+If the artisan notes are spoken or written in Kannada (or another Indian language), interpret and translate them into natural English before using them in the English catalog title and description.
+
+Analyze the product image with high attention to Indian heritage craftsmanship (handloom, terracotta, metal, bamboo, wood, embroidery, etc.).
+
+Return ONLY a valid JSON object matching this exact schema:
+{
+  "category": "Pick exactly one from: Handloom & Textiles, Pottery & Terracotta, Brass & Metalcraft, Cane & Bamboo, Woodcraft, Tribal Jewelry, Leather Craft, Folk Art & Painting, Stone Carving",
+  "suggested_title": "Concise, SEO-optimized title in English (e.g., 'Hand-Carved Sheesham Wood Elephant Figurine')",
+  "tags": ["3 to 5 relevant tags like 'Handmade', 'EcoFriendly', 'BastarArt', 'Terracotta']",
+  "description_en": "2-3 sentences. Highlighting traditional craftsmanship, natural materials, authentic cultural technique, and home utility.",
+  "description_hi": "A warm, natural Hindi translation of the description in Devanagari script for local and regional reach.",
+  "pricing": {
+    "fair_min": 450,
+    "fair_max": 750,
+    "suggested": 600,
+    "justification": "Clear, simple explanation of why this price is fair based on craftsmanship complexity, estimated labor hours, and raw material value."
+  },
+  "craft_heritage_story": "A single sentence celebrating the cultural tradition or artisan lineage behind this work.",
+  "care_instructions": "One simple sentence advising the buyer on how to care for this handmade product."
+}`;
+
+  const payload = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: base64
+            }
+          }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      topP: 0.8,
+      maxOutputTokens: 2048,
+      responseMimeType: "application/json"
+    }
+  };
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    }
+  );
+
+  if (!response.ok) {
+    const errText = await response.text();
+    console.error("Direct Gemini Vision API error:", response.status, errText);
+    throw new Error(`Gemini Vision returned HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!rawText) {
+    throw new Error("Empty candidate response from Gemini Vision API");
+  }
+
+  const parsed = cleanJsonResponse(rawText);
+  parsed.is_ai_simulated = false;
+  parsed.ai_engine = "Google Gemini (gemini-2.5-flash Vision)";
+  return parsed as AiAnalysisResult;
+}
+
 export async function analyzeProductPhoto(
   imageUri: string,
   notes: string = "",
@@ -311,14 +472,13 @@ export async function analyzeProductPhoto(
         fileAppended = true;
       } catch (legacyErr) {
         console.warn("Legacy FormData append failed:", legacyErr);
-        throw legacyErr;
       }
     }
 
     if (notes) formData.append('notes', notes);
     if (priceHint) formData.append('price_hint', String(priceHint));
 
-    const res = await fetch(`${BACKEND_URL}/api/analyze-product`, {
+    const res = await fetch(`${getBackendUrl()}/api/analyze-product`, {
       method: 'POST',
       body: formData,
       headers: {
@@ -327,13 +487,42 @@ export async function analyzeProductPhoto(
     });
 
     if (res.ok) {
-      return await res.json();
+      const result: AiAnalysisResult = await res.json();
+      // If backend returned simulated fallback (e.g. Render with no API key),
+      // seamlessly elevate to direct Gemini Vision for real AI results!
+      if (result.is_ai_simulated && GEMINI_API_KEY) {
+        console.info("Backend in simulation mode. Elevating to direct Gemini Vision...");
+        try {
+          return await analyzeCraftWithGeminiDirect(imageUri, notes, priceHint);
+        } catch (directErr) {
+          console.warn("Direct Gemini Vision fallback failed, returning backend result:", directErr);
+          return result;
+        }
+      }
+      return result;
     }
+
     const errData = await res.json().catch(() => ({}));
     console.warn("Backend vision API returned HTTP error:", res.status, errData);
+    // If backend returned error, attempt direct Gemini Vision before failing:
+    if (GEMINI_API_KEY) {
+      console.info("Backend vision returned error. Attempting direct Gemini Vision...");
+      return await analyzeCraftWithGeminiDirect(imageUri, notes, priceHint);
+    }
     throw new Error(errData?.detail || errData?.error || `Server returned ${res.status}`);
   } catch (err: any) {
     console.warn("Error calling backend vision API:", err);
+
+    // If backend is down or unreachable, attempt direct Gemini Vision API call:
+    if (GEMINI_API_KEY) {
+      try {
+        console.info("Backend unreachable. Calling Gemini Vision directly...");
+        return await analyzeCraftWithGeminiDirect(imageUri, notes, priceHint);
+      } catch (directErr) {
+        console.warn("Direct Gemini Vision also failed:", directErr);
+      }
+    }
+
     const msg = String(err?.message || '');
     if (
       msg.includes('Network request failed') ||
@@ -349,25 +538,91 @@ export async function analyzeProductPhoto(
   }
 }
 
+export async function syncProductToSupabaseDirect(product: Omit<CraftProduct, 'id'>): Promise<any> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return null;
+  }
+
+  const payload = {
+    name: product.name,
+    artisan_name: product.artisan_name,
+    artisan_phone: product.artisan_phone || "+919876543210",
+    artisan_location: product.artisan_location || "Rural Cluster, India",
+    category: product.category || "Handloom & Textiles",
+    price: Number(product.price),
+    quantity: Number(product.quantity || 1),
+    suggested_price_min: product.suggested_price_min,
+    suggested_price_max: product.suggested_price_max,
+    price_justification: product.price_justification || "",
+    description_en: product.description_en || product.name,
+    description_hi: product.description_hi || "",
+    tags: JSON.stringify(product.tags || ["Handmade", "Artisan"]),
+    image_url: product.image_url || "",
+    image_gallery: JSON.stringify(product.image_gallery || [product.image_url || ""]),
+    rating: Number(product.rating || 4.5),
+    reviews: JSON.stringify(product.reviews || []),
+    is_enhanced: product.is_enhanced ? 1 : 0,
+    mosje_verified: 1,
+    owner_user_id: product.owner_user_id
+  };
+
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/products`, {
+    method: "POST",
+    headers: {
+      "apikey": SUPABASE_ANON_KEY,
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": "return=representation"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    console.warn("Direct Supabase sync response status:", res.status, txt);
+    throw new Error(`Supabase returned ${res.status}: ${txt}`);
+  }
+  return await res.json();
+}
+
 export async function publishProductToApi(product: Omit<CraftProduct, 'id'>): Promise<boolean> {
+  let backendSuccess = false;
+  let backendError: any = null;
+
   try {
-    const res = await fetch(`${BACKEND_URL}/api/products`, {
+    const res = await fetch(`${getBackendUrl()}/api/products`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(product)
     });
-    if (!res.ok) {
+    if (res.ok) {
+      backendSuccess = true;
+    } else {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.detail || 'Product could not be published');
+      backendError = new Error(data.detail || `Server returned ${res.status}`);
     }
-    return true;
-  } catch (err) {
-    if (err instanceof TypeError) {
-      console.warn("Could not publish to backend, saved locally:", err);
-      return true;
-    }
-    throw err instanceof Error ? err : new Error('Product could not be published');
+  } catch (err: any) {
+    backendError = err;
+    console.warn("Backend publish request failed:", err);
   }
+
+  // Also sync to Supabase directly if client-side Supabase credentials are configured
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+    try {
+      await syncProductToSupabaseDirect(product);
+      backendSuccess = true; // Supabase accepted the product
+    } catch (sbErr) {
+      console.warn("Direct Supabase sync attempt failed:", sbErr);
+    }
+  }
+
+  if (backendSuccess) {
+    return true;
+  }
+
+  const activeUrl = getBackendUrl();
+  const errorMsg = backendError?.message || 'Could not reach backend server';
+  throw new Error(`Publish failed (${errorMsg}). Current server: ${activeUrl}`);
 }
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 12000): Promise<Response> {

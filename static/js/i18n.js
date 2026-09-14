@@ -7,7 +7,7 @@
 const translations = {
   en: {
     app_title: "KalaSetu",
-    app_subtitle: "AI Studio & Market Linkage for Artisans",
+    app_subtitle: "Market Linkage for Artisans",
     nav_studio: "Artisan Studio",
     nav_market: "Buyer Marketplace",
     nav_about: "MoSJE Mission",
@@ -16,8 +16,8 @@ const translations = {
     // Header & Badges
     mosje_badge: "Ministry of Social Justice & Empowerment",
     sih_badge: "SIH 2026 | SIH26090",
-    gemini_live: "Gemini Vision Active",
-    gemini_sim: "Smart AI Mode",
+    gemini_live: "Cataloging Active",
+    gemini_sim: "Smart Cataloging Mode",
     nav_home: "Home",
     nav_bulk: "Bulk & Institutions",
     nav_account: "Account",
@@ -46,8 +46,8 @@ const translations = {
     price_idea_placeholder: "e.g. 500",
 
     // Action button
-    btn_analyze_ai: "Analyze with AI Vision",
-    btn_analyzing: "AI is analyzing your craft...",
+    btn_analyze_ai: "Analyze Product",
+    btn_analyzing: "Reviewing your craft details...",
 
     // Review & Edit Card
     review_title: "2. Review & Optimize Catalog Listing",
@@ -60,14 +60,14 @@ const translations = {
     desc_hi_label: "Marketable Description (हिंदी)",
     
     // Dynamic Pricing Assistant
-    pricing_assistant_title: "AI Dynamic Pricing Assistant",
+    pricing_assistant_title: "Pricing Assistant",
     fair_range_label: "Suggested Fair Market Range:",
     justification_label: "Why this price?",
     btn_apply_suggested: "Apply Suggested Price",
 
     // Studio Enhancement
-    enhancer_label: "AI Studio Light Enhancement",
-    enhancer_sub: "Enhances lighting and contrasts for professional e-commerce presentation.",
+    enhancer_label: "Photo Enhancement",
+    enhancer_sub: "Improves lighting and contrast for clearer product presentation.",
 
     // Publish
     btn_publish: "Publish to Marketplace Now",
@@ -100,7 +100,7 @@ const translations = {
 
   hi: {
     app_title: "कलाकृति",
-    app_subtitle: "कारीगरों के लिए एआई स्टूडियो और सीधा बाज़ार",
+    app_subtitle: "कारीगरों के लिए सीधा बाज़ार",
     nav_studio: "कारीगर स्टूडियो (अपलोड)",
     nav_market: "खरीदार हाट (बाज़ार)",
     nav_about: "सामाजिक न्याय मंत्रालय",
@@ -109,8 +109,8 @@ const translations = {
     // Header & Badges
     mosje_badge: "सामाजिक न्याय और अधिकारिता मंत्रालय",
     sih_badge: "स्मार्ट इंडिया हैकथॉन 2026",
-    gemini_live: "जेमिनी एआई सक्रिय",
-    gemini_sim: "स्मार्ट एआई मोड",
+    gemini_live: "कैटलॉगिंग सक्रिय",
+    gemini_sim: "स्मार्ट कैटलॉगिंग मोड",
     nav_home: "होम",
     nav_bulk: "थोक और संस्थान",
     nav_account: "खाता",
@@ -139,8 +139,8 @@ const translations = {
     price_idea_placeholder: "जैसे: 500",
 
     // Action button
-    btn_analyze_ai: "एआई दृष्टि से जांचें (Analyze with AI)",
-    btn_analyzing: "एआई आपके उत्पाद की जांच कर रहा है...",
+    btn_analyze_ai: "उत्पाद का विश्लेषण करें",
+    btn_analyzing: "आपके उत्पाद की जानकारी देखी जा रही है...",
 
     // Review & Edit Card
     review_title: "२. एआई सुझाव देखें और सुधारें",
@@ -153,14 +153,14 @@ const translations = {
     desc_hi_label: "हिंदी विवरण (Hindi Description)",
     
     // Dynamic Pricing Assistant
-    pricing_assistant_title: "एआई उचित मूल्य सहायक (AI Dynamic Pricing)",
+    pricing_assistant_title: "उचित मूल्य सहायक",
     fair_range_label: "बाज़ार के अनुसार उचित कीमत दायरा:",
     justification_label: "यह कीमत क्यों सही है?",
     btn_apply_suggested: "सुझाई गई कीमत लागू करें",
 
     // Studio Enhancement
-    enhancer_label: "एआई स्टूडियो लाइटिंग सुधार",
-    enhancer_sub: "फोटो की रोशनी और पृष्ठभूमि को पेशेवर ई-कॉमर्स स्तर पर सुधारें।",
+    enhancer_label: "फोटो सुधार",
+    enhancer_sub: "फोटो की रोशनी और कंट्रास्ट को बेहतर बनाने के लिए उपयोग किया जाता है।",
 
     // Publish
     btn_publish: "अभी बाज़ार में प्रकाशित करें",

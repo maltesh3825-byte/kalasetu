@@ -1,7 +1,7 @@
 /**
  * KalaKriti - Core Frontend Application Controller
  * Smart India Hackathon 2026 - SIH26090
- * AI-Driven Market Linkage and Smart Cataloging for Marginalized Artisans
+ * Market Linkage and Cataloging for Marginalized Artisans
  */
 
 // Application State
@@ -69,11 +69,11 @@ function showInteractiveModal(options) {
   }
 
   const typeIcons = {
-    network: '📡',
-    welcome: '🎉',
-    success: '✅',
-    alert: '⚠️',
-    error: '❌'
+    network: '',
+    welcome: '',
+    success: '',
+    alert: '',
+    error: ''
   };
 
   const typeBadgeColors = {
@@ -85,7 +85,7 @@ function showInteractiveModal(options) {
   };
 
   if (badge) {
-    badge.textContent = typeIcons[options.type] || '💡';
+    badge.textContent = typeIcons[options.type] || '';
     badge.className = `w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl border-2 mb-4 shadow-sm ${typeBadgeColors[options.type] || 'bg-orange-50 border-orange-400 text-orange-600'}`;
   }
 
@@ -165,7 +165,7 @@ if (typeof document !== 'undefined') {
   });
 }
 
-// Demo sample craft photos for instant jury testing
+// Demo sample craft photos for quick product review
 const SAMPLE_PRESETS = [
   {
     name: "Terracotta Hand-Made Pitcher",
@@ -830,12 +830,12 @@ async function handlePasswordAuth(event) {
 
     showInteractiveModal({
       type: 'welcome',
-      title: `Welcome, ${userName}! 🎉`,
-      subtitle: 'Logged in to KalaSetu AI Studio',
+      title: `Welcome, ${userName}!`,
+      subtitle: 'Logged in to KalaSetu',
       message: `Your account (${state.currentUser?.email || emailOrPhone}) is active and protected. Your artisan studio and marketplace linkage are ready.`,
-      primaryText: '✨ Explore Marketplace',
+      primaryText: 'Explore Marketplace',
       onPrimary: () => switchTab('marketplace'),
-      secondaryText: '🎨 Open AI Studio',
+      secondaryText: 'Open Studio',
       onSecondary: () => switchTab('studio'),
     });
   } catch (error) {
@@ -963,7 +963,7 @@ async function handleVerifyGmailOtp(event) {
   } finally {
     if (verifyBtn) {
       verifyBtn.disabled = false;
-      verifyBtn.innerHTML = '<span>✅</span><span>Verify & Access KalaSetu</span>';
+      verifyBtn.innerHTML = '<span>Verify & Access KalaSetu</span>';
     }
   }
 }
@@ -1074,7 +1074,7 @@ async function handleVerifyPhoneOtp(event) {
   } finally {
     if (verifyBtn) {
       verifyBtn.disabled = false;
-      verifyBtn.innerHTML = '<span>✅</span><span>Verify OTP & Access Workspace</span>';
+      verifyBtn.innerHTML = '<span>Verify OTP & Access Workspace</span>';
     }
   }
 }
@@ -1250,8 +1250,8 @@ function renderOrdersView(content) {
             </div>
             <div class="flex items-center gap-2">
               ${(String(order.status).toLowerCase() === 'confirmed' || String(order.status).toLowerCase() === 'pending')
-                ? `<button type="button" class="account-small-action text-emerald-700 font-bold border border-emerald-300 hover:bg-emerald-50 px-2.5 py-1 rounded-lg" data-accept-order="${order.id}">✅ Accept</button>
-                   <button type="button" class="account-small-action text-rose-700 font-bold border border-rose-300 hover:bg-rose-50 px-2.5 py-1 rounded-lg" data-reject-order="${order.id}">❌ Reject</button>`
+                ? `<button type="button" class="account-small-action text-emerald-700 font-bold border border-emerald-300 hover:bg-emerald-50 px-2.5 py-1 rounded-lg" data-accept-order="${order.id}">Accept</button>
+                   <button type="button" class="account-small-action text-rose-700 font-bold border border-rose-300 hover:bg-rose-50 px-2.5 py-1 rounded-lg" data-reject-order="${order.id}">Reject</button>`
                 : ''}
             </div>
           </div>
@@ -1707,7 +1707,7 @@ function updatePreviewEnhancement() {
   }
 }
 
-// Trigger AI Vision Analysis
+// Trigger product analysis
 async function triggerAiAnalysis() {
   if (!state.selectedFile && !state.uploadedImageUrl) {
     alert("Please take or choose a craft photo first.");
@@ -1798,12 +1798,12 @@ async function triggerAiAnalysis() {
     if (isOffline) {
       showInteractiveModal({
         type: 'network',
-        title: currentLanguage === 'hi' ? '📡 नेटवर्क उपलब्ध नहीं है' : '📡 No Network Connection',
-        subtitle: currentLanguage === 'hi' ? 'इंटरनेट कनेक्शन आवश्यक है' : 'Internet Required for AI Vision',
+        title: currentLanguage === 'hi' ? 'नेटवर्क उपलब्ध नहीं है' : 'No Network Connection',
+        subtitle: currentLanguage === 'hi' ? 'इंटरनेट कनेक्शन आवश्यक है' : 'Internet Required',
         message: currentLanguage === 'hi'
-          ? 'कलासेतु AI विज़न को शिल्प की बनावट का विश्लेषण करने और उचित कारीगर मूल्य तैयार करने के लिए एक सक्रिय इंटरनेट कनेक्शन की आवश्यकता है। कृपया अपना नेटवर्क चेक करें।'
-          : 'KalaSetu AI Vision requires an active internet connection to analyze craft textures and calculate fair artisan pricing. Please check your Wi-Fi or mobile data and try again.',
-        primaryText: currentLanguage === 'hi' ? '🔄 पुनः प्रयास करें' : '🔄 Try Again',
+          ? 'KalaSetu को शिल्प विवरण का विश्लेषण करने और उचित मूल्य तैयार करने के लिए एक सक्रिय इंटरनेट कनेक्शन की आवश्यकता है। कृपया अपना नेटवर्क चेक करें।'
+          : 'KalaSetu requires an active internet connection to analyze craft details and calculate fair artisan pricing. Please check your Wi-Fi or mobile data and try again.',
+        primaryText: currentLanguage === 'hi' ? 'पुनः प्रयास करें' : 'Try Again',
         onPrimary: () => {
           setTimeout(() => analyzeCraftPhoto(), 300);
         },

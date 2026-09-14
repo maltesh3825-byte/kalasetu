@@ -73,7 +73,11 @@ import {
   loginAdmin,
   fetchAdminRequests,
   updateAdminRequest,
-  AdminRequest
+  AdminRequest,
+  getBackendUrl,
+  setBackendUrl,
+  getDevBackendUrl,
+  CLOUD_BACKEND_URL
 } from './services/api';
 
 type BrowserSpeechRecognition = {
@@ -1311,7 +1315,8 @@ export default function App() {
       rating: 4.8,
       reviews: [{ user_name: artisanName || "Verified Buyer", rating: 5, comment: "Fresh artisan listing with marketplace photo." }],
       is_enhanced: isEnhanced,
-      mosje_verified: true
+      mosje_verified: true,
+      owner_user_id: currentUser?.id
     };
 
     try {
@@ -1448,6 +1453,26 @@ export default function App() {
                 </View>
               ))}
             </View>
+            <View style={{ backgroundColor: '#F8FAFC', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#10B981' }} />
+                <Text style={{ fontSize: 11, color: '#475569', fontWeight: '600' }} numberOfLines={1}>
+                  API: {getBackendUrl()}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={{ backgroundColor: '#EEF2F6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
+                onPress={() => {
+                  const current = getBackendUrl();
+                  const devUrl = getDevBackendUrl();
+                  const next = current === devUrl ? CLOUD_BACKEND_URL : devUrl;
+                  setBackendUrl(next);
+                  Alert.alert("Server Switched", `Active backend server is now:\n${next}`);
+                }}
+              >
+                <Text style={{ fontSize: 10, fontWeight: '700', color: Colors.primary }}>⚡ Switch Server</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.card}>
               <Text style={styles.cardStepTitle}>{t.step1Title}</Text>
               <Text style={styles.cardStepSub}>{t.step1Sub}</Text>
@@ -1534,7 +1559,14 @@ export default function App() {
             </View>
             {aiResult && (
               <View style={[styles.card, styles.reviewCard]}>
-                <Text style={styles.cardStepTitle}>{t.step2Title}</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={styles.cardStepTitle}>{t.step2Title}</Text>
+                  <View style={{ backgroundColor: aiResult.is_ai_simulated ? '#FFF3E0' : '#E8F5E9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: aiResult.is_ai_simulated ? '#FFE0B2' : '#C8E6C9' }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: aiResult.is_ai_simulated ? '#E65100' : '#2E7D32' }}>
+                      {aiResult.is_ai_simulated ? '⚠️ Heuristic Mode' : '✨ ' + (aiResult.ai_engine || 'Google Gemini AI')}
+                    </Text>
+                  </View>
+                </View>
                 <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.productTitle}</Text><TextInput style={styles.textInput} value={editTitle} onChangeText={setEditTitle} placeholder="Craft Title (e.g. Hand-Carved Sheesham Elephant)" placeholderTextColor={Colors.placeholder} /></View>
                 <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.category}</Text><TextInput style={styles.textInput} value={editCategory} onChangeText={setEditCategory} placeholder="Craft Category (e.g. Woodcraft)" placeholderTextColor={Colors.placeholder} /></View>
                 <View style={styles.pricingBox}>

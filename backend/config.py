@@ -66,8 +66,16 @@ HOST = os.getenv("HOST", "0.0.0.0")
 configured_port = os.getenv("PORT")
 PORT = int(configured_port) if configured_port else find_available_port(8000, HOST)
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 DATABASE_PATH = Path(os.getenv("DATABASE_PATH", str(BASE_DIR / "artisan_catalog.db")))
+
+# Supabase REST API Configuration (allows direct storage/sync to Supabase table)
+SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
+SUPABASE_KEY = (
+    os.getenv("SUPABASE_KEY")
+    or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    or os.getenv("SUPABASE_ANON_KEY")
+    or ""
+).strip()
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@kalasetu.gov.in").strip().lower()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 if not ADMIN_PASSWORD:
