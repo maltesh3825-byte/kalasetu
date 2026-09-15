@@ -1708,6 +1708,120 @@ function updatePreviewEnhancement() {
 }
 
 // Trigger product analysis
+// --- Direct Gemini Vision helper (web) ---
+let _webGeminiKey = null;
+let _webGeminiModel = null;
+
+async function _fetchWebGeminiConfig() {
+  if (_webGeminiKey) return { key: _webGeminiKey, model: _webGeminiModel };
+  try {
+    const r = await fetch('/api/config-status');
+    if (r.ok) {
+      const cfg = await r.json();
+      _webGeminiKey = cfg.gemini_api_key || '';
+      _webGeminiModel = cfg.gemini_model || 'gemini-3.6-flash';
+    }
+  } catch (e) {
+    console.warn('[KalaSetu] Could not fetch Gemini config:', e);
+  }
+  return { key: _webGeminiKey || '', model: _webGeminiModel || 'gemini-3.6-flash' };
+}
+
+async function _imageToBase64(source) {
+  // source is a File/Blob or a URL string
+  if (source instanceof Blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        // Strip the data:...;base64, prefix
+        const result = reader.result;
+        resolve(result.split(',')[1]);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(source);
+    });
+  }
+  // It's a URL — fetch the blob first
+  const resp = await fetch(source);
+  const blob = await resp.blob();
+  return _imageToBase64(blob);
+}
+
+async function _callGeminiVisionDirect(imageSource, notes, priceHint) {
+  const { key, model } = await _fetchWebGeminiConfig();
+  if (!key) throw new Error('NO_GEMINI_KEY');
+
+  const base64 = await _imageToBase64(imageSource);
+  const mimeType = (imageSource instanceof Blob) ? (imageSource.type || 'image/jpeg') : 'image/jpeg';
+
+  const prompt = `You are an expert in Indian traditional handicrafts and artisan products. Analyze this image of a craft item and provide:
+1. Product name (specific craft type)
+2. Detailed description (materials, technique, cultural significance)
+3. Category (Pottery/Textile/Jewelry/Woodwork/Painting/Metalwork/Leather/Bamboo/Stone/Other)
+4. Price range in INR (min and max)
+5. SEO keywords (5-8 tags)
+6. Target market
+
+${notes ? `Artisan notes: ${notes}` : ''}
+${priceHint ? `Artisan estimated price: ₹${priceHint}` : ''}
+
+Respond in this exact JSON format:
+{
+  "product_name": "...",
+  "description": "...",
+  "category": "...",
+  "price_min": 0,
+  "price_max": 0,
+  "suggested_price": 0,
+  "tags": ["tag1","tag2"],
+  "target_market": "..."
+}`;
+
+  const body = {
+    contents: [{
+      parts: [
+        { inline_data: { mime_type: mimeType, data: base64 } },
+        { text: prompt }
+      ]
+    }],
+    generationConfig: { temperature: 0.3, maxOutputTokens: 1024 }
+  };
+
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gemini API error ${res.status}: ${errText.slice(0, 200)}`);
+  }
+
+  const json = await res.json();
+  const text = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Gemini returned no JSON');
+
+  const result = JSON.parse(jsonMatch[0]);
+
+  // Normalise to the same shape the backend returns
+  const suggested = result.suggested_price || Math.round(((result.price_min || 0) + (result.price_max || 0)) / 2);
+  return {
+    product_name: result.product_name || 'Handcrafted Item',
+    description: result.description || '',
+    category: result.category || 'Handicraft',
+    price_min: result.price_min || 0,
+    price_max: result.price_max || 0,
+    suggested_price: suggested,
+    tags: Array.isArray(result.tags) ? result.tags : [],
+    target_market: result.target_market || '',
+    ai_provider: `Direct Gemini Vision (${model})`,
+    simulated: false,
+  };
+}
+
 async function triggerAiAnalysis() {
   if (!state.selectedFile && !state.uploadedImageUrl) {
     alert("Please take or choose a craft photo first.");
@@ -1744,33 +1858,61 @@ async function triggerAiAnalysis() {
       throw new Error('NO_NETWORK');
     }
 
-    const formData = new FormData();
-    if (state.selectedFile) {
-      formData.append('file', state.selectedFile);
-    } else {
-      // If demo image URL, convert to dummy blob
-      const blob = new Blob(["demo-image"], { type: "image/jpeg" });
-      formData.append('file', blob, "sample.jpg");
+    const notes = document.getElementById('artisanNotes')?.value || '';
+    const priceHint = document.getElementById('artisanEstimatedPrice')?.value || '';
+
+    // Determine image source: prefer File object, else use URL
+    const imageSource = state.selectedFile || state.uploadedImageUrl;
+
+    let data = null;
+
+    // === PATH 1: Direct Gemini Vision call (preferred, same as mobile app) ===
+    try {
+      if (progressText) progressText.textContent = "Connecting to Gemini Vision AI...";
+      data = await _callGeminiVisionDirect(imageSource, notes, priceHint);
+      console.log('[KalaSetu] Direct Gemini Vision success:', data.ai_provider);
+    } catch (geminiErr) {
+      console.warn('[KalaSetu] Direct Gemini failed, falling back to backend:', geminiErr.message);
+      data = null;
     }
 
-    const notes = document.getElementById('artisanNotes')?.value;
-    const priceHint = document.getElementById('artisanEstimatedPrice')?.value;
+    // === PATH 2: Backend /api/analyze-product (fallback) ===
+    if (!data) {
+      if (progressText) progressText.textContent = "Analyzing via backend AI service...";
+      const formData = new FormData();
 
-    if (notes) formData.append('notes', notes);
-    if (priceHint) formData.append('price_hint', priceHint);
+      if (state.selectedFile) {
+        formData.append('file', state.selectedFile);
+      } else if (state.uploadedImageUrl) {
+        // Properly fetch the URL as real image bytes (NOT a dummy text blob)
+        try {
+          const resp = await fetch(state.uploadedImageUrl);
+          const blob = await resp.blob();
+          const file = new File([blob], 'craft-image.jpg', { type: blob.type || 'image/jpeg' });
+          formData.append('file', file);
+        } catch (fetchErr) {
+          console.warn('[KalaSetu] Could not fetch image URL, sending empty placeholder:', fetchErr);
+          const blob = new Blob([new Uint8Array(0)], { type: 'image/jpeg' });
+          formData.append('file', blob, 'sample.jpg');
+        }
+      }
 
-    const res = await fetch('/api/analyze-product', {
-      method: 'POST',
-      body: formData
-    });
+      if (notes) formData.append('notes', notes);
+      if (priceHint) formData.append('price_hint', priceHint);
+
+      const res = await fetch('/api/analyze-product', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server returned HTTP ${res.status}`);
+      }
+      data = await res.json();
+    }
 
     clearInterval(progressInterval);
 
-    if (!res.ok) {
-      throw new Error(`Server returned HTTP ${res.status}`);
-    }
-
-    const data = await res.json();
     state.aiResult = data;
     if (data.saved_image_url) {
       state.uploadedImageUrl = data.saved_image_url;
@@ -1805,7 +1947,7 @@ async function triggerAiAnalysis() {
           : 'KalaSetu requires an active internet connection to analyze craft details and calculate fair artisan pricing. Please check your Wi-Fi or mobile data and try again.',
         primaryText: currentLanguage === 'hi' ? 'पुनः प्रयास करें' : 'Try Again',
         onPrimary: () => {
-          setTimeout(() => analyzeCraftPhoto(), 300);
+          setTimeout(() => triggerAiAnalysis(), 300);
         },
         secondaryText: currentLanguage === 'hi' ? 'रद्द करें' : 'Dismiss'
       });
@@ -1825,6 +1967,7 @@ async function triggerAiAnalysis() {
     if (progressBox) progressBox.classList.add('hidden');
   }
 }
+
 
 // Populate the Review & Edit Form
 function populateReviewCard(data) {

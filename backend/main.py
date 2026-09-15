@@ -293,11 +293,18 @@ def normalize_user_row(row):
 
 @app.get("/api/config-status")
 def get_config_status():
-    """Returns AI model connection status so frontend can display badge."""
+    """Returns AI model connection status so frontend can display badge.
+    Also exposes gemini_api_key and gemini_model so the web JS can call
+    Gemini Vision directly (same approach as the mobile app).
+    """
     has_gemini = bool(GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE")
+    from backend.config import GEMINI_MODEL
     return {
         "status": "ready",
         "has_gemini_key": has_gemini,
+        # Expose key to web frontend for direct Gemini Vision calls
+        "gemini_api_key": GEMINI_API_KEY if has_gemini else "",
+        "gemini_model": GEMINI_MODEL,
         "engine": "Google Gemini Vision 1.5/2.0" if has_gemini else "Smart Cataloging Fallback Engine",
         "hackathon": "Smart India Hackathon 2026 (SIH26090)",
         "ministry": "Ministry of Social Justice & Empowerment (MoSJE)",
