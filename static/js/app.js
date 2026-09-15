@@ -1754,37 +1754,58 @@ async function _callGeminiVisionDirect(imageSource, notes, priceHint) {
   const base64 = await _imageToBase64(imageSource);
   const mimeType = (imageSource instanceof Blob) ? (imageSource.type || 'image/jpeg') : 'image/jpeg';
 
-  const prompt = `You are an expert in Indian traditional handicrafts and artisan products. Analyze this image of a craft item and provide:
-1. Product name (specific craft type)
-2. Detailed description (materials, technique, cultural significance)
-3. Category (Pottery/Textile/Jewelry/Woodwork/Painting/Metalwork/Leather/Bamboo/Stone/Other)
-4. Price range in INR (min and max)
-5. SEO keywords (5-8 tags)
-6. Target market
+  const CATEGORIES = [
+    "Handloom & Textiles",
+    "Pottery & Terracotta",
+    "Brass & Metalcraft",
+    "Cane & Bamboo",
+    "Woodcraft",
+    "Tribal Jewelry",
+    "Leather Craft",
+    "Folk Art & Painting",
+    "Stone Carving"
+  ];
 
-${notes ? `Artisan notes: ${notes}` : ''}
-${priceHint ? `Artisan estimated price: ₹${priceHint}` : ''}
+  const prompt = `You are the AI Virtual Business Manager for rural and marginalized Indian artisans and weavers under the Ministry of Social Justice and Empowerment (MoSJE).
+Your mission is to empower low-literacy artisans by analyzing their handmade craft photo and auto-generating an e-commerce catalog entry that commands fair market value.
 
-Respond in this exact JSON format:
+Context from artisan (if any):
+- Artisan Voice/Text Notes: "${notes || 'None provided'}"
+- Artisan Self-Price Idea: "${priceHint || 'Not specified'}"
+If the artisan notes are spoken or written in Kannada (or another Indian language), interpret and translate them into natural English before using them in the English catalog title and description.
+
+Analyze the product image with high attention to Indian heritage craftsmanship (handloom, terracotta, metal, bamboo, wood, embroidery, etc.).
+
+Return ONLY a valid JSON object matching this exact schema:
 {
-  "product_name": "...",
-  "description": "...",
-  "category": "...",
-  "price_min": 0,
-  "price_max": 0,
-  "suggested_price": 0,
-  "tags": ["tag1","tag2"],
-  "target_market": "..."
+  "category": "Pick exactly one from: ${CATEGORIES.join(', ')}",
+  "suggested_title": "Concise, SEO-optimized title in English (e.g., 'Hand-Carved Sheesham Wood Elephant Figurine')",
+  "tags": ["3 to 5 relevant tags like 'Handmade', 'EcoFriendly', 'BastarArt', 'Terracotta']",
+  "description_en": "2-3 sentences. Highlighting traditional craftsmanship, natural materials, authentic cultural technique, and home utility.",
+  "description_hi": "A warm, natural Hindi translation of the description in Devanagari script for local and regional reach.",
+  "pricing": {
+    "fair_min": 450,
+    "fair_max": 750,
+    "suggested": 600,
+    "justification": "Clear, simple explanation of why this price is fair based on craftsmanship complexity, estimated labor hours, and raw material value."
+  },
+  "craft_heritage_story": "A single sentence celebrating the cultural tradition or artisan lineage behind this work.",
+  "care_instructions": "One simple sentence advising the buyer on how to care for this handmade product."
 }`;
 
   const body = {
     contents: [{
       parts: [
-        { inline_data: { mime_type: mimeType, data: base64 } },
-        { text: prompt }
+        { text: prompt },
+        { inline_data: { mime_type: mimeType, data: base64 } }
       ]
     }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 1024 }
+    generationConfig: {
+      temperature: 0.2,
+      topP: 0.8,
+      maxOutputTokens: 2048,
+      responseMimeType: 'application/json'
+    }
   };
 
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
@@ -1796,30 +1817,35 @@ Respond in this exact JSON format:
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Gemini API error ${res.status}: ${errText.slice(0, 200)}`);
+    throw new Error(`Gemini API error ${res.status}: ${errText.slice(0, 300)}`);
   }
 
   const json = await res.json();
-  const text = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Gemini returned no JSON');
+  const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const cleanText = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  let result;
+  try {
+    result = JSON.parse(cleanText);
+  } catch (e) {
+    const m = rawText.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('Gemini returned no valid JSON');
+    result = JSON.parse(m[0]);
+  }
 
-  const result = JSON.parse(jsonMatch[0]);
+  if (!result.pricing) {
+    const p = Number(priceHint) || 500;
+    result.pricing = {
+      fair_min: Math.round(p * 0.85),
+      fair_max: Math.round(p * 1.25),
+      suggested: p,
+      justification: "Calculated based on standard artisanal craft hours and material estimates."
+    };
+  }
 
-  // Normalise to the same shape the backend returns
-  const suggested = result.suggested_price || Math.round(((result.price_min || 0) + (result.price_max || 0)) / 2);
-  return {
-    product_name: result.product_name || 'Handcrafted Item',
-    description: result.description || '',
-    category: result.category || 'Handicraft',
-    price_min: result.price_min || 0,
-    price_max: result.price_max || 0,
-    suggested_price: suggested,
-    tags: Array.isArray(result.tags) ? result.tags : [],
-    target_market: result.target_market || '',
-    ai_provider: `Direct Gemini Vision (${model})`,
-    simulated: false,
-  };
+  result.is_ai_simulated = false;
+  result.ai_engine = `Direct Gemini Vision (${model})`;
+  result.ai_provider = result.ai_engine;
+  return result;
 }
 
 async function triggerAiAnalysis() {
