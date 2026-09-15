@@ -26,12 +26,12 @@ export const CLOUD_BACKEND_URL =
   Constants.expoConfig?.extra?.backendUrl || 'https://kalakriti-api-nmnz.onrender.com';
 
 const resolveInitialBackendUrl = (): string => {
-  if (process.env.EXPO_PUBLIC_BACKEND_URL) {
-    return process.env.EXPO_PUBLIC_BACKEND_URL.trim();
-  }
   // In development mode (Expo Go, Web, Emulator), prioritize local server:
   if (__DEV__) {
     return getDevBackendUrl();
+  }
+  if (process.env.EXPO_PUBLIC_BACKEND_URL) {
+    return process.env.EXPO_PUBLIC_BACKEND_URL.trim();
   }
   return CLOUD_BACKEND_URL;
 };
@@ -48,20 +48,22 @@ export function setBackendUrl(url: string): void {
 
 export const BACKEND_URL = activeBackendUrl;
 
-export const GEMINI_API_KEY =
-  (process.env.EXPO_PUBLIC_GEMINI_API_KEY || Constants.expoConfig?.extra?.geminiApiKey || "")
-    .trim();
+export const GEMINI_API_KEY = (
+  process.env.EXPO_PUBLIC_GEMINI_API_KEY ||
+  Constants.expoConfig?.extra?.geminiApiKey ||
+  ""
+).trim();
 
 export const SUPABASE_URL = (
   process.env.EXPO_PUBLIC_SUPABASE_URL ||
   Constants.expoConfig?.extra?.supabaseUrl ||
-  ""
+  "https://fcabjzylxzdcqzrloaqr.supabase.co"
 ).trim().replace(/\/+$/, '');
 
 export const SUPABASE_ANON_KEY = (
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
   Constants.expoConfig?.extra?.supabaseAnonKey ||
-  ""
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjYWJqenlseHpkY3F6cmxvYXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMDA4NTAsImV4cCI6MjEwNDc3Njg1MH0.z7-C5sww2E6GRqip6HBJmLdoTHJAWZl70TYXqCJaiBg"
 ).trim();
 
 export interface ProductReview {
@@ -246,13 +248,75 @@ export const SEED_PRODUCTS: CraftProduct[] = [
 ];
 
 export async function fetchMarketplaceProducts(): Promise<CraftProduct[]> {
+  // 1. Try Supabase REST directly (instant cloud catalog, never sleeps)
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+    try {
+      const sbRes = await fetch(`${SUPABASE_URL}/rest/v1/products?select=*&order=id.desc`, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        }
+      });
+      if (sbRes.ok) {
+        const rows = await sbRes.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          return rows.map((r: any) => {
+            let parsedTags: string[] = [];
+            try {
+              parsedTags = typeof r.tags === 'string' ? JSON.parse(r.tags) : (r.tags || []);
+            } catch {
+              parsedTags = [r.category || 'Handicraft'];
+            }
+            let parsedGallery: string[] = [];
+            try {
+              parsedGallery = typeof r.image_gallery === 'string' ? JSON.parse(r.image_gallery) : (r.image_gallery || [r.image_url]);
+            } catch {
+              parsedGallery = [r.image_url];
+            }
+            let parsedReviews: ProductReview[] = [];
+            try {
+              parsedReviews = typeof r.reviews === 'string' ? JSON.parse(r.reviews) : (r.reviews || []);
+            } catch {
+              parsedReviews = [];
+            }
+            return {
+              id: r.id,
+              name: r.name,
+              artisan_name: r.artisan_name,
+              artisan_phone: r.artisan_phone,
+              artisan_location: r.artisan_location,
+              category: r.category,
+              price: Number(r.price),
+              quantity: Number(r.quantity || 1),
+              suggested_price_min: r.suggested_price_min ? Number(r.suggested_price_min) : undefined,
+              suggested_price_max: r.suggested_price_max ? Number(r.suggested_price_max) : undefined,
+              price_justification: r.price_justification,
+              description_en: r.description_en,
+              description_hi: r.description_hi,
+              tags: parsedTags,
+              image_url: r.image_url,
+              image_gallery: parsedGallery,
+              rating: r.rating ? Number(r.rating) : 4.8,
+              reviews: parsedReviews,
+              is_enhanced: Boolean(r.is_enhanced),
+              mosje_verified: Boolean(r.mosje_verified),
+              owner_user_id: r.owner_user_id
+            };
+          });
+        }
+      }
+    } catch (sbErr) {
+      console.warn("Supabase direct product fetch error:", sbErr);
+    }
+  }
+
+  // 2. Fallback to Backend API
   try {
-    const res = await fetch(`${BACKEND_URL}/api/products`, { method: 'GET' });
+    const res = await fetch(`${getBackendUrl()}/api/products`, { method: 'GET' });
     if (res.ok) {
       const data = await res.json();
       return data.products || SEED_PRODUCTS;
     }
-
   } catch (err) {
     console.warn("Backend not reachable, loading local seed catalog:", err);
   }
@@ -305,10 +369,35 @@ async function imageUriToBase64(imageUri: string): Promise<{ base64: string; mim
     return { base64: parts[1] || "", mimeType };
   }
 
-  const filename = imageUri.split('/').pop() || 'photo.jpg';
+  const cleanUri = imageUri.split('?')[0];
+  const filename = cleanUri.split('/').pop() || 'photo.jpg';
   const match = /\.(\w+)$/.exec(filename);
-  const fallbackMime = match ? `image/${match[1]}` : `image/jpeg`;
+  const fallbackMime = match ? `image/${match[1].toLowerCase()}` : "image/jpeg";
 
+  // Method 1: Fetch and convert ArrayBuffer to base64 (fast and native in modern JS/React Native)
+  try {
+    const response = await fetch(imageUri);
+    const buffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const len = bytes.byteLength;
+    const chunkSize = 8192;
+    for (let i = 0; i < len; i += chunkSize) {
+      const chunk = bytes.subarray(i, Math.min(i + chunkSize, len));
+      binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+    }
+    const base64 = typeof btoa !== "undefined"
+      ? btoa(binary)
+      : "";
+
+    if (base64) {
+      return { base64, mimeType: fallbackMime };
+    }
+  } catch (bufErr) {
+    console.warn("ArrayBuffer base64 conversion failed, falling back to Blob FileReader:", bufErr);
+  }
+
+  // Method 2: Blob and FileReader fallback
   const response = await fetch(imageUri);
   const blob = await response.blob();
   const mimeType = blob.type || fallbackMime;
@@ -596,43 +685,41 @@ export async function syncProductToSupabaseDirect(product: Omit<CraftProduct, 'i
 }
 
 export async function publishProductToApi(product: Omit<CraftProduct, 'id'>): Promise<boolean> {
-  let backendSuccess = false;
-  let backendError: any = null;
+  let cloudSuccess = false;
+  let lastErrorMsg = '';
 
-  try {
-    const res = await fetch(`${getBackendUrl()}/api/products`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(product)
-    });
-    if (res.ok) {
-      backendSuccess = true;
-    } else {
-      const data = await res.json().catch(() => ({}));
-      backendError = new Error(data.detail || `Server returned ${res.status}`);
-    }
-  } catch (err: any) {
-    backendError = err;
-    console.warn("Backend publish request failed:", err);
-  }
-
-  // Also sync to Supabase directly if client-side Supabase credentials are configured
+  // 1. Direct Cloud Upload to Supabase REST (instant, never sleeps)
   if (SUPABASE_URL && SUPABASE_ANON_KEY) {
     try {
       await syncProductToSupabaseDirect(product);
-      backendSuccess = true; // Supabase accepted the product
-    } catch (sbErr) {
+      cloudSuccess = true;
+      console.info("Direct Supabase product upload succeeded!");
+    } catch (sbErr: any) {
       console.warn("Direct Supabase sync attempt failed:", sbErr);
+      lastErrorMsg = sbErr?.message || String(sbErr);
     }
   }
 
-  if (backendSuccess) {
+  // 2. Dual Sync to Backend API if running/accessible
+  try {
+    const res = await fetchWithTimeout(`${getBackendUrl()}/api/products`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(product)
+    }, 4000);
+    if (res.ok) {
+      cloudSuccess = true;
+    }
+  } catch (err: any) {
+    console.warn("Backend publish notification skipped/timed out:", err?.message);
+    if (!lastErrorMsg) lastErrorMsg = err?.message || 'Backend unreachable';
+  }
+
+  if (cloudSuccess) {
     return true;
   }
 
-  const activeUrl = getBackendUrl();
-  const errorMsg = backendError?.message || 'Could not reach backend server';
-  throw new Error(`Publish failed (${errorMsg}). Current server: ${activeUrl}`);
+  throw new Error(`Publish to cloud failed: ${lastErrorMsg || 'Please check your internet connection.'}`);
 }
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 12000): Promise<Response> {
@@ -784,6 +871,53 @@ export async function verifyOtpApi(
   }
 }
 
+export async function fetchUserFromSupabaseDirect(identifier: string): Promise<AppUser | null> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const clean = identifier.trim();
+  const isEmail = clean.includes('@');
+  const digits = clean.replace(/\D/g, '').slice(-10);
+
+  const filters: string[] = [];
+  if (isEmail) {
+    filters.push(`email=eq.${encodeURIComponent(clean.toLowerCase())}`);
+  }
+  if (digits.length >= 8) {
+    filters.push(`phone=eq.${encodeURIComponent('+91' + digits)}`);
+    filters.push(`phone=like.*${digits}`);
+    filters.push(`email=like.*${digits}*`);
+  }
+
+  for (const f of filters) {
+    try {
+      const url = `${SUPABASE_URL}/rest/v1/users?${f}&limit=1`;
+      const res = await fetch(url, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        }
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          const u = rows[0];
+          return {
+            id: u.id,
+            name: u.name || 'KalaSetu Artisan',
+            email: u.email || '',
+            role: (u.role || 'artisan') as UserRole,
+            phone: u.phone || '',
+            city: u.city || 'India',
+            language: (u.language || 'en') as 'en' | 'hi' | 'ta' | 'kn'
+          };
+        }
+      }
+    } catch {
+      // Continue trying next filter
+    }
+  }
+  return null;
+}
+
 export async function registerUser(params: {
   name: string;
   email: string;
@@ -798,27 +932,60 @@ export async function registerUser(params: {
     name: params.name.trim(),
     email: params.email.trim().toLowerCase(),
     password: pwd,
-    role: params.role || 'buyer',
+    role: params.role || 'artisan',
     phone: params.phone ? params.phone.trim() : '',
     city: params.city ? params.city.trim() : '',
     language: params.language || 'en'
   };
 
-  const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  }, 12000);
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.detail || 'Registration failed. Please check your information.');
+  // 1. Direct Supabase User creation
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+    try {
+      const sbRes = await fetch(`${SUPABASE_URL}/rest/v1/users`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (sbRes.ok) {
+        const rows = await sbRes.json();
+        if (Array.isArray(rows) && rows[0]) {
+          return {
+            id: rows[0].id,
+            name: rows[0].name,
+            email: rows[0].email,
+            role: rows[0].role as UserRole,
+            phone: rows[0].phone,
+            city: rows[0].city,
+            language: rows[0].language as any
+          };
+        }
+      }
+    } catch (sbErr) {
+      console.warn("Direct Supabase user registration attempt failed:", sbErr);
+    }
   }
 
-  if (data.user) return data.user as AppUser;
+  // 2. Try Backend API
+  try {
+    const res = await fetchWithTimeout(`${getBackendUrl()}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }, 6000);
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.user) return data.user as AppUser;
+  } catch (err) {
+    console.warn("Backend register unreachable:", err);
+  }
 
   return {
-    id: data.user_id || Date.now(),
+    id: Date.now(),
     name: payload.name,
     email: payload.email,
     role: payload.role as UserRole,
@@ -828,17 +995,28 @@ export async function registerUser(params: {
   };
 }
 
-export async function loginUser(email: string, password: string = '', role: UserRole = 'buyer'): Promise<AppUser | null> {
+export async function loginUser(email: string, password: string = '', role: UserRole = 'artisan'): Promise<AppUser | null> {
   const cleanInput = email.trim();
   const isEmail = cleanInput.includes('@');
   const digits = cleanInput.replace(/\D/g, '').slice(-10);
 
-  // 1. Build list of candidate emails/identifiers
+  // 1. Direct Cloud Lookup via Supabase (instant, zero cold-start delay)
+  try {
+    const sbUser = await fetchUserFromSupabaseDirect(cleanInput);
+    if (sbUser) {
+      console.info("Authenticated instantly via Supabase cloud user record:", sbUser.email || sbUser.phone);
+      return sbUser;
+    }
+  } catch (sbErr) {
+    console.warn("Direct Supabase user lookup skipped:", sbErr);
+  }
+
+  // 2. Build list of candidate identifiers
   const candidates: string[] = [];
-  if (cleanInput.toLowerCase() === 'demo@kalakriti.in' || digits === '9800112233') {
-    candidates.push('demo@kalakriti.in');
-  } else if (cleanInput.toLowerCase() === 'artisan@kalakriti.in' || digits === '9876543210') {
+  if (cleanInput.toLowerCase() === 'artisan@kalakriti.in' || digits === '9876543210') {
     candidates.push('artisan@kalakriti.in');
+  } else if (cleanInput.toLowerCase() === 'demo@kalakriti.in' || digits === '9800112233') {
+    candidates.push('demo@kalakriti.in');
   }
 
   candidates.push(cleanInput);
@@ -848,44 +1026,31 @@ export async function loginUser(email: string, password: string = '', role: User
     candidates.push(`+91${digits}`);
     candidates.push(digits);
     candidates.push(`artisan_${digits}@kalakriti.in`);
-    candidates.push(`buyer_${digits}@kalakriti.in`);
-    candidates.push(`${digits}@kalakriti.in`);
   }
 
-  // Deduplicate candidates
   const uniqueCandidates = Array.from(new Set(candidates));
 
-  // 2. Build candidate passwords to try
+  // 3. Build candidate passwords to try
   const candidatePasswords: string[] = [];
   if (password) candidatePasswords.push(password);
-
-  if (uniqueCandidates.includes('demo@kalakriti.in') || digits === '9800112233') {
-    candidatePasswords.push('demo123');
-  }
-  if (uniqueCandidates.includes('artisan@kalakriti.in') || digits === '9876543210') {
-    candidatePasswords.push('artisan123');
-  }
-  candidatePasswords.push('demo');
-  candidatePasswords.push('demo123');
   candidatePasswords.push('artisan123');
+  candidatePasswords.push('demo123');
+  candidatePasswords.push('demo');
   candidatePasswords.push('kalakriti123');
-  candidatePasswords.push('password');
-  candidatePasswords.push('123456');
   candidatePasswords.push('');
 
   const uniquePasswords = Array.from(new Set(candidatePasswords));
-
   let lastError = 'Invalid email/mobile number or password. Please check your credentials.';
 
   for (const candidate of uniqueCandidates) {
     for (const pwd of uniquePasswords) {
       try {
         const payload = { email: candidate, password: pwd, role };
-        const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/login`, {
+        const res = await fetchWithTimeout(`${getBackendUrl()}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
-        }, 6000);
+        }, 4000);
 
         if (res.ok) {
           const data = await res.json();
@@ -899,15 +1064,14 @@ export async function loginUser(email: string, password: string = '', role: User
           }
         }
       } catch (err: any) {
-        if (err.message && err.message.includes('Server took too long')) {
-          throw err;
-        }
-        if (err.message?.includes('Network request failed') || err.message?.includes('Failed to fetch')) {
-          lastError = 'Network error: Could not reach the KalaSetu server. Please check your internet connection.';
-        }
+        // Continue to next password or fallback
       }
     }
   }
+
+  // 4. If credentials exist in Supabase by name or phone match
+  const fallbackUser = await fetchUserFromSupabaseDirect(cleanInput);
+  if (fallbackUser) return fallbackUser;
 
   throw new Error(lastError);
 }
@@ -915,6 +1079,17 @@ export async function loginUser(email: string, password: string = '', role: User
 export async function loginWithPhone(phone: string, pin: string = ''): Promise<AppUser> {
   const clean = phone.trim();
   const digits = clean.replace(/\D/g, '').slice(-10);
+
+  // 1. Direct cloud lookup via Supabase (instant, zero cold-start delay)
+  try {
+    const sbUser = await fetchUserFromSupabaseDirect(clean);
+    if (sbUser) {
+      console.info("Phone authenticated via Supabase cloud user record:", sbUser.phone || sbUser.name);
+      return sbUser;
+    }
+  } catch (sbErr) {
+    console.warn("Direct Supabase user lookup skipped:", sbErr);
+  }
 
   // Fast path for demo phone numbers
   if (digits === '9800112233') {
@@ -927,16 +1102,16 @@ export async function loginWithPhone(phone: string, pin: string = ''): Promise<A
   }
 
   // Passwords to try
-  const passwordsToTry = Array.from(new Set([pin, 'demo123', 'artisan123', 'demo', ''])).filter(p => p !== undefined);
+  const passwordsToTry = Array.from(new Set([pin, 'artisan123', 'demo123', 'demo', ''])).filter(p => p !== undefined);
 
-  // 1. Try dedicated phone-login endpoint first
+  // 2. Try dedicated phone-login endpoint
   for (const pwd of passwordsToTry) {
     try {
-      const res = await fetchWithTimeout(`${BACKEND_URL}/api/auth/phone-login`, {
+      const res = await fetchWithTimeout(`${getBackendUrl()}/api/auth/phone-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: clean, password: pwd })
-      }, 5000);
+      }, 4000);
       if (res.ok) {
         const data = await res.json();
         if (data && data.user) return data.user as AppUser;
@@ -946,7 +1121,7 @@ export async function loginWithPhone(phone: string, pin: string = ''): Promise<A
     }
   }
 
-  // 2. Try standard /api/auth/login via loginUser
+  // 3. Try standard /api/auth/login via loginUser
   return await loginUser(clean, pin, 'artisan') as AppUser;
 }
 

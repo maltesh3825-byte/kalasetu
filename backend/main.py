@@ -1165,6 +1165,27 @@ def create_order(payload: OrderCreate):
         )
         conn.commit()
         remaining_quantity = available_quantity - requested_quantity
+
+        # Sync updated product quantity to Supabase so website marketplace also reflects the change
+        try:
+            import os, requests as _req
+            _supa_url = os.environ.get("SUPABASE_URL", "")
+            _supa_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_ANON_KEY", "")
+            if _supa_url and _supa_key:
+                _req.patch(
+                    f"{_supa_url}/rest/v1/products?id=eq.{payload.product_id}",
+                    json={"quantity": remaining_quantity},
+                    headers={
+                        "apikey": _supa_key,
+                        "Authorization": f"Bearer {_supa_key}",
+                        "Content-Type": "application/json",
+                        "Prefer": "return=minimal"
+                    },
+                    timeout=5
+                )
+        except Exception as sync_err:
+            print(f"[ORDER SYNC] Supabase quantity sync failed (non-fatal): {sync_err}")
+
         return {"status": "success", "order_id": order_id, "remaining_quantity": remaining_quantity}
     except HTTPException:
         raise

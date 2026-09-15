@@ -23,7 +23,8 @@ import {
   ImageStyle,
   Animated,
   Easing,
-  Dimensions
+  Dimensions,
+  RefreshControl
 } from 'react-native';
 import Svg, {
   Path,
@@ -387,13 +388,13 @@ export default function App() {
   // Unified user account state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
-  const [authPassword, setAuthPassword] = useState('demo123');
+  const [authPassword, setAuthPassword] = useState('artisan123');
   const [showPassword, setShowPassword] = useState(false);
   const [authMethod, setAuthMethod] = useState<'password' | 'email' | 'phone'>('password');
   const [authPhone, setAuthPhone] = useState('+919876543210');
-  const [authEmail, setAuthEmail] = useState('demo@kalakriti.in');
-  const [authName, setAuthName] = useState('Aarav Sharma');
-  const [authRole, setAuthRole] = useState<UserRole>('buyer');
+  const [authEmail, setAuthEmail] = useState('artisan@kalakriti.in');
+  const [authName, setAuthName] = useState('');
+  const [authRole, setAuthRole] = useState<UserRole>('artisan');
   const [authCity, setAuthCity] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [authOtp, setAuthOtp] = useState('');
@@ -401,6 +402,7 @@ export default function App() {
   const [devOtpNotice, setDevOtpNotice] = useState('');
   const [demoOtpCode, setDemoOtpCode] = useState('');
   const [authErrorNotice, setAuthErrorNotice] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [bulkNeed, setBulkNeed] = useState('');
   const [bulkBuyerType, setBulkBuyerType] = useState('Retail / Institutional Buyer');
   const [bulkCategory, setBulkCategory] = useState('Handloom & Textiles');
@@ -526,9 +528,29 @@ export default function App() {
     setSpeechError(`Speech recognition error: ${event.message || event.error}`);
   });
 
+  // Restore saved session on app launch (persistent login)
   useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        const savedUser = await AsyncStorage.getItem('kalasetu_current_user');
+        if (savedUser) {
+          const user: AppUser = JSON.parse(savedUser);
+          setCurrentUser(user);
+          if (user.phone) setArtisanPhone(user.phone);
+          if (user.name) setArtisanName(user.name);
+          if (user.city) setArtisanLocation(user.city);
+          setIsLoggedIn(true);
+          // Refresh account data in background
+          refreshAccountData(user).catch(err => console.warn('Session restore account refresh:', err));
+        }
+      } catch (e) {
+        console.warn('Session restore failed:', e);
+      }
+    };
+
     loadProducts();
     void loadOfflineDrafts();
+    void restoreSession();
     AsyncStorage.getItem('kalasetu_language').then(savedLanguage => {
       if (savedLanguage && ['en', 'hi', 'ta', 'kn', 'te', 'ml', 'mr', 'bh', 'bho'].includes(savedLanguage)) {
         setLang(savedLanguage as Language);
@@ -650,6 +672,21 @@ export default function App() {
     setProducts(data);
   };
 
+  const onRefreshMarketplace = async () => {
+    setIsRefreshing(true);
+    try {
+      await loadProducts();
+      // Also refresh incoming orders if logged in
+      if (currentUser) {
+        await refreshAccountData(currentUser);
+      }
+    } catch (e) {
+      console.warn('Refresh error:', e);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const refreshAccountData = async (user: AppUser) => {
     const [userOrders, userListings, incoming] = await Promise.all([
       fetchOrdersForUser(user.id),
@@ -719,6 +756,8 @@ export default function App() {
       if (user.city) setArtisanLocation(user.city);
       setIsLoggedIn(true);
       setActiveTab('home');
+      // Persist session for auto-login on next app open
+      await AsyncStorage.setItem('kalasetu_current_user', JSON.stringify(user));
 
       showCustomPopup({
         type: 'welcome',
@@ -761,6 +800,10 @@ export default function App() {
     const target = authMethod === 'phone' ? authPhone.trim() : authEmail.trim();
     if (!target) {
       Alert.alert('Required', authMethod === 'phone' ? 'Please enter your mobile number' : 'Please enter your email');
+      return;
+    }
+    if (!authName.trim()) {
+      Alert.alert('Name Required', 'Please enter your full name before generating OTP.');
       return;
     }
 
@@ -807,6 +850,8 @@ export default function App() {
       if (user.city) setArtisanLocation(user.city);
       setIsLoggedIn(true);
       setActiveTab('home');
+      // Persist session for auto-login on next app open
+      await AsyncStorage.setItem('kalasetu_current_user', JSON.stringify(user));
       showCustomPopup({
         type: 'welcome',
         title: lang === 'hi' ? `नमस्ते, ${user.name}! 🎉` : `Welcome, ${user.name}! 🎉`,
@@ -826,9 +871,13 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem('kalasetu_current_user');
     setCurrentUser(null);
     setIsLoggedIn(false);
+    setOrders([]);
+    setIncomingOrders([]);
+    setPublishedProducts([]);
     setActiveTab('home');
   };
 
@@ -889,6 +938,7 @@ export default function App() {
       });
 
       setOrders(prev => [order, ...prev]);
+      // Update local product quantity immediately
       setProducts(prev => prev.map(item => item.id === product.id
         ? { ...item, quantity: Math.max(0, (Number(item.quantity ?? 10)) - quantity) }
         : item
@@ -897,6 +947,9 @@ export default function App() {
       Alert.alert('Order requested', `Your request for ${product.name} has been sent to the artisan.`);
       setActiveTab('account');
       setAccountView('orders');
+      // Refresh marketplace products and account data from server
+      loadProducts().catch(e => console.warn('Post-order product refresh:', e));
+      refreshAccountData(currentUser).catch(e => console.warn('Post-order account refresh:', e));
     } catch (error) {
       setOrderActionMessage(error instanceof Error ? error.message : 'Could not place the order request.');
       Alert.alert('Order request failed', error instanceof Error ? error.message : 'Could not place the order request.');
@@ -1381,14 +1434,15 @@ export default function App() {
     });
   };
 
-  // Filtered Products
+  // Filtered Products - hide sold-out (quantity <= 0) items
   const filteredProducts = products.filter(p => {
     const matchesCategory = selectedCategory === 'All' || p.category === selectedCategory;
     const matchesSearch = !searchQuery || 
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.artisan_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.category.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
+    const inStock = Number(p.quantity ?? 1) > 0;
+    return matchesCategory && matchesSearch && inStock;
   });
 
   const categoriesList = ['All', 'Handloom & Textiles', 'Pottery & Terracotta', 'Brass & Metalcraft', 'Woodcraft', 'Cane & Bamboo', 'Folk Art & Painting'];
@@ -1849,6 +1903,15 @@ export default function App() {
 
                     {!showOtpSection ? (
                       <View>
+                        <Text style={styles.authFieldLabel}>Your Full Name</Text>
+                        <TextInput
+                          style={styles.authInput}
+                          value={authName}
+                          onChangeText={setAuthName}
+                          placeholder="Enter your name (e.g. Ravi Kumar)"
+                          autoCapitalize="words"
+                          placeholderTextColor={Colors.placeholder}
+                        />
                         <Text style={styles.authFieldLabel}>Gmail / Email Address</Text>
                         <TextInput style={styles.authInput} value={authEmail} onChangeText={setAuthEmail} placeholder="yourname@gmail.com" keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.placeholder} />
                         {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
@@ -1899,6 +1962,15 @@ export default function App() {
 
                     {!showOtpSection ? (
                       <View>
+                        <Text style={styles.authFieldLabel}>Your Full Name</Text>
+                        <TextInput
+                          style={styles.authInput}
+                          value={authName}
+                          onChangeText={setAuthName}
+                          placeholder="Enter your name (e.g. Ravi Kumar)"
+                          autoCapitalize="words"
+                          placeholderTextColor={Colors.placeholder}
+                        />
                         <Text style={styles.authFieldLabel}>10-Digit Mobile Number</Text>
                         <View style={{ flexDirection: 'row', borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', overflow: 'hidden', marginBottom: 12 }}>
                           <View style={{ paddingHorizontal: 14, paddingVertical: 14, backgroundColor: '#E2E8F0', justifyContent: 'center' }}>
@@ -2321,8 +2393,22 @@ export default function App() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Main Body: Scrollable Screen */}
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      {/* Main Body: Scrollable Screen with Pull-to-Refresh */}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          activeTab === 'market' ? (
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={onRefreshMarketplace}
+              colors={['#EA580C']}
+              tintColor="#EA580C"
+              title="Pull to refresh marketplace..."
+              titleColor="#EA580C"
+            />
+          ) : undefined
+        }
+      >
         {renderMainContent()}
       </ScrollView>
 

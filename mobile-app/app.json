@@ -48,8 +48,8 @@
     "extra": {
       "backendUrl": "https://kalakriti-api-nmnz.onrender.com",
       "geminiApiKey": "",
-      "supabaseUrl": "",
-      "supabaseAnonKey": "",
+      "supabaseUrl": "https://fcabjzylxzdcqzrloaqr.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjYWJqenlseHpkY3F6cmxvYXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMDA4NTAsImV4cCI6MjEwNDc3Njg1MH0.z7-C5sww2E6GRqip6HBJmLdoTHJAWZl70TYXqCJaiBg",
       "eas": {
         "projectId": "08d31522-4985-4efd-9bad-79aabd6bf908"
       }
