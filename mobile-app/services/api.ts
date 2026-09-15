@@ -361,59 +361,49 @@ function cleanJsonResponse(text: string): any {
   return JSON.parse(cleaned);
 }
 
+// Hermes-safe base64 encoder — works in React Native without btoa or FileReader
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let result = '';
+  const len = bytes.length;
+  for (let i = 0; i < len; i += 3) {
+    const b0 = bytes[i];
+    const b1 = i + 1 < len ? bytes[i + 1] : 0;
+    const b2 = i + 2 < len ? bytes[i + 2] : 0;
+    result += BASE64_CHARS[b0 >> 2];
+    result += BASE64_CHARS[((b0 & 3) << 4) | (b1 >> 4)];
+    result += i + 1 < len ? BASE64_CHARS[((b1 & 15) << 2) | (b2 >> 6)] : '=';
+    result += i + 2 < len ? BASE64_CHARS[b2 & 63] : '=';
+  }
+  return result;
+}
+
 async function imageUriToBase64(imageUri: string): Promise<{ base64: string; mimeType: string }> {
-  if (imageUri.startsWith("data:")) {
-    const parts = imageUri.split(",");
-    const match = imageUri.match(/data:(.*?);base64/);
-    const mimeType = match ? match[1] : "image/jpeg";
-    return { base64: parts[1] || "", mimeType };
+  // Handle data URIs directly (already base64 encoded)
+  if (imageUri.startsWith('data:')) {
+    const match = imageUri.match(/data:(.*?);base64,(.+)/);
+    if (match) {
+      return { base64: match[2], mimeType: match[1] };
+    }
   }
 
   const cleanUri = imageUri.split('?')[0];
   const filename = cleanUri.split('/').pop() || 'photo.jpg';
-  const match = /\.(\w+)$/.exec(filename);
-  const fallbackMime = match ? `image/${match[1].toLowerCase()}` : "image/jpeg";
+  const extMatch = /\.(\w+)$/.exec(filename);
+  const mimeType = extMatch ? `image/${extMatch[1].toLowerCase().replace('jpg', 'jpeg')}` : 'image/jpeg';
 
-  // Method 1: Fetch and convert ArrayBuffer to base64 (fast and native in modern JS/React Native)
-  try {
-    const response = await fetch(imageUri);
-    const buffer = await response.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    let binary = "";
-    const len = bytes.byteLength;
-    const chunkSize = 8192;
-    for (let i = 0; i < len; i += chunkSize) {
-      const chunk = bytes.subarray(i, Math.min(i + chunkSize, len));
-      binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
-    }
-    const base64 = typeof btoa !== "undefined"
-      ? btoa(binary)
-      : "";
-
-    if (base64) {
-      return { base64, mimeType: fallbackMime };
-    }
-  } catch (bufErr) {
-    console.warn("ArrayBuffer base64 conversion failed, falling back to Blob FileReader:", bufErr);
-  }
-
-  // Method 2: Blob and FileReader fallback
+  // Fetch as ArrayBuffer and encode with our Hermes-safe base64 encoder
   const response = await fetch(imageUri);
-  const blob = await response.blob();
-  const mimeType = blob.type || fallbackMime;
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  const base64 = uint8ArrayToBase64(bytes);
 
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      const commaIdx = dataUrl.indexOf(",");
-      const base64 = commaIdx !== -1 ? dataUrl.substring(commaIdx + 1) : dataUrl;
-      resolve({ base64, mimeType });
-    };
-    reader.onerror = (e) => reject(e || new Error("Failed to read image blob"));
-    reader.readAsDataURL(blob);
-  });
+  if (!base64) {
+    throw new Error('Failed to convert image to base64');
+  }
+  return { base64, mimeType };
 }
+
 
 export async function analyzeCraftWithGeminiDirect(
   imageUri: string,
