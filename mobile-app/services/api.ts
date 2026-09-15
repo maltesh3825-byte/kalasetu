@@ -477,7 +477,7 @@ Return ONLY a valid JSON object matching this exact schema:
   };
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: {
@@ -785,25 +785,34 @@ export async function verifyOtpApi(
   name: string = 'KalaSetu User',
   role: UserRole = 'buyer'
 ): Promise<AppUser> {
+  // Always use the name the user typed — never let backend override it
+  const enteredName = (name || '').trim();
+
   const isEmail = target.includes('@');
   if (isEmail) {
     const cleanEmail = target.trim().toLowerCase();
     // 1. Try logging in first with candidate passwords (including demo passwords)
     try {
       const user = await loginUser(cleanEmail, password || 'demo', role);
-      if (user) return user;
+      if (user) {
+        // Override name with what the user typed at login, if provided
+        if (enteredName) user.name = enteredName;
+        return user;
+      }
     } catch {
       // User not found or password didn't match yet — continue to register
     }
 
     // 2. Try registering the user
     try {
-      return await registerUser({
-        name: name || cleanEmail.split('@')[0],
+      const registered = await registerUser({
+        name: enteredName || cleanEmail.split('@')[0],
         email: cleanEmail,
         password: password || 'demo',
         role,
       });
+      if (enteredName) registered.name = enteredName;
+      return registered;
     } catch (regErr: any) {
       const msg = String(regErr?.message || '');
       // If user already exists, try all known passwords to recover session
@@ -812,7 +821,10 @@ export async function verifyOtpApi(
         for (const pwd of recoveryPasswords) {
           try {
             const recovered = await loginUser(cleanEmail, pwd, role);
-            if (recovered) return recovered;
+            if (recovered) {
+              if (enteredName) recovered.name = enteredName;
+              return recovered;
+            }
           } catch {
             // continue trying
           }
@@ -820,7 +832,7 @@ export async function verifyOtpApi(
         // If all fail, return a valid user session so user is not blocked in demo
         return {
           id: Date.now(),
-          name: name || cleanEmail.split('@')[0],
+          name: enteredName || cleanEmail.split('@')[0],
           email: cleanEmail,
           role,
           phone: '',
@@ -846,20 +858,26 @@ export async function verifyOtpApi(
     }
 
     try {
-      return await loginWithPhone(cleanPhone, password || 'demo');
+      const phoneUser = await loginWithPhone(cleanPhone, password || 'demo');
+      if (phoneUser) {
+        if (enteredName) phoneUser.name = enteredName;
+        return phoneUser;
+      }
     } catch {
       try {
-        return await registerWithPhone({
+        const registered = await registerWithPhone({
           phone: cleanPhone,
           pin: password || 'demo',
-          name: name || 'Artisan',
+          name: enteredName || 'Artisan',
           role: role || 'artisan',
         });
+        if (enteredName) registered.name = enteredName;
+        return registered;
       } catch (regErr: any) {
         // Recover or return local session
         return {
           id: Date.now(),
-          name: name || 'Artisan',
+          name: enteredName || 'Artisan',
           email: `artisan_${digits}@kalakriti.in`,
           role: role || 'artisan',
           phone: cleanPhone,

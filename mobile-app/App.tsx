@@ -843,6 +843,8 @@ export default function App() {
     try {
       // verifyOtpApi handles login/register directly without password
       const user = await verifyOtpApi(target, authOtp.trim(), '', authName.trim() || 'KalaSetu User', authRole);
+      // Always honour the name the user typed on this device — never let DB override it
+      if (authName.trim()) user.name = authName.trim();
       setShowOtpSection(false);
       setCurrentUser(user);
       if (user.phone) setArtisanPhone(user.phone);
@@ -1759,7 +1761,7 @@ export default function App() {
                     <TouchableOpacity style={styles.whatsAppButton} onPress={() => openWhatsApp(product.artisan_phone || '+919876543210', product.name, product.price)}>
                       <Text style={styles.whatsAppButtonText}>💬 {t.btnWhatsApp}</Text>
                     </TouchableOpacity>
-                    {isLoggedIn && (<TouchableOpacity style={styles.deleteProductButton} onPress={() => removeOwnProduct(product)}><Text style={styles.deleteProductButtonText}>Delete my listing</Text></TouchableOpacity>)}
+                    {isLoggedIn && currentUser && product.owner_user_id === currentUser.id && (<TouchableOpacity style={styles.deleteProductButton} onPress={() => removeOwnProduct(product)}><Text style={styles.deleteProductButtonText}>Delete my listing</Text></TouchableOpacity>)}
                   </View>
                 </View>
               ))}
