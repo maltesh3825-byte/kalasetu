@@ -52,8 +52,8 @@ if not APP_SECRET_KEY:
     # Ephemeral fallback for local dev; invalidates tokens on restart to prevent static token attacks
     APP_SECRET_KEY = secrets.token_hex(32)
 
-# Gemini Model endpoint: use gemini-3.6-flash (current supported model for Gemini API)
-DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
+# Gemini Model endpoint: use gemini-1.5-flash (fast, cost-effective vision model)
+DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"
 GEMINI_MODEL = (os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL) or DEFAULT_GEMINI_MODEL).strip()
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 

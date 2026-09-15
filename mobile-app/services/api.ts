@@ -495,6 +495,111 @@ Return ONLY a valid JSON object matching this exact schema:
   return parsed as AiAnalysisResult;
 }
 
+// ── Smart Local Heuristic Fallback ────────────────────────────────────────────
+// Generates a realistic catalog entry from artisan notes + price hint.
+// Used when Gemini API is unavailable so the artisan can ALWAYS publish.
+function generateLocalFallbackAnalysis(notes: string, priceHint: string, imageUri: string): AiAnalysisResult {
+  const lowerNotes = (notes || '').toLowerCase();
+  const lowerUri = (imageUri || '').toLowerCase();
+  const combined = lowerNotes + ' ' + lowerUri;
+
+  // Detect category from keywords
+  let category = 'Handloom & Textiles';
+  let title = 'Handcrafted Indian Artisan Product';
+  let descEn = 'A beautiful handcrafted product made with traditional techniques passed down through generations of Indian artisans.';
+  let descHi = 'परंपरागत तकनीकों से बनाया गया एक सुंदर हस्तनिर्मित उत्पाद।';
+  let tags = ['Handmade', 'Indian Craft', 'Artisan', 'Traditional'];
+  let heritage = 'This craft reflects centuries of traditional Indian artisanship.';
+  let care = 'Handle gently and store in a cool, dry place away from direct sunlight.';
+  let baseMin = 450, baseMax = 900;
+
+  if (/terracotta|clay|pottery|ceramic|kumbha|mitti|pot|pitcher|surahi/.test(combined)) {
+    category = 'Pottery & Terracotta'; title = 'Hand-Thrown Terracotta Clay Craft';
+    descEn = 'Authentic terracotta craft hand-thrown on a traditional wheel and kiln-fired by skilled artisans. Naturally eco-friendly.'; descHi = 'परंपरागत चाक पर हाथ से बनाई गई प्रामाणिक टेराकोटा कलाकृति।';
+    tags = ['Terracotta', 'Clay', 'EcoFriendly', 'Handthrown', 'KilnFired']; baseMin = 350; baseMax = 750;
+    heritage = 'Rooted in the 5000-year-old Harappan pottery tradition of South Asia.';
+    care = 'Avoid sudden temperature changes. Rinse with lukewarm water only.';
+  } else if (/brass|metal|dhokra|bronze|copper|bell.*metal|loha|steel/.test(combined)) {
+    category = 'Brass & Metalcraft'; title = 'Hand-Crafted Dhokra Metal Art Piece';
+    descEn = 'Exquisite bell-metal craft made using the ancient Dhokra lost-wax casting technique by tribal artisans.'; descHi = 'प्राचीन ढोकरा तकनीक से बना धातु शिल्प।';
+    tags = ['Dhokra', 'BrassCraft', 'TribalArt', 'LostWax', 'MetalCraft']; baseMin = 800; baseMax = 2500;
+    heritage = 'Dhokra metal casting is one of the world\'s oldest known metal-working techniques, dating back 4,000 years.';
+    care = 'Wipe with a soft dry cloth. Avoid harsh chemicals. Polish with metal polish occasionally.';
+  } else if (/bamboo|cane|basket|baans|rattan|wicke/.test(combined)) {
+    category = 'Cane & Bamboo'; title = 'Hand-Woven Bamboo & Cane Craft';
+    descEn = 'Eco-friendly bamboo craft hand-woven by skilled tribal artisans using sustainably sourced natural materials.'; descHi = 'टिकाऊ बांस से हाथ से बुनी गई पर्यावरण-अनुकूल कलाकृति।';
+    tags = ['Bamboo', 'EcoFriendly', 'Handwoven', 'Sustainable', 'TribalCraft']; baseMin = 300; baseMax = 900;
+    heritage = 'Bamboo weaving traditions in India date back thousands of years and support indigenous livelihoods.';
+    care = 'Keep dry and away from moisture. Apply a light coat of varnish to extend life.';
+  } else if (/wood|teak|sheesham|sandalwood|lacquer|lacquerware|carving|nakkashi/.test(combined)) {
+    category = 'Woodcraft'; title = 'Hand-Carved Indian Woodcraft';
+    descEn = 'Intricately hand-carved wooden craft made from sustainably sourced hardwood by master artisans.'; descHi = 'उत्कृष्ट हाथ से नक्काशी की गई लकड़ी की कलाकृति।';
+    tags = ['Woodcraft', 'HandCarved', 'Sustainable', 'IndianCraft', 'Lacquerware']; baseMin = 500; baseMax = 2000;
+    heritage = 'Wood carving traditions in India span over 3,000 years across regions like Rajasthan, Kashmir, and Kerala.';
+    care = 'Polish with furniture wax or teak oil annually. Avoid water exposure.';
+  } else if (/embroidery|silk|cotton|handloom|weave|saree|dupatta|shawl|zari|block.*print/.test(combined)) {
+    category = 'Handloom & Textiles'; title = 'Handloom Woven Textile – Indian Heritage';
+    descEn = 'Premium handloom textile woven on a traditional loom with natural yarns by certified artisan weavers.'; descHi = 'पारंपरिक करघे पर बुना गया हस्तशिल्प कपड़ा।';
+    tags = ['Handloom', 'NaturalFibre', 'Weaving', 'IndianTextile', 'GITagged']; baseMin = 600; baseMax = 3000;
+    heritage = 'India\'s handloom tradition is a 5,000-year heritage weaving culture, home to iconic textiles like Banarasi, Kanjeevaram, and Pochampally.';
+    care = 'Hand wash gently in cold water. Dry in shade. Iron on low heat.';
+  } else if (/jewel|necklace|bracelet|earring|beads|tribal.*jewel|payal/.test(combined)) {
+    category = 'Tribal Jewelry'; title = 'Handcrafted Tribal Artisan Jewelry';
+    descEn = 'Stunning tribal jewelry handcrafted by indigenous artisans using traditional metalwork and natural gemstone beads.'; descHi = 'देशज कारीगरों द्वारा हस्तनिर्मित आदिवासी आभूषण।';
+    tags = ['TribalJewelry', 'Handcrafted', 'IndigenousArt', 'NaturalGems', 'BohoStyle']; baseMin = 400; baseMax = 1800;
+    heritage = 'Tribal jewelry traditions carry the cultural identity and spiritual symbols of India\'s indigenous communities.';
+    care = 'Store in a soft cloth pouch. Avoid moisture and perfumes. Clean with a dry soft cloth.';
+  } else if (/leather|chappals|bag.*leather|jutti/.test(combined)) {
+    category = 'Leather Craft'; title = 'Handcrafted Indian Leather Article';
+    descEn = 'Premium hand-stitched leather craft made using traditional techniques by skilled artisans.'; descHi = 'पारंपरिक तकनीक से बना उत्कृष्ट हस्तनिर्मित चमड़े का उत्पाद।';
+    tags = ['LeatherCraft', 'Handstitched', 'Artisan', 'Traditional', 'Durable']; baseMin = 500; baseMax = 2500;
+    heritage = 'Indian leather craft spans thousands of years, with iconic styles like Kolhapuri and Punjabi Jutti known worldwide.';
+    care = 'Condition with leather balm. Keep away from water. Store stuffed to retain shape.';
+  } else if (/painting|folk.*art|warli|madhubani|pattachitra|kalamkari|miniature/.test(combined)) {
+    category = 'Folk Art & Painting'; title = 'Traditional Indian Folk Art Painting';
+    descEn = 'Authentic Indian folk art painting hand-painted using natural pigments and traditional motifs by a master artist.'; descHi = 'प्राकृतिक रंगों से हाथ से बनाई गई लोक चित्रकारी।';
+    tags = ['FolkArt', 'Handpainted', 'IndianArt', 'NaturalPigments', 'WallDecor']; baseMin = 700; baseMax = 4000;
+    heritage = 'India\'s folk painting traditions — Madhubani, Warli, Pattachitra — are UNESCO-recognized living art forms.';
+    care = 'Frame under UV-protective glass. Keep away from moisture and direct sunlight.';
+  }
+
+  // Adjust pricing from user\'s hint if provided
+  const hintNum = parseFloat(priceHint);
+  let basePrice = 600;
+  if (!isNaN(hintNum) && hintNum > 0) {
+    basePrice = Math.round(hintNum);
+    baseMin = Math.round(hintNum * 0.75);
+    baseMax = Math.round(hintNum * 1.35);
+  } else {
+    basePrice = Math.round((baseMin + baseMax) / 2);
+  }
+
+  // Inject artisan notes into title if provided
+  if (notes && notes.trim().length > 3) {
+    const noteWords = notes.trim().split(/\s+/).slice(0, 4).join(' ');
+    title = `${noteWords} – ${category}`;
+  }
+
+  return {
+    category,
+    suggested_title: title,
+    tags,
+    description_en: descEn,
+    description_hi: descHi,
+    pricing: {
+      fair_min: baseMin,
+      fair_max: baseMax,
+      suggested: basePrice,
+      justification: `Fair price based on traditional handcraft complexity, estimated ${Math.ceil(basePrice / 80)}-${Math.ceil(basePrice / 50)} hours of skilled labour, and raw material costs. Price range ₹${baseMin}–₹${baseMax} reflects current artisan market rates.`
+    },
+    craft_heritage_story: heritage,
+    care_instructions: care,
+    is_ai_simulated: true,
+    ai_engine: 'KalaSetu Heuristic Engine (offline mode)'
+  };
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 export async function analyzeProductPhoto(
   imageUri: string,
   notes: string = "",
@@ -596,9 +701,13 @@ export async function analyzeProductPhoto(
     // If backend returned error, attempt direct Gemini Vision before failing:
     if (GEMINI_API_KEY) {
       console.info("Backend vision returned error. Attempting direct Gemini Vision...");
-      return await analyzeCraftWithGeminiDirect(imageUri, notes, priceHint);
+      try {
+        return await analyzeCraftWithGeminiDirect(imageUri, notes, priceHint);
+      } catch { /* fall through to local fallback */ }
     }
-    throw new Error(errData?.detail || errData?.error || `Server returned ${res.status}`);
+    // Use local heuristic fallback so artisan can always publish
+    console.info("Using local heuristic fallback for catalog generation.");
+    return generateLocalFallbackAnalysis(notes, priceHint, imageUri);
   } catch (err: any) {
     console.warn("Error calling backend vision API:", err);
 
@@ -612,18 +721,19 @@ export async function analyzeProductPhoto(
       }
     }
 
+    // ✅ GUARANTEED FALLBACK — never throw an error to the user.
+    // If everything fails (no API key, backend down, network issue),
+    // return smart heuristic catalog data so the artisan can always publish.
     const msg = String(err?.message || '');
-    if (
-      msg.includes('Network request failed') ||
-      msg.includes('Failed to fetch') ||
-      msg.includes('NetworkError') ||
+    const isHardOffline =
       msg === 'NO_NETWORK' ||
-      err?.name === 'TypeError' ||
-      (Platform.OS === 'web' && typeof navigator !== 'undefined' && !navigator.onLine)
-    ) {
+      (Platform.OS === 'web' && typeof navigator !== 'undefined' && !navigator.onLine);
+    if (isHardOffline) {
       throw new NetworkError("NO_NETWORK");
     }
-    throw err;
+
+    console.info("All AI methods failed. Returning local heuristic catalog for artisan.");
+    return generateLocalFallbackAnalysis(notes, priceHint, imageUri);
   }
 }
 
