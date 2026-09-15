@@ -7,18 +7,12 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://kalakriti-api-nmnz.onrender.com"
       }
     },
     "production": {
       "distribution": "store",
       "android": {
         "buildType": "app-bundle"
-      },
-      "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://kalakriti-api-nmnz.onrender.com"
       }
     }
   }

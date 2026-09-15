@@ -232,10 +232,11 @@ def sync_to_supabase_rest(product_dict: Dict[str, Any]) -> Optional[Dict[str, An
         response = requests.post(endpoint, headers=headers, json=payload, timeout=12)
         if response.status_code in (200, 201):
             res_data = response.json()
-            print(f"[SUPABASE SUCCESS] Successfully stored product in Supabase: {res_data}")
+            inserted_id = (res_data[0].get("id") if isinstance(res_data, list) and res_data else getattr(res_data, "get", lambda k: None)("id"))
+            print(f"[SUPABASE SUCCESS] Successfully stored product in Supabase. ID: {inserted_id}")
             return res_data[0] if isinstance(res_data, list) and res_data else res_data
         else:
-            print(f"[SUPABASE WARNING] Supabase REST API returned {response.status_code}: {response.text}")
+            print(f"[SUPABASE WARNING] Supabase REST API returned {response.status_code}")
     except Exception as e:
         print(f"[SUPABASE ERROR] Failed to sync product to Supabase REST: {e}")
     return None

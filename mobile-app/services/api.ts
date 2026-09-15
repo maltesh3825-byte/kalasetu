@@ -388,7 +388,7 @@ Return ONLY a valid JSON object matching this exact schema:
   };
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: {
@@ -401,7 +401,7 @@ Return ONLY a valid JSON object matching this exact schema:
   if (!response.ok) {
     const errText = await response.text();
     console.error("Direct Gemini Vision API error:", response.status, errText);
-    throw new Error(`Gemini Vision returned HTTP ${response.status}`);
+    throw new Error(`Gemini Vision returned HTTP ${response.status}: ${errText.slice(0, 120)}`);
   }
 
   const data = await response.json();
@@ -412,7 +412,7 @@ Return ONLY a valid JSON object matching this exact schema:
 
   const parsed = cleanJsonResponse(rawText);
   parsed.is_ai_simulated = false;
-  parsed.ai_engine = "Google Gemini (gemini-2.5-flash Vision)";
+  parsed.ai_engine = "Google Gemini (gemini-3.6-flash Vision)";
   return parsed as AiAnalysisResult;
 }
 
@@ -424,6 +424,16 @@ export async function analyzeProductPhoto(
   // Offline pre-check in web environment
   if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.onLine === false) {
     throw new NetworkError("NO_NETWORK");
+  }
+
+  // 1. If Gemini API key is configured, run Gemini Vision directly for instant, authentic AI analysis
+  if (GEMINI_API_KEY && GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY_HERE") {
+    try {
+      console.info("Analyzing craft image with Google Gemini Vision directly...");
+      return await analyzeCraftWithGeminiDirect(imageUri, notes, priceHint);
+    } catch (directErr) {
+      console.warn("Direct Gemini Vision encountered an issue, trying backend endpoint:", directErr);
+    }
   }
 
   try {

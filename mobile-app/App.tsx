@@ -1016,10 +1016,16 @@ export default function App() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.85,
+      quality: 0.8,
+      base64: true,
     });
     if (!result.canceled && result.assets && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
+      const asset = result.assets[0];
+      if (asset.base64) {
+        setImageUri(`data:image/jpeg;base64,${asset.base64}`);
+      } else {
+        setImageUri(asset.uri);
+      }
     }
   };
 
@@ -1029,10 +1035,16 @@ export default function App() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.85,
+      quality: 0.8,
+      base64: true,
     });
     if (!result.canceled && result.assets && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
+      const asset = result.assets[0];
+      if (asset.base64) {
+        setImageUri(`data:image/jpeg;base64,${asset.base64}`);
+      } else {
+        setImageUri(asset.uri);
+      }
     }
   };
 
