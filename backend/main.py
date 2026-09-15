@@ -142,6 +142,14 @@ class WishlistRequest(BaseModel):
     product_id: int
 
 
+class UserProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    language: Optional[str] = None
+    business_name: Optional[str] = None
+
+
 class OrderCreate(BaseModel):
     user_id: int
     product_id: int
@@ -794,6 +802,104 @@ def get_user(user_id: int):
         raise HTTPException(status_code=404, detail="User not found")
 
     return normalize_user_row(row)
+
+
+@app.put("/api/users/{user_id}")
+@app.patch("/api/users/{user_id}")
+def update_user_profile(user_id: int, payload: UserProfileUpdate):
+    """Updates user profile information (such as name, city, phone) in SQLite and Supabase."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+
+    updates = []
+    values = []
+    supabase_payload = {}
+
+    if payload.name is not None and payload.name.strip():
+        new_name = payload.name.strip()
+        updates.append("name = ?")
+        values.append(new_name)
+        supabase_payload["name"] = new_name
+
+    if payload.city is not None:
+        updates.append("city = ?")
+        values.append(payload.city.strip())
+        supabase_payload["city"] = payload.city.strip()
+
+    if payload.phone is not None and payload.phone.strip():
+        updates.append("phone = ?")
+        values.append(payload.phone.strip())
+        supabase_payload["phone"] = payload.phone.strip()
+
+    if payload.language is not None and payload.language.strip():
+        updates.append("language = ?")
+        values.append(payload.language.strip())
+        supabase_payload["language"] = payload.language.strip()
+
+    if payload.business_name is not None:
+        try:
+            updates.append("business_name = ?")
+            values.append(payload.business_name.strip())
+        except Exception:
+            pass
+
+    if not updates:
+        conn.close()
+        return {"status": "unchanged", "user": normalize_user_row(row)}
+
+    values.append(user_id)
+    update_sql = f"UPDATE users SET {', '.join(updates)} WHERE id = ?"
+    cursor.execute(update_sql, tuple(values))
+    conn.commit()
+
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    updated_row = cursor.fetchone()
+    conn.close()
+
+    # Sync with Supabase cloud database if configured
+    if supabase_payload:
+        try:
+            import os, requests as _req
+            _supa_url = os.environ.get("SUPABASE_URL", "")
+            _supa_key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_ANON_KEY", "")
+            if _supa_url and _supa_key:
+                user_email = row["email"] if "email" in row.keys() else ""
+                _req.patch(
+                    f"{_supa_url}/rest/v1/users?id=eq.{user_id}",
+                    json=supabase_payload,
+                    headers={
+                        "apikey": _supa_key,
+                        "Authorization": f"Bearer {_supa_key}",
+                        "Content-Type": "application/json",
+                        "Prefer": "return=minimal"
+                    },
+                    timeout=4
+                )
+                if user_email:
+                    _req.patch(
+                        f"{_supa_url}/rest/v1/users?email=eq.{user_email}",
+                        json=supabase_payload,
+                        headers={
+                            "apikey": _supa_key,
+                            "Authorization": f"Bearer {_supa_key}",
+                            "Content-Type": "application/json",
+                            "Prefer": "return=minimal"
+                        },
+                        timeout=4
+                    )
+        except Exception as sync_err:
+            print(f"[USER UPDATE SYNC] Supabase user sync failed (non-fatal): {sync_err}")
+
+    return {
+        "status": "success",
+        "message": "Profile updated successfully",
+        "user": normalize_user_row(updated_row)
+    }
 
 
 @app.get("/api/wishlist/{user_id}")

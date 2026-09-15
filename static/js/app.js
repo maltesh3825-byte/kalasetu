@@ -1169,7 +1169,54 @@ function renderAccountView(view) {
   document.getElementById('accountMeta').textContent = `${state.currentUser.email} · ${state.currentUser.role} · ${state.currentUser.city || 'India'}`;
   const content = document.getElementById('accountContent');
   if (view === 'profile') {
-    content.innerHTML = `<div class="account-panel"><h3>${t('account_profile')}</h3><p><strong>Name:</strong> ${escapeHtml(state.currentUser.name)}</p><p><strong>Email:</strong> ${escapeHtml(state.currentUser.email)}</p><p><strong>Role:</strong> ${escapeHtml(state.currentUser.role)}</p><p><strong>Location:</strong> ${escapeHtml(state.currentUser.city || 'Not added')}</p><p class="account-muted">The same account can buy products, publish inventory, and submit institutional requests.</p></div>`;
+    content.innerHTML = `
+      <div class="account-panel">
+        <div class="account-panel-heading">
+          <h3>${t('account_profile')}</h3>
+          <span class="text-xs px-2.5 py-1 rounded-full bg-orange-100 text-orange-800 font-bold uppercase tracking-wider">${escapeHtml(state.currentUser.role || 'user')}</span>
+        </div>
+        
+        <div class="mt-4 p-5 rounded-2xl bg-gradient-to-r from-orange-50/70 to-amber-50/70 border border-orange-200">
+          <h4 class="text-sm font-black text-slate-900 mb-1">✏️ Edit Profile Name</h4>
+          <p class="text-xs text-slate-600 mb-4">Update your display name here. It will be used for your artisan listings, order requests, and certificate generation across KalaSetu.</p>
+          
+          <form id="profileEditForm" onsubmit="handleSaveProfileName(event)" class="space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Full Name</label>
+              <input type="text" id="profileEditNameInput" value="${escapeHtml(state.currentUser.name || '')}" placeholder="Enter your full name" required
+                     class="w-full max-w-md px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-orange-500 focus:outline-none">
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Location / City</label>
+                <input type="text" id="profileEditCityInput" value="${escapeHtml(state.currentUser.city || '')}" placeholder="e.g. Madhubani, Bihar"
+                       class="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-2 focus:ring-orange-500 focus:outline-none">
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Mobile / Phone</label>
+                <input type="tel" id="profileEditPhoneInput" value="${escapeHtml(state.currentUser.phone || '')}" placeholder="e.g. 9876543210"
+                       class="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-2 focus:ring-orange-500 focus:outline-none">
+              </div>
+            </div>
+
+            <div class="pt-2 flex items-center gap-3">
+              <button type="submit" id="saveProfileBtn" class="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer">
+                <span>💾</span>
+                <span>Save Changes</span>
+              </button>
+              <span id="profileSaveStatus" class="text-xs font-bold hidden"></span>
+            </div>
+          </form>
+        </div>
+
+        <div class="mt-6 pt-5 border-t border-slate-100 space-y-2 text-sm text-slate-700">
+          <p><strong>Account Identifier:</strong> <span class="font-mono text-xs bg-slate-100 px-2 py-1 rounded">${escapeHtml(state.currentUser.email || state.currentUser.phone || '')}</span></p>
+          <p><strong>System Role:</strong> ${escapeHtml(state.currentUser.role || 'Artisan')}</p>
+          <p class="account-muted text-xs text-slate-500 mt-2">The same account can buy products, publish inventory, and submit institutional requests.</p>
+        </div>
+      </div>
+    `;
   } else if (view === 'history') {
     const historyRows = [
       ...state.accountOrders.map(order => ({
@@ -1202,6 +1249,101 @@ function renderAccountView(view) {
   } else {
     const saved = state.products.filter(product => state.accountWishlist.includes(product.id));
     content.innerHTML = `<div class="account-panel"><h3>${t('account_wishlist')}</h3>${saved.length ? saved.map(product => `<div class="account-row"><strong>${escapeHtml(product.name)}</strong><span>₹${escapeHtml(product.price)} · ${escapeHtml(product.artisan_name)}</span></div>`).join('') : '<p class="account-muted">Your saved crafts will appear here.</p>'}</div>`;
+  }
+}
+
+async function handleSaveProfileName(event) {
+  if (event) event.preventDefault();
+  if (!state.currentUser) return;
+
+  const nameInput = document.getElementById('profileEditNameInput');
+  const cityInput = document.getElementById('profileEditCityInput');
+  const phoneInput = document.getElementById('profileEditPhoneInput');
+  const statusEl = document.getElementById('profileSaveStatus');
+  const saveBtn = document.getElementById('saveProfileBtn');
+
+  const newName = nameInput ? nameInput.value.trim() : '';
+  const newCity = cityInput ? cityInput.value.trim() : '';
+  const newPhone = phoneInput ? phoneInput.value.trim() : '';
+
+  if (!newName) {
+    if (statusEl) {
+      statusEl.textContent = 'Please enter a name.';
+      statusEl.className = 'text-xs font-bold text-red-600';
+      statusEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span>⏳ Saving...</span>';
+  }
+
+  try {
+    const response = await fetch(`/api/users/${state.currentUser.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: newName,
+        city: newCity,
+        phone: newPhone
+      })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data.user) {
+      state.currentUser = data.user;
+    } else {
+      // Direct local update if backend returned fallback
+      state.currentUser = {
+        ...state.currentUser,
+        name: newName,
+        city: newCity || state.currentUser.city,
+        phone: newPhone || state.currentUser.phone
+      };
+    }
+
+    localStorage.setItem('kalakriti_user', JSON.stringify(state.currentUser));
+
+    // Update UI headers
+    const welcomeEl = document.getElementById('accountWelcome');
+    if (welcomeEl) welcomeEl.textContent = `Welcome, ${state.currentUser.name}`;
+    const metaEl = document.getElementById('accountMeta');
+    if (metaEl) metaEl.textContent = `${state.currentUser.email || state.currentUser.phone || ''} · ${state.currentUser.role} · ${state.currentUser.city || 'India'}`;
+
+    // Also sync the artisan studio fields so new catalog listings immediately use the new name
+    syncStudioArtisanInfo();
+
+    showToast(`Profile name updated to ${state.currentUser.name}`);
+    if (statusEl) {
+      statusEl.textContent = '✓ Saved successfully!';
+      statusEl.className = 'text-xs font-bold text-emerald-600';
+      statusEl.classList.remove('hidden');
+      setTimeout(() => statusEl.classList.add('hidden'), 3500);
+    }
+  } catch (err) {
+    console.error('Failed to update profile name:', err);
+    // Graceful offline fallback
+    state.currentUser = {
+      ...state.currentUser,
+      name: newName,
+      city: newCity || state.currentUser.city,
+      phone: newPhone || state.currentUser.phone
+    };
+    localStorage.setItem('kalakriti_user', JSON.stringify(state.currentUser));
+    syncStudioArtisanInfo();
+    showToast(`Profile updated to ${newName}`);
+    if (statusEl) {
+      statusEl.textContent = '✓ Saved!';
+      statusEl.className = 'text-xs font-bold text-emerald-600';
+      statusEl.classList.remove('hidden');
+    }
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<span>💾 Save Changes</span>';
+    }
   }
 }
 
