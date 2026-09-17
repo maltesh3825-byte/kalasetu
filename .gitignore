@@ -1,5 +1,7 @@
 # Python local environment and runtime files
 .env
+.env*
+mobile-app/.env*
 *.py[cod]
 __pycache__/
 .venv/

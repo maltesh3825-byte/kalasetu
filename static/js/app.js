@@ -2364,6 +2364,23 @@ function resetArtisanForm() {
   state.aiResult = null;
 }
 
+// Category localization helper
+function getCategoryLabel(category) {
+  if (!category) return '';
+  const map = {
+    'Handloom & Textiles': 'cat_handloom',
+    'Pottery & Terracotta': 'cat_pottery',
+    'Brass & Metalcraft': 'cat_brass',
+    'Woodcraft': 'cat_wood',
+    'Cane & Bamboo': 'cat_cane',
+    'Tribal Jewelry': 'cat_jewelry',
+    'Folk Art & Painting': 'cat_art',
+    'All': 'cat_all'
+  };
+  const key = map[category];
+  return (key && typeof t === 'function') ? t(key) : category;
+}
+
 // Fetch and Render Products in Marketplace
 async function loadProducts() {
   const container = document.getElementById('productsGrid');
@@ -2395,7 +2412,7 @@ async function loadProducts() {
     state.products = data.products || [];
 
     if (countEl) {
-      countEl.textContent = `${state.products.length} ${currentLanguage === 'hi' ? 'शिल्प उपलब्ध' : 'crafts available'}`;
+      countEl.textContent = `${state.products.length} ${typeof t === 'function' ? t('items_available') : 'items available'}`;
     }
 
     renderProducts(state.products);
@@ -2428,6 +2445,9 @@ function renderProducts(products) {
   container.innerHTML = products.map(p => {
     const tagsList = Array.isArray(p.tags) ? p.tags.slice(0, 3) : [];
     const imageClass = p.is_enhanced ? 'studio-enhanced' : '';
+    const localizedDesc = (currentLanguage === 'hi' && p.description_hi)
+      ? p.description_hi
+      : (p['description_' + currentLanguage] || p.description_en);
 
     return `
       <div class="group bg-white rounded-2xl overflow-hidden border border-slate-200/80 hover:border-terracotta-300 hover:shadow-xl transition-all duration-300 flex flex-col">
@@ -2443,7 +2463,7 @@ function renderProducts(products) {
           
           <!-- Category Pill -->
           <span class="absolute top-3 left-3 bg-white/90 backdrop-blur-md text-xs font-semibold px-2.5 py-1 rounded-full text-slate-800 shadow-sm border border-slate-100">
-            ${p.category}
+            ${getCategoryLabel(p.category)}
           </span>
 
           <!-- MoSJE Verified Badge -->
@@ -2471,11 +2491,11 @@ function renderProducts(products) {
             </p>
 
             <p class="text-xs text-slate-600 mt-2.5 line-clamp-2 leading-relaxed">
-              ${currentLanguage === 'hi' && p.description_hi ? p.description_hi : p.description_en}
+              ${localizedDesc}
             </p>
 
             <p class="text-xs font-bold text-emerald-700 mt-2">
-              ${p.quantity || 0} item${(p.quantity || 0) === 1 ? '' : 's'} available
+              ${p.quantity || 0} ${typeof t === 'function' ? t('items_available') : 'items available'}
             </p>
 
             <!-- Tags -->
@@ -2492,7 +2512,7 @@ function renderProducts(products) {
             </button>
             <button onclick="openProductModal(${p.id})"
                     class="px-3 py-2 rounded-xl text-xs font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
-                    title="Rate and review this product">★ Rate</button>
+                    title="Rate and review this product">${typeof t === 'function' ? t('btn_rate') : '★ Rate'}</button>
 
             <button onclick="toggleWishlist(${p.id})"
                     class="p-2 rounded-xl ${state.accountWishlist.includes(p.id) ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'} hover:bg-rose-100 hover:text-rose-600 transition-colors"
@@ -2589,7 +2609,7 @@ function openProductModal(productId) {
   document.getElementById('modalImage').src = resolveImageUrl(product.image_url);
   document.getElementById('modalTitle').textContent = product.name;
   document.getElementById('modalPrice').textContent = `₹${product.price.toLocaleString('en-IN')}`;
-  document.getElementById('modalCategory').textContent = product.category;
+  document.getElementById('modalCategory').textContent = getCategoryLabel(product.category);
   document.getElementById('modalArtisanName').textContent = product.artisan_name;
   document.getElementById('modalArtisanLoc').textContent = product.artisan_location;
   const orderQuantity = document.getElementById('modalOrderQuantity');
@@ -2602,7 +2622,9 @@ function openProductModal(productId) {
     orderQuantity.disabled = maxQuantity < 2;
   }
   
-  const descText = currentLanguage === 'hi' && product.description_hi ? product.description_hi : product.description_en;
+  const descText = (currentLanguage === 'hi' && product.description_hi)
+    ? product.description_hi
+    : (product['description_' + currentLanguage] || product.description_en);
   document.getElementById('modalDesc').textContent = descText;
 
   // Heritage story & pricing justification
@@ -2817,12 +2839,32 @@ function showToast(message) {
 
 // Global hook for language changes
 window.onLanguageChanged = (lang) => {
-  if (state.products.length > 0) {
+  if (state.products && state.products.length > 0) {
     renderProducts(state.products);
+  }
+  const countEl = document.getElementById('productCountText');
+  if (countEl && state.products) {
+    countEl.textContent = `${state.products.length} ${typeof t === 'function' ? t('items_available') : 'items available'}`;
   }
   if (state.currentUser) {
     renderAccountShell();
+    if (typeof renderAccountView === 'function') {
+      renderAccountView(state.accountView);
+    }
+  }
+  if (state.selectedProductForModal) {
+    const p = state.selectedProductForModal;
+    const descEl = document.getElementById('modalDesc');
+    if (descEl) {
+      descEl.textContent = (lang === 'hi' && p.description_hi) ? p.description_hi : (p['description_' + lang] || p.description_en);
+    }
+    const catEl = document.getElementById('modalCategory');
+    if (catEl) {
+      catEl.textContent = getCategoryLabel(p.category);
+    }
   }
   const orderButton = document.querySelector('#modalPlaceOrderBtn span:last-child');
-  if (orderButton) orderButton.textContent = t('btn_place_order');
+  if (orderButton && typeof t === 'function') orderButton.textContent = t('btn_place_order');
+  const waBtn = document.querySelector('#modalWhatsAppBtn span');
+  if (waBtn && typeof t === 'function') waBtn.textContent = t('btn_whatsapp_inquire');
 };

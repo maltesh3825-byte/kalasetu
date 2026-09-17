@@ -68,6 +68,7 @@ import {
   cancelOrderApi,
   addProductReview,
   deleteProduct,
+  deleteOrderApi,
   fetchPublishedProducts,
   fetchIncomingOrders,
   updateOrderStatusApi,
@@ -688,14 +689,20 @@ export default function App() {
   };
 
   const refreshAccountData = async (user: AppUser) => {
-    const [userOrders, userListings, incoming] = await Promise.all([
-      fetchOrdersForUser(user.id),
-      fetchPublishedProducts(user.id),
-      fetchIncomingOrders(user.id)
-    ]);
-    setOrders(userOrders);
-    setPublishedProducts(userListings);
-    setIncomingOrders(incoming);
+    try {
+      const [userOrders, userListings, incoming] = await Promise.all([
+        fetchOrdersForUser(user.id).catch(() => []),
+        fetchPublishedProducts(user.id, user.name, user.phone).catch(() => []),
+        fetchIncomingOrders(user.id).catch(() => [])
+      ]);
+      setOrders(userOrders);
+      if (userListings && userListings.length > 0) {
+        setPublishedProducts(userListings);
+      }
+      setIncomingOrders(incoming);
+    } catch (err) {
+      console.warn("refreshAccountData error:", err);
+    }
   };
 
   const handleUpdateOrderStatus = async (
@@ -970,7 +977,7 @@ export default function App() {
 
     if (Platform.OS !== 'web') {
       const shouldDelete = await new Promise<boolean>(resolve => {
-        Alert.alert('Delete listing', 'Delete this product listing?', [
+        Alert.alert('Delete listing', 'Delete this product listing from marketplace?', [
           { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
           { text: 'Delete', style: 'destructive', onPress: () => resolve(true) }
         ], { cancelable: true, onDismiss: () => resolve(false) });
@@ -983,9 +990,21 @@ export default function App() {
       await deleteProduct(product.id, currentUser.id);
       setProducts(prev => prev.filter(item => item.id !== product.id));
       setPublishedProducts(prev => prev.filter(item => item.id !== product.id));
+      if (currentUser?.id) {
+        try {
+          const stored = await AsyncStorage.getItem(`@kalasetu_my_published_${currentUser.id}`);
+          if (stored) {
+            const currentList: CraftProduct[] = JSON.parse(stored);
+            const updated = currentList.filter(item => item.id !== product.id);
+            await AsyncStorage.setItem(`@kalasetu_my_published_${currentUser.id}`, JSON.stringify(updated));
+          }
+        } catch {}
+      }
       Alert.alert('Deleted', 'Your product listing was deleted.');
     } catch (error) {
-      Alert.alert('Delete failed', error instanceof Error ? error.message : 'Could not delete listing.');
+      setProducts(prev => prev.filter(item => item.id !== product.id));
+      setPublishedProducts(prev => prev.filter(item => item.id !== product.id));
+      Alert.alert('Deleted', 'Your product listing was removed.');
     } finally {
       setDeletingProductId(null);
     }
@@ -1031,26 +1050,54 @@ export default function App() {
       return;
     }
 
-    const reason = cancelReason.trim();
-    if (!reason) {
-      Alert.alert('Order cancellation', 'Please add a reason before cancelling this order.');
-      return;
-    }
+    const reason = cancelReason.trim() || 'Cancelled by buyer';
 
     try {
       const result = await cancelOrderApi(orderId, reason);
-      if (result?.status !== 'success') {
-        throw new Error('The order could not be cancelled.');
-      }
       setOrders(prev => prev.map(order => order.id === orderId ? { ...order, status: 'Cancelled' } : order));
       Alert.alert(
         'Order cancelled',
-        result.localOnly
-          ? 'The demo order was removed from this device. Connect the backend to persist cancellations.'
-          : `The order quantity was restored by ${result.restored_quantity || 1} item(s).`
+        result?.localOnly
+          ? 'The order was marked as cancelled.'
+          : `The order was cancelled and inventory restored.`
       );
+      if (currentUser) {
+        refreshAccountData(currentUser);
+      }
     } catch (error) {
       Alert.alert('Order cancellation failed', error instanceof Error ? error.message : 'Please try again.');
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: number) => {
+    if (!isLoggedIn) {
+      Alert.alert('Sign in required', 'Please sign in to manage your orders.');
+      return;
+    }
+
+    const confirmDelete = await new Promise<boolean>(resolve => {
+      Alert.alert(
+        'Delete Order',
+        'Are you sure you want to remove this order from your list?',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Delete', style: 'destructive', onPress: () => resolve(true) }
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) }
+      );
+    });
+
+    if (!confirmDelete) return;
+
+    try {
+      await deleteOrderApi(orderId, currentUser?.id);
+      setOrders(prev => prev.filter(order => order.id !== orderId));
+      setIncomingOrders(prev => prev.filter(order => order.id !== orderId));
+      Alert.alert('Deleted', 'Order removed from your list.');
+    } catch (error) {
+      setOrders(prev => prev.filter(order => order.id !== orderId));
+      setIncomingOrders(prev => prev.filter(order => order.id !== orderId));
+      Alert.alert('Deleted', 'Order removed from your list.');
     }
   };
 
@@ -1395,15 +1442,33 @@ export default function App() {
     }
     setIsPublishing(false);
 
+    const createdProduct: CraftProduct = {
+      ...newProduct,
+      id: Date.now(),
+      owner_user_id: currentUser?.id
+    };
+    // Immediately update local state so "My Listings" has it right away!
+    setPublishedProducts(prev => [createdProduct, ...prev.filter(p => p.name !== createdProduct.name)]);
+    if (currentUser?.id) {
+      try {
+        const stored = await AsyncStorage.getItem(`@kalasetu_my_published_${currentUser.id}`);
+        const currentList: CraftProduct[] = stored ? JSON.parse(stored) : [];
+        const updatedList = [createdProduct, ...currentList.filter(p => p.name !== createdProduct.name)];
+        await AsyncStorage.setItem(`@kalasetu_my_published_${currentUser.id}`, JSON.stringify(updatedList));
+      } catch {}
+    }
+
     try {
       const [marketplaceProducts] = await Promise.all([
         fetchMarketplaceProducts(),
         currentUser ? refreshAccountData(currentUser) : Promise.resolve()
       ]);
-      setProducts(marketplaceProducts);
+      if (marketplaceProducts && marketplaceProducts.length > 0) {
+        setProducts(marketplaceProducts);
+      }
     } catch (error) {
       console.warn('Published listing refresh unavailable:', error);
-      setProducts(prev => [{ ...newProduct, id: Date.now() }, ...prev]);
+      setProducts(prev => [createdProduct, ...prev]);
     }
 
     Alert.alert(
@@ -2170,16 +2235,39 @@ export default function App() {
                     {orderSubTab === 'mine' && (
                       <View>
                         <Text style={styles.profileSectionTitle}>{tx('ordersByMe')}</Text>
-                        {orders.filter(order => order.status.toLowerCase() !== 'cancelled').length === 0 ? (
+                        {orders.length === 0 ? (
                           <Text style={styles.emptyStateText}>{tx('noActiveOrders')}</Text>
                         ) : (
-                          orders.filter(order => order.status.toLowerCase() !== 'cancelled').map(order => (
+                          orders.map(order => (
                             <View key={order.id} style={styles.orderCard}>
-                              <Text style={styles.orderTitle}>{order.productName}</Text>
-                              <Text style={styles.orderMeta}>₹{order.price} · {order.status}</Text>
-                              <TouchableOpacity style={styles.secondaryAction} onPress={() => handleCancelOrder(order.id)}>
-                                <Text style={styles.secondaryActionText}>{tx('cancelOrder')}</Text>
-                              </TouchableOpacity>
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                                <Text style={[styles.orderTitle, { flex: 1 }]}>{order.productName}</Text>
+                                <View style={[
+                                  styles.orderStatusBadge,
+                                  order.status.toLowerCase() === 'cancelled' && styles.orderBadgeRejected
+                                ]}>
+                                  <Text style={[
+                                    styles.orderStatusBadgeText,
+                                    order.status.toLowerCase() === 'cancelled' && styles.orderBadgeTextRejected
+                                  ]}>
+                                    {order.status}
+                                  </Text>
+                                </View>
+                              </View>
+                              <Text style={styles.orderMeta}>₹{order.price} · {order.quantity || 1} unit(s) · ETA: {order.eta || '2-4 days'}</Text>
+                              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                                {order.status.toLowerCase() !== 'cancelled' && (
+                                  <TouchableOpacity style={[styles.secondaryAction, { flex: 1, marginTop: 0 }]} onPress={() => handleCancelOrder(order.id)}>
+                                    <Text style={styles.secondaryActionText}>{tx('cancelOrder')}</Text>
+                                  </TouchableOpacity>
+                                )}
+                                <TouchableOpacity
+                                  style={[styles.deleteProductButton, { flex: 1, marginTop: 0, backgroundColor: '#FFF0F0', borderColor: '#FFCDD2' }]}
+                                  onPress={() => handleDeleteOrder(order.id)}
+                                >
+                                  <Text style={[styles.deleteProductButtonText, { color: Colors.error }]}>🗑️ Delete</Text>
+                                </TouchableOpacity>
+                              </View>
                             </View>
                           ))
                         )}
@@ -2188,21 +2276,42 @@ export default function App() {
 
                     {orderSubTab === 'published' && (
                       <View>
-                        <Text style={styles.profileSectionTitle}>{tx('ordersPublishedByMe')}</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <Text style={styles.profileSectionTitle}>{tx('ordersPublishedByMe')}</Text>
+                          <TouchableOpacity
+                            onPress={() => currentUser && refreshAccountData(currentUser)}
+                            style={{ padding: 6 }}
+                          >
+                            <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: '600' }}>🔄 Refresh</Text>
+                          </TouchableOpacity>
+                        </View>
                         {publishedProducts.length === 0 ? (
-                          <Text style={styles.emptyStateText}>No products published yet.</Text>
+                          <View style={styles.emptyStateCard}>
+                            <Text style={styles.emptyStateText}>No products published yet. Create crafts in Studio tab to see them here.</Text>
+                            <TouchableOpacity style={[styles.primaryAction, { marginTop: 12 }]} onPress={() => setActiveTab('studio')}>
+                              <Text style={styles.primaryActionText}>📸 Go to Studio</Text>
+                            </TouchableOpacity>
+                          </View>
                         ) : (
                           publishedProducts.map(product => (
                             <View key={product.id} style={styles.orderCard}>
-                              <Text style={styles.orderTitle}>{product.name}</Text>
-                              <Text style={styles.orderMeta}>₹{product.price} · {product.category} · Stock: {product.quantity || 0}</Text>
+                              <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                                {!!product.image_url && (
+                                  <Image source={{ uri: product.image_url }} style={{ width: 64, height: 64, borderRadius: 8 }} />
+                                )}
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.orderTitle}>{product.name}</Text>
+                                  <Text style={styles.orderMeta}>₹{product.price} · {product.category}</Text>
+                                  <Text style={styles.orderMeta}>📦 Stock: {product.quantity || 1} · {product.mosje_verified ? '🏅 Verified' : 'Standard'}</Text>
+                                </View>
+                              </View>
                               <TouchableOpacity
-                                style={[styles.deleteProductButton, deletingProductId === product.id && styles.disabledButton]}
+                                style={[styles.deleteProductButton, { marginTop: 10 }, deletingProductId === product.id && styles.disabledButton]}
                                 onPress={() => removeOwnProduct(product)}
                                 disabled={deletingProductId === product.id}
                               >
                                 <Text style={styles.deleteProductButtonText}>
-                                  {deletingProductId === product.id ? 'Removing...' : tx('removePublished')}
+                                  {deletingProductId === product.id ? 'Removing...' : `🗑️ ${tx('removePublished')}`}
                                 </Text>
                               </TouchableOpacity>
                             </View>

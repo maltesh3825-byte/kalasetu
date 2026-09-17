@@ -1514,6 +1514,40 @@ def cancel_order(order_id: int, payload: CancelOrderRequest):
             pass
 
 
+@app.delete("/api/orders/{order_id}")
+def delete_order_endpoint(order_id: int):
+    """Delete an order record and restore product inventory if order was active."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT user_id, product_id, quantity, status FROM orders WHERE id = ?", (order_id,))
+        order_row = cursor.fetchone()
+        if not order_row:
+            return {"status": "success", "message": "Order already deleted", "order_id": order_id}
+
+        # Restore product quantity if the order wasn't cancelled or rejected yet
+        if str(order_row["status"]).lower() not in ("cancelled", "rejected"):
+            try:
+                cursor.execute(
+                    "UPDATE products SET quantity = quantity + ? WHERE id = ?",
+                    (int(order_row["quantity"] or 1), int(order_row["product_id"]))
+                )
+            except Exception:
+                pass
+
+        cursor.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+        conn.commit()
+        return {"status": "success", "order_id": order_id, "message": "Order deleted"}
+    except Exception as exc:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Delete order failed: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 def persist_institutional_request(payload: InstitutionalRequestCreate):
     """Shared DB persistence for institutional RFQ payloads, including offline queue replay."""
     if not payload.artisan_name.strip() or not payload.email.strip():

@@ -7,12 +7,22 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+                "EXPO_PUBLIC_BACKEND_URL": "https://kalakriti-api-nmnz.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://fcabjzylxzdcqzrloaqr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjYWJqenlseHpkY3F6cmxvYXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMDA4NTAsImV4cCI6MjEwNDc3Njg1MH0.z7-C5sww2E6GRqip6HBJmLdoTHJAWZl70TYXqCJaiBg"
       }
     },
     "production": {
       "distribution": "store",
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+                "EXPO_PUBLIC_BACKEND_URL": "https://kalakriti-api-nmnz.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://fcabjzylxzdcqzrloaqr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjYWJqenlseHpkY3F6cmxvYXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMDA4NTAsImV4cCI6MjEwNDc3Njg1MH0.z7-C5sww2E6GRqip6HBJmLdoTHJAWZl70TYXqCJaiBg"
       }
     }
   }

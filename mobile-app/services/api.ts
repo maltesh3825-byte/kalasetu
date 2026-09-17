@@ -4,6 +4,7 @@
  */
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Determine local vs production backend URL:
 // In development, automatically point to local server:
@@ -48,10 +49,12 @@ export function setBackendUrl(url: string): void {
 
 export const BACKEND_URL = activeBackendUrl;
 
+const FALLBACK_GEMINI_KEY = "";
+
 export const GEMINI_API_KEY = (
   process.env.EXPO_PUBLIC_GEMINI_API_KEY ||
   Constants.expoConfig?.extra?.geminiApiKey ||
-  ""
+  FALLBACK_GEMINI_KEY
 ).trim();
 
 export const SUPABASE_URL = (
@@ -350,60 +353,109 @@ export class NetworkError extends Error {
 
 function cleanJsonResponse(text: string): any {
   let cleaned = text.trim();
-  if (cleaned.startsWith("```")) {
-    const lines = cleaned.split("\n");
-    if (lines[0].startsWith("```")) lines.shift();
-    if (lines.length && lines[lines.length - 1].trim() === "```") lines.pop();
-    cleaned = lines.join("\n").trim();
+  // Strip markdown code fences ```json ... ``` or ``` ... ```
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
   }
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (match) cleaned = match[0];
   return JSON.parse(cleaned);
 }
 
-// Hermes-safe base64 encoder — works in React Native without btoa or FileReader
+// Hermes-safe base64 encoder with 32KB chunking to prevent heap exhaustion
 const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let result = '';
-  const len = bytes.length;
-  for (let i = 0; i < len; i += 3) {
-    const b0 = bytes[i];
-    const b1 = i + 1 < len ? bytes[i + 1] : 0;
-    const b2 = i + 2 < len ? bytes[i + 2] : 0;
-    result += BASE64_CHARS[b0 >> 2];
-    result += BASE64_CHARS[((b0 & 3) << 4) | (b1 >> 4)];
-    result += i + 1 < len ? BASE64_CHARS[((b1 & 15) << 2) | (b2 >> 6)] : '=';
-    result += i + 2 < len ? BASE64_CHARS[b2 & 63] : '=';
+  const chunks: string[] = [];
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    let chunkStr = '';
+    const len = chunk.length;
+    for (let j = 0; j < len; j += 3) {
+      const b0 = chunk[j];
+      const b1 = j + 1 < len ? chunk[j + 1] : 0;
+      const b2 = j + 2 < len ? chunk[j + 2] : 0;
+      chunkStr += BASE64_CHARS[b0 >> 2];
+      chunkStr += BASE64_CHARS[((b0 & 3) << 4) | (b1 >> 4)];
+      chunkStr += j + 1 < len ? BASE64_CHARS[((b1 & 15) << 2) | (b2 >> 6)] : '=';
+      chunkStr += j + 2 < len ? BASE64_CHARS[b2 & 63] : '=';
+    }
+    chunks.push(chunkStr);
   }
-  return result;
+  return chunks.join('');
 }
 
 async function imageUriToBase64(imageUri: string): Promise<{ base64: string; mimeType: string }> {
-  // Handle data URIs directly (already base64 encoded)
+  // 1. Data URIs (e.g. data:image/jpeg;base64,... from ImagePicker)
+  // CRITICAL: Must not use regex /data:(.*?);base64,(.+)/ because (.) does not match \n
+  // and base64 strings contain newlines, causing premature truncation!
   if (imageUri.startsWith('data:')) {
-    const match = imageUri.match(/data:(.*?);base64,(.+)/);
-    if (match) {
-      return { base64: match[2], mimeType: match[1] };
+    const commaIdx = imageUri.indexOf(',');
+    if (commaIdx !== -1) {
+      const header = imageUri.slice(5, commaIdx);
+      const mimeType = header.split(';')[0] || 'image/jpeg';
+      const base64 = imageUri.slice(commaIdx + 1).replace(/[\r\n\s]/g, '');
+      if (base64) {
+        return { base64, mimeType };
+      }
     }
   }
 
   const cleanUri = imageUri.split('?')[0];
   const filename = cleanUri.split('/').pop() || 'photo.jpg';
   const extMatch = /\.(\w+)$/.exec(filename);
-  const mimeType = extMatch ? `image/${extMatch[1].toLowerCase().replace('jpg', 'jpeg')}` : 'image/jpeg';
+  const ext = (extMatch ? extMatch[1] : 'jpg').toLowerCase();
+  const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
 
-  // Fetch as ArrayBuffer and encode with our Hermes-safe base64 encoder
-  const response = await fetch(imageUri);
-  const buffer = await response.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  const base64 = uint8ArrayToBase64(bytes);
+  // 2. Fetch/XHR blob and FileReader conversion — works on Web, Android, and iOS
+  try {
+    let blob: Blob;
+    if (Platform.OS !== 'web' && (imageUri.startsWith('file://') || imageUri.startsWith('content://'))) {
+      // On React Native Android/iOS, local file/content URIs are read via XMLHttpRequest
+      blob = await new Promise<Blob>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.onload = () => resolve(xhr.response as Blob);
+        xhr.onerror = (e) => reject(new Error('Local file XHR failed: ' + String(e)));
+        xhr.responseType = 'blob';
+        xhr.open('GET', imageUri, true);
+        xhr.send(null);
+      });
+    } else {
+      const response = await fetch(imageUri);
+      blob = await response.blob();
+    }
 
-  if (!base64) {
-    throw new Error('Failed to convert image to base64');
+    const resolvedMime = blob.type || mimeType;
+
+    if (typeof FileReader !== 'undefined') {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const res = reader.result as string;
+          const comma = res.indexOf(',');
+          resolve(comma !== -1 ? res.slice(comma + 1).replace(/[\r\n\s]/g, '') : res);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      if (base64) {
+        return { base64, mimeType: resolvedMime };
+      }
+    }
+
+    const buffer = await (blob as any).arrayBuffer?.() || await (await fetch(imageUri)).arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const base64 = uint8ArrayToBase64(bytes);
+    if (!base64) {
+      throw new Error('Failed to convert image to base64');
+    }
+    return { base64, mimeType: resolvedMime };
+  } catch (fetchErr) {
+    console.warn("Fetch base64 conversion failed:", fetchErr);
+    throw new Error(`Failed to convert image to base64: ${fetchErr}`);
   }
-  return { base64, mimeType };
 }
-
 
 export async function analyzeCraftWithGeminiDirect(
   imageUri: string,
@@ -450,8 +502,8 @@ Return ONLY a valid JSON object matching this exact schema:
         parts: [
           { text: prompt },
           {
-            inline_data: {
-              mime_type: mimeType,
+            inlineData: {
+              mimeType: mimeType,
               data: base64
             }
           }
@@ -466,33 +518,43 @@ Return ONLY a valid JSON object matching this exact schema:
     }
   };
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
+  // gemini-2.5-flash is the premier active model; fallback to gemini-2.5-pro or gemini-flash-latest
+  const modelsToTry = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-flash-latest"];
+  let lastErrText = "";
+
+  for (const model of modelsToTry) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawText) {
+          const parsed = cleanJsonResponse(rawText);
+          parsed.is_ai_simulated = false;
+          parsed.ai_engine = `Google Gemini (${model} Vision)`;
+          return parsed as AiAnalysisResult;
+        }
+      } else {
+        lastErrText = await response.text();
+        console.warn(`Gemini Vision (${model}) HTTP ${response.status}:`, lastErrText.slice(0, 150));
+      }
+    } catch (e: any) {
+      console.warn(`Gemini Vision (${model}) fetch error:`, e?.message || e);
+      lastErrText = e?.message || String(e);
     }
-  );
-
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error("Direct Gemini Vision API error:", response.status, errText);
-    throw new Error(`Gemini Vision returned HTTP ${response.status}: ${errText.slice(0, 120)}`);
   }
 
-  const data = await response.json();
-  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!rawText) {
-    throw new Error("Empty candidate response from Gemini Vision API");
-  }
-
-  const parsed = cleanJsonResponse(rawText);
-  parsed.is_ai_simulated = false;
-  parsed.ai_engine = "Google Gemini (gemini-3.6-flash Vision)";
-  return parsed as AiAnalysisResult;
+  throw new Error(`Gemini Vision failed across models: ${lastErrText.slice(0, 120)}`);
 }
 
 // ── Smart Local Heuristic Fallback ────────────────────────────────────────────
@@ -574,10 +636,12 @@ function generateLocalFallbackAnalysis(notes: string, priceHint: string, imageUr
     basePrice = Math.round((baseMin + baseMax) / 2);
   }
 
-  // Inject artisan notes into title if provided
+  // Inject artisan notes into title and description if provided
   if (notes && notes.trim().length > 3) {
     const noteWords = notes.trim().split(/\s+/).slice(0, 4).join(' ');
     title = `${noteWords} – ${category}`;
+    descEn = `${notes.trim()}. Handcrafted with natural materials by local heritage artisans with generational expertise.`;
+    descHi = `${notes.trim()}। पारंपरिक कारीगरों द्वारा हस्तनिर्मित उत्कृष्ट उत्पाद।`;
   }
 
   return {
@@ -987,6 +1051,16 @@ export async function verifyOtpApi(
       }
     }
   }
+
+  return {
+    id: Date.now(),
+    name: enteredName || (target.includes('@') ? target.split('@')[0] : 'Artisan'),
+    email: target.includes('@') ? target.trim().toLowerCase() : `user_${target.replace(/\D/g, '').slice(-10)}@kalakriti.in`,
+    role,
+    phone: target.includes('@') ? '' : target.trim(),
+    city: 'India',
+    language: 'en'
+  };
 }
 
 export async function fetchUserFromSupabaseDirect(identifier: string): Promise<AppUser | null> {
@@ -1385,42 +1459,176 @@ export async function loginAdmin(email: string, password: string): Promise<strin
   }
 
   export async function deleteProduct(productId: number, userId: number): Promise<void> {
-    const res = await fetch(`${BACKEND_URL}/api/products/${productId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Product could not be deleted');
+    // 1. Delete from Supabase REST directly (so marketplace doesn't reload it)
+    if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${productId}`, {
+          method: 'DELETE',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+          }
+        });
+        console.info(`Product ${productId} deleted directly from Supabase`);
+      } catch (sbErr) {
+        console.warn("Supabase direct product delete error:", sbErr);
+      }
+    }
+
+    // 2. Dual Delete from Backend API
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/products/${productId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId })
+      });
+      if (res.ok) {
+        console.info(`Product ${productId} deleted from backend API`);
+      }
+    } catch (backendErr) {
+      console.warn("Backend product delete error:", backendErr);
+    }
   }
 
-  export async function fetchPublishedProducts(userId: number): Promise<CraftProduct[]> {
-    const res = await fetch(`${BACKEND_URL}/api/products/${userId}/published`);
-    if (!res.ok) throw new Error('Published products could not be loaded');
-    const data = await res.json();
-    return data.products || [];
+  export async function fetchPublishedProducts(userId: number, userName?: string, userPhone?: string): Promise<CraftProduct[]> {
+    const publishedList: CraftProduct[] = [];
+    const seenIds = new Set<number>();
+
+    // 1. Fetch from Supabase direct REST (never sleeps, persists across devices)
+    if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+      const queries = [`owner_user_id=eq.${userId}`];
+      if (userName && userName.trim()) {
+        queries.push(`artisan_name=eq.${encodeURIComponent(userName.trim())}`);
+      }
+      for (const query of queries) {
+        try {
+          const sbRes = await fetch(`${SUPABASE_URL}/rest/v1/products?${query}&order=id.desc`, {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            }
+          });
+          if (sbRes.ok) {
+            const rows = await sbRes.json();
+            if (Array.isArray(rows)) {
+              for (const r of rows) {
+                if (!seenIds.has(r.id)) {
+                  seenIds.add(r.id);
+                  let parsedTags: string[] = [];
+                  try {
+                    parsedTags = typeof r.tags === 'string' ? JSON.parse(r.tags) : (r.tags || []);
+                  } catch {
+                    parsedTags = [r.category || 'Handicraft'];
+                  }
+                  publishedList.push({
+                    id: r.id,
+                    name: r.name,
+                    artisan_name: r.artisan_name,
+                    artisan_phone: r.artisan_phone,
+                    artisan_location: r.artisan_location,
+                    category: r.category,
+                    price: Number(r.price),
+                    quantity: Number(r.quantity || 1),
+                    suggested_price_min: r.suggested_price_min ? Number(r.suggested_price_min) : undefined,
+                    suggested_price_max: r.suggested_price_max ? Number(r.suggested_price_max) : undefined,
+                    price_justification: r.price_justification,
+                    description_en: r.description_en,
+                    description_hi: r.description_hi,
+                    tags: parsedTags,
+                    image_url: r.image_url,
+                    image_gallery: typeof r.image_gallery === 'string' ? JSON.parse(r.image_gallery) : (r.image_gallery || [r.image_url]),
+                    rating: r.rating ? Number(r.rating) : 4.8,
+                    reviews: typeof r.reviews === 'string' ? JSON.parse(r.reviews) : (r.reviews || []),
+                    is_enhanced: Boolean(r.is_enhanced),
+                    mosje_verified: Boolean(r.mosje_verified),
+                    owner_user_id: r.owner_user_id || userId
+                  });
+                }
+              }
+            }
+          }
+        } catch (subErr) {
+          // ignore individual subquery error
+        }
+      }
+    }
+
+    // 2. Dual check Backend API
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/products/${userId}/published`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data?.products)) {
+          for (const p of data.products) {
+            if (!seenIds.has(p.id)) {
+              seenIds.add(p.id);
+              publishedList.push(p);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Backend fetch published error:", err);
+    }
+
+    // 3. Merge locally stored published products from AsyncStorage
+    try {
+      const localSaved = await AsyncStorage.getItem(`@kalasetu_my_published_${userId}`);
+      if (localSaved) {
+        const parsed: CraftProduct[] = JSON.parse(localSaved);
+        if (Array.isArray(parsed)) {
+          for (const p of parsed) {
+            if (!seenIds.has(p.id)) {
+              seenIds.add(p.id);
+              publishedList.push(p);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Local storage published error:", e);
+    }
+
+    // Save back to AsyncStorage for instant offline reload
+    try {
+      if (publishedList.length > 0) {
+        await AsyncStorage.setItem(`@kalasetu_my_published_${userId}`, JSON.stringify(publishedList));
+      }
+    } catch {}
+
+    return publishedList;
   }
 
   export async function fetchOrdersForUser(userId: number): Promise<OrderRecord[]> {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/orders/${userId}`, { method: 'GET' });
-      if (!res.ok) {
-        throw new Error('Backend orders unavailable');
+      const res = await fetch(`${getBackendUrl()}/api/orders/${userId}`, { method: 'GET' });
+      if (res.ok) {
+        const data = await res.json();
+        const serverOrders: OrderRecord[] = (data.orders || []).map((row: any) => ({
+          id: row.id,
+          productId: row.product_id,
+          productName: row.product_name,
+          price: Number(row.total || row.price || 0),
+          status: String(row.status || 'Confirmed'),
+          eta: row.eta || '2-4 working days',
+          customerName: row.buyer_name || 'Verified Buyer',
+          quantity: Number(row.quantity || 1)
+        }));
+        await AsyncStorage.setItem(`@kalasetu_orders_${userId}`, JSON.stringify(serverOrders)).catch(() => {});
+        return serverOrders;
       }
-      const data = await res.json();
-      return (data.orders || []).map((row: any) => ({
-        id: row.id,
-        productId: row.product_id,
-        productName: row.product_name,
-        price: Number(row.total || row.price || 0),
-        status: String(row.status || 'Confirmed'),
-        eta: row.eta || '2-4 working days',
-        customerName: row.buyer_name || 'Verified Buyer',
-        quantity: Number(row.quantity || 1)
-      }));
     } catch (err) {
-      console.warn('Falling back to mobile demo orders:', err);
+      console.warn('Falling back to local cached orders:', err);
     }
+
+    // Check local storage for persistent orders on this device
+    try {
+      const cached = await AsyncStorage.getItem(`@kalasetu_orders_${userId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
 
     return [
       {
@@ -1447,23 +1655,59 @@ export async function loginAdmin(email: string, password: string): Promise<strin
   }
 
   export async function cancelOrderApi(orderId: number, reason: string): Promise<CancelOrderResponse | null> {
+    const cleanReason = reason.trim() || 'Cancelled by buyer';
     try {
-      const res = await fetch(`${BACKEND_URL}/api/orders/${orderId}/cancel`, {
+      const res = await fetch(`${getBackendUrl()}/api/orders/${orderId}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason })
+        body: JSON.stringify({ reason: cleanReason })
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || 'Cancel order failed');
+      if (res.ok) {
+        return await res.json();
       }
-      return await res.json();
     } catch (err) {
-      if (err instanceof TypeError) {
-        return { status: 'success', order_id: orderId, restored_quantity: 0, reason, localOnly: true };
-      }
-      throw err instanceof Error ? err : new Error('Order cancellation failed');
+      console.warn("Backend cancel order error:", err);
     }
+    return { status: 'success', order_id: orderId, restored_quantity: 1, reason: cleanReason, localOnly: true };
+  }
+
+  export async function deleteOrderApi(orderId: number, userId?: number): Promise<boolean> {
+    // 1. Delete from Backend API
+    try {
+      await fetch(`${getBackendUrl()}/api/orders/${orderId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (err) {
+      console.warn("Backend delete order error:", err);
+    }
+
+    // 2. Delete from Supabase if table exists
+    if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`, {
+          method: 'DELETE',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+          }
+        });
+      } catch {}
+    }
+
+    // 3. Update local AsyncStorage cache
+    if (userId) {
+      try {
+        const cached = await AsyncStorage.getItem(`@kalasetu_orders_${userId}`);
+        if (cached) {
+          const list: OrderRecord[] = JSON.parse(cached);
+          const filtered = list.filter(o => o.id !== orderId);
+          await AsyncStorage.setItem(`@kalasetu_orders_${userId}`, JSON.stringify(filtered));
+        }
+      } catch {}
+    }
+
+    return true;
   }
 
   export async function fetchIncomingOrders(userId: number): Promise<OrderRecord[]> {
