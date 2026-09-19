@@ -7,7 +7,7 @@
 
 ---
 
-## 🎯 Executive Summary & Problem Fit
+##  Executive Summary & Problem Fit
 
 Traditional Indian artisans face steep digital barriers:
 - **Literacy & Language:** Inability to write optimized product titles, English/Hindi descriptions, and SEO tags.
@@ -18,7 +18,7 @@ Traditional Indian artisans face steep digital barriers:
 
 ---
 
-## ✨ Key Platform Capabilities
+##  Key Platform Capabilities
 
 | Capability | How KalaSetu Solves It |
 | :--- | :--- |
@@ -64,7 +64,7 @@ Traditional Indian artisans face steep digital barriers:
 
 ---
 
-## 📂 Project Repository Structure
+##  Project Repository Structure
 
 ```
 artisan-market-linkage/
@@ -140,7 +140,7 @@ artisan-market-linkage/
 
 ---
 
-## 🧪 Demo Test Credentials
+##  Demo Test Credentials
 
 To quickly evaluate user journeys without registering:
 
