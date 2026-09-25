@@ -744,7 +744,7 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div class="lg:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4 mb-6">
+        <div class="flex items-start justify-between gap-4 mb-5">
           <div>
             <p class="text-xs font-extrabold uppercase tracking-wider text-terracotta-600">Step 1</p>
             <h3 class="text-2xl font-black text-slate-900" data-i18n="bulk_form_title">Create a bulk buyer request</h3>
@@ -753,7 +753,55 @@
           <span class="text-3xl">📋</span>
         </div>
 
+        <!-- AI Procurement Assistant Banner -->
+        <div class="mb-5 p-4 rounded-2xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-100 border border-amber-200">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-lg">🪄</span>
+                <h4 class="text-sm font-black text-slate-900">AI Institutional Procurement Assistant</h4>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200 text-amber-900 uppercase tracking-wide">Gemini Auto-Fill</span>
+              </div>
+              <p class="text-xs text-slate-600 mt-0.5">Let AI generate formal institutional product names, HSN/GST tax codes, and procurement pitch specifications while you control production capacity.</p>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button type="button" id="loadCatalogRfqBtn" class="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all hover:scale-105 active:scale-95">
+                <span>📦 From My Catalog</span>
+              </button>
+              <button type="button" id="aiAutoFillRfqBtn" class="px-3.5 py-2 bg-gradient-to-r from-terracotta-600 to-amber-600 hover:from-terracotta-700 hover:to-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md transition-all hover:scale-105 active:scale-95">
+                <span id="aiAutoFillBtnIcon">✨</span>
+                <span id="aiAutoFillBtnText">AI Auto-Fill Pitch</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <form id="institutionalRequestForm" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Institutional Product Name -->
+          <label class="sm:col-span-2 text-xs font-bold text-slate-700 required-label">
+            <span>Product / Craft Name for Bulk Procurement</span>
+            <div class="flex gap-2 mt-1">
+              <input id="institutionalProductName" required class="institutional-input flex-1" placeholder="e.g. Handcrafted Madhubani Silk Shawl (Set of 100) or Handloom Cotton Dupatta">
+              <button type="button" id="aiGenerateNameDescBtn" class="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1 whitespace-nowrap" title="Generate formal institutional specifications">
+                <span>🪄 AI Analyze</span>
+              </button>
+            </div>
+          </label>
+
+          <!-- AI Compliance & Tax Badge -->
+          <div id="aiBulkTaxBadge" class="hidden sm:col-span-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs transition-all">
+            <div class="flex items-center gap-2">
+              <span class="text-base">🏛️</span>
+              <div>
+                <span class="font-bold text-emerald-900">Compliance & Tax Codes:</span>
+                <span id="aiBulkHsnText" class="font-mono text-emerald-950 font-bold ml-1"></span>
+                <span class="text-emerald-400 mx-1">|</span>
+                <span id="aiBulkGstText" class="text-emerald-800 font-semibold"></span>
+              </div>
+            </div>
+            <span class="text-[11px] font-bold text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded-md">GeM & ONDC Ready</span>
+          </div>
+
           <label class="text-xs font-bold text-slate-700 required-label"><span data-i18n="bulk_cluster_label">Artisan / cluster name</span>
             <input id="institutionalName" required class="institutional-input" placeholder="Your name or cooperative">
           </label>
@@ -769,9 +817,9 @@
           <label class="text-xs font-bold text-slate-700"><span data-i18n="bulk_target_label">Preferred Bulk Outlet / Target Buyer (optional)</span>
             <select id="institutionalTargetBuyer" class="institutional-input">
               <option value="Open to all">Anyone / Open to all</option>
-              <option value="Government">Government</option>
-              <option value="Corporate">Corporates</option>
-              <option value="Retail chain">Retail chain</option>
+              <option value="Government">Government (GeM)</option>
+              <option value="Corporate">Corporates (Festive & Souvenirs)</option>
+              <option value="Retail chain">Retail chain (Boutique / Export)</option>
             </select>
           </label>
           <label class="text-xs font-bold text-slate-700 required-label"><span data-i18n="bulk_cat_label">Product category</span>
@@ -793,13 +841,22 @@
           <label class="text-xs font-bold text-slate-700 required-label"><span data-i18n="bulk_lead_time_label">Production / Dispatch lead time</span>
             <input id="institutionalLeadTime" class="institutional-input" placeholder="7-15 working days">
           </label>
-          <label class="sm:col-span-2 text-xs font-bold text-slate-700"><span data-i18n="bulk_notes_label">What should the buyer know?</span>
+          <label class="sm:col-span-2 text-xs font-bold text-slate-700"><span data-i18n="bulk_notes_label">What should the buyer know? (Packaging, specs, certifications)</span>
+            <div class="flex flex-wrap gap-1.5 my-1.5">
+              <button type="button" class="rfq-spec-chip text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded-full font-medium text-slate-700 border border-slate-200 transition-colors" data-snippet="Corrugated export-grade carton packaging with moisture barrier.">+ Export Packaging</button>
+              <button type="button" class="rfq-spec-chip text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded-full font-medium text-slate-700 border border-slate-200 transition-colors" data-snippet="Custom laser engraving / corporate logo embossing available on orders >50 units.">+ Custom Logo/Branding</button>
+              <button type="button" class="rfq-spec-chip text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded-full font-medium text-slate-700 border border-slate-200 transition-colors" data-snippet="MoSJE certified artisan cluster, Handcrafted mark & GI compliance assured.">+ GI & Certification</button>
+              <button type="button" class="rfq-spec-chip text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded-full font-medium text-slate-700 border border-slate-200 transition-colors" data-snippet="Pre-production sample piece available within 3 working days.">+ Free Sample</button>
+            </div>
             <textarea id="institutionalRequirements" rows="4" class="institutional-input" placeholder="Packaging, customization, certifications, quality sample notes, dispatch detail, or any buyer requirement."></textarea>
           </label>
           <div class="sm:col-span-2 flex flex-wrap gap-3 pt-2">
             <button type="submit" class="touch-btn flex-1 py-3 rounded-2xl bg-terracotta-600 hover:bg-terracotta-700 text-white font-extrabold" data-i18n="bulk_btn_submit">Submit RFQ for follow-up</button>
-            <button type="button" id="exportGemCsvBtn" class="py-3 px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-sm text-center" data-i18n="export_gem">📦 Export GeM-Compliant CSV</button>
-            <button type="button" id="generateOndcJsonBtn" class="py-3 px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-sm text-center" data-i18n="generate_ondc">⚡ Generate ONDC Beckn JSON</button>
+            <button type="button" id="shareRfqWhatsAppBtn" class="py-3 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm text-center flex items-center justify-center gap-1.5 shadow-sm">
+              <span>📲 Share RFQ on WhatsApp</span>
+            </button>
+            <button type="button" id="exportGemCsvBtn" class="py-3 px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-sm text-center" data-i18n="export_gem">📦 Preview & Export GeM CSV</button>
+            <button type="button" id="generateOndcJsonBtn" class="py-3 px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-sm text-center" data-i18n="generate_ondc">⚡ Preview ONDC Beckn JSON</button>
             <button type="button" id="listenBtn" class="speech-btn py-3 px-5 rounded-2xl bg-amber-50 hover:bg-amber-100 text-slate-800 font-black text-sm text-center border border-amber-300" data-i18n="listen_desc">🔊 Listen / विवरण सुनें</button>
             <a href="mailto:kalasetu24824.9@gmail.com?subject=KalaSetu%20Bulk%20Buyer%20Support" class="py-3 px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-sm text-center">Email support</a>
           </div>
@@ -862,22 +919,34 @@
         <div class="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <p class="text-xs font-extrabold uppercase tracking-wider text-terracotta-600">Step 3</p>
           <h3 class="text-xl font-black text-slate-900 mt-1" data-i18n="step3_channels_title">Official channels & catalog exports</h3>
-          <p class="text-xs text-slate-500 mt-2">KalaSetu prepares and guides your request. Export a GeM- or ONDC-ready payload, or open official government and digital-marketplace channels where registration or buyer approval may be required.</p>
+          <p class="text-xs text-slate-500 mt-2">KalaSetu formats your catalog into compliance packages for institutional and government e-commerce.</p>
+
+          <!-- Cooperative / Cluster Facilitator Handoff Notice -->
+          <div class="mt-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 p-3.5 text-xs text-amber-950">
+            <div class="flex items-center gap-1.5 font-black text-amber-900 mb-1">
+              <span>🤝</span>
+              <span>Cluster Facilitator & Cooperative Mode</span>
+            </div>
+            <p class="leading-relaxed text-[11px] text-amber-900/90">
+              Government (GeM) & ONDC platforms require verified entity onboarding (GSTIN, Udyam, DIC). KalaSetu exports compliance-ready packages so your local Cluster Coordinator or SHG Lead can complete registration with zero data re-entry.
+            </p>
+          </div>
+
           <div class="mt-4 grid gap-2">
             <a href="https://gem.gov.in/" target="_blank" rel="noopener" class="official-link"><span>GeM</span><span>Government e-marketplace ↗</span></a>
             <a href="https://ondc.org/" target="_blank" rel="noopener" class="official-link"><span>ONDC</span><span>Open digital commerce ↗</span></a>
             <a href="https://trifed.tribal.gov.in/" target="_blank" rel="noopener" class="official-link"><span>TRIFED</span><span>Tribal artisan linkage ↗</span></a>
           </div>
           <div class="mt-4 border-t border-slate-200 pt-4">
-            <p class="text-xs font-black text-slate-700 uppercase tracking-wider">Export Assistants</p>
+            <p class="text-xs font-black text-slate-700 uppercase tracking-wider">Compliance Artifact Assistants</p>
             <div class="mt-2 grid gap-2">
-              <button type="button" class="official-link justify-start">
-                <span>GeM / ONDC Ready Export</span>
-                <span>CSV / JSON ↗</span>
+              <button type="button" id="openGemPreviewBtn" class="official-link justify-start">
+                <span>📦 GeM Procurement Package</span>
+                <span>Preview & Export ↗</span>
               </button>
-              <button type="button" class="official-link justify-start">
-                <span>Pre-filled form assistant</span>
-                <span>Auto-fill ↗</span>
+              <button type="button" id="openOndcPreviewBtn" class="official-link justify-start">
+                <span>⚡ ONDC Beckn Schema (JSON)</span>
+                <span>Preview & Export ↗</span>
               </button>
             </div>
           </div>
@@ -1363,7 +1432,13 @@
           <a id="modalWhatsAppBtn" href="#" target="_blank" rel="noopener noreferrer" 
              class="flex-1 py-3.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all">
             <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.287.043.087.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86.174.086.275.072.376-.044.101-.116.433-.506.549-.68.116-.173.231-.145.39-.086s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.099.824z"/></svg>
-            <span data-i18n="btn_whatsapp_inquire">Contact Artisan on WhatsApp</span>
+            <span data-i18n="btn_whatsapp_inquire">Contact Artisan</span>
+          </a>
+          <a id="modalShareWhatsAppBtn" href="#" target="_blank" rel="noopener noreferrer" 
+             class="flex-1 py-3.5 px-4 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold text-sm flex items-center justify-center gap-1.5 border border-emerald-300 transition-all"
+             title="Share product listing to any buyer or group on WhatsApp">
+            <span>📲</span>
+            <span>Share Listing</span>
           </a>
         </div>
         <div id="deliveryDetailsForm" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1381,6 +1456,113 @@
 
       </div>
 
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- COMPLIANCE ARTIFACTS PREVIEW MODAL (GeM CSV & ONDC Beckn JSON)       -->
+  <!-- ===================================================================== -->
+  <div id="exportComplianceModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl border border-slate-200 flex flex-col">
+      <!-- Header -->
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-orange-600 flex items-center justify-center text-white font-black text-lg">
+            📜
+          </div>
+          <div>
+            <h3 id="exportModalTitle" class="text-base font-black">Procurement Compliance Artifacts</h3>
+            <p id="exportModalSubtitle" class="text-xs text-slate-300">Inspect live compliance schema before downloading or handoff</p>
+          </div>
+        </div>
+        <button id="closeExportModalBtn" type="button" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center transition-all">&times;</button>
+      </div>
+
+      <!-- Facilitator Callout inside modal -->
+      <div class="bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center gap-3 text-xs text-amber-950">
+        <span class="text-base">🤝</span>
+        <div>
+          <strong class="font-extrabold text-amber-900">Cluster Coordinator Handoff Mode:</strong>
+          <span>This file conforms to official procurement schemas. Ready for direct bulk upload by your DIC, TRIFED or cooperative manager.</span>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex border-b border-slate-200 bg-slate-50 px-6 pt-3 gap-2">
+        <button id="tabGemCsv" type="button" class="px-4 py-2 font-bold text-xs rounded-t-xl bg-white border-t border-l border-r border-slate-200 text-terracotta-700 shadow-sm">
+          📦 GeM Procurement CSV Table
+        </button>
+        <button id="tabOndcJson" type="button" class="px-4 py-2 font-bold text-xs rounded-t-xl bg-slate-100 text-slate-600 hover:text-slate-900 transition-all">
+          ⚡ ONDC Beckn 1.1.0 JSON
+        </button>
+      </div>
+
+      <!-- Body / Preview Area -->
+      <div class="p-6 flex-1 overflow-y-auto bg-slate-50/50">
+        <!-- GeM CSV View -->
+        <div id="gemCsvView" class="space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-700">Parsed GeM Catalog Rows (<span id="gemRowCount">0</span> items)</span>
+            <span class="text-[11px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">HSN & GST Classified</span>
+          </div>
+          <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm max-h-[45vh]">
+            <table class="min-w-full text-xs divide-y divide-slate-200 text-left">
+              <thead class="bg-slate-900 text-white sticky top-0" id="gemTableHeader"></thead>
+              <tbody class="divide-y divide-slate-100 font-mono" id="gemTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ONDC JSON View -->
+        <div id="ondcJsonView" class="hidden space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-700">Beckn Protocol Core Specification (Domain: ONDC:RET10)</span>
+            <span class="text-[11px] font-semibold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">BPP Provider Standard</span>
+          </div>
+          <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4 max-h-[45vh] overflow-y-auto">
+            <pre id="ondcJsonPre" class="text-xs font-mono text-emerald-400 whitespace-pre leading-relaxed"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-6 py-4 border-t border-slate-200 bg-white flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <button id="exportModalCopyBtn" type="button" class="py-2.5 px-4 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all">
+            <span>📋</span>
+            <span>Copy Text</span>
+          </button>
+          <a id="exportModalWhatsAppShare" href="#" target="_blank" rel="noopener noreferrer" class="py-2.5 px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs flex items-center gap-1.5 transition-all">
+            <span>📲</span>
+            <span>Share with Coordinator</span>
+          </a>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="exportModalDownloadBtn" type="button" class="py-2.5 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-sm transition-all">
+            <span>📥</span>
+            <span id="exportModalDownloadLabel">Download CSV</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  <!-- Craft Catalog Selector Modal for Bulk Procurement -->
+  <div id="institutionalCatalogModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] overflow-hidden shadow-2xl border border-slate-200 flex flex-col">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center text-white font-black text-lg">
+            📦
+          </div>
+          <div>
+            <h3 class="text-base font-black">Select Craft from Catalog</h3>
+            <p class="text-xs text-slate-300">Choose an existing product to auto-fill title, category & wholesale benchmark</p>
+          </div>
+        </div>
+        <button id="closeInstitutionalCatalogModalBtn" type="button" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center transition-all">&times;</button>
+      </div>
+      <div id="institutionalCatalogList" class="p-6 overflow-y-auto space-y-3 max-h-[60vh]">
+        <!-- Rendered dynamically -->
+      </div>
     </div>
   </div>
 

@@ -339,3 +339,167 @@ def generate_heuristic_craft_catalog(
         "ai_engine": "Smart Cataloging Heuristic Engine (SIH Studio)",
         "fallback_note": fallback_reason
     }
+
+
+def generate_institutional_rfq_ai(
+    craft_hint: str = "",
+    category: Optional[str] = None,
+    target_buyer: Optional[str] = None,
+    image_bytes: Optional[bytes] = None
+) -> Dict[str, Any]:
+    """
+    AI Generator for Institutional & Bulk RFQ Procurement Packages.
+    Analyzes craft prompt/image and auto-fills formal institutional listings:
+    product title, HSN, GST, institutional pitch, packaging/customization specs,
+    and suggested wholesale price/lead time.
+    """
+    hsn_presets = {
+        "Handloom & Textiles": {
+            "hsn": "5208", "gst": "5%",
+            "title": "Pure Handloom Chanderi / Khadi Institutional Gift Stoles (Pack of 50)",
+            "desc": "Master weaver handloom fabric woven from natural certified cotton and silk yarns. Breathable, AZO-free skin-friendly natural dyes, ideal for institutional conferences, dignitary shawls, and corporate felicitations.",
+            "pack": "Individual recycled handmade paper sleeves with gold foil embossing option. Custom woven institutional logo tags available on minimum order.",
+            "qa": "Handloom Mark & MoSJE artisan cluster certified; color-fastness laboratory tested.",
+            "price": 380, "lead": "12-15 working days"
+        },
+        "Pottery & Terracotta": {
+            "hsn": "6912", "gst": "12%",
+            "title": "Artisanal Terracotta Tableware & Kulhar Banquet Set",
+            "desc": "Kiln-fired earthenware crafted from purified alluvial river clay. Completely lead-free, microwave safe, and 100% biodegradable. Perfect for eco-friendly hospitality, institutional cafeterias, and cultural events.",
+            "pack": "Biodegradable corrugated partitions with shredded straw cushioning. Customized stamped emblem on base available.",
+            "qa": "100% non-toxic, food-grade verified, pre-dispatch thermal shock tested.",
+            "price": 120, "lead": "10-14 working days"
+        },
+        "Brass & Metalcraft": {
+            "hsn": "7419", "gst": "12%",
+            "title": "Lost-Wax Cast Dhokra Brass Heritage Memento & Desk Stand",
+            "desc": "Ancient bell-metal casting handcrafted by indigenous metalsmiths. Uniquely antiqued patina celebrating tribal heritage. Ideal for prestigious government awards, corporate summits, and cultural gifts.",
+            "pack": "Velvet-lined rigid gift box with magnetic catch. Optional laser-engraved institutional brass nameplate.",
+            "qa": "Solid virgin brass/bell-metal alloy; hand-polished with microcrystalline protective wax.",
+            "price": 550, "lead": "15-20 working days"
+        },
+        "Woodcraft": {
+            "hsn": "4420", "gst": "12%",
+            "title": "Hand-Carved Sheesham Wood Desk Organizer & Corporate Gift Caddy",
+            "desc": "Carved from sustainably seasoned hardwood with natural grain wax finish. Functional compartments for executive stationery and tablets. Premium institutional memento for executive gifting.",
+            "pack": "Individual kraft paper gift carton with eco-friendly protective sleeves. Laser engraving of organization logo on front panel.",
+            "qa": "Moisture-content below 10% to prevent warping; non-toxic natural beeswax polish.",
+            "price": 420, "lead": "14-18 working days"
+        },
+        "Cane & Bamboo": {
+            "hsn": "4602", "gst": "5%",
+            "title": "Hand-Woven Treated Bamboo Executive Folder & Conference Kit",
+            "desc": "Ultra-lightweight indigenous bamboo weave treated against moisture and borers. Clean minimalist finish designed for eco-conscious symposiums and corporate kits.",
+            "pack": "Flat-pack bundles of 25 with eco-twine wrap. Custom screen-printed branding on inner flap.",
+            "qa": "Non-chemical borax treatment; splinter-free fine edge burnishing.",
+            "price": 280, "lead": "10-12 working days"
+        },
+        "Folk Art & Painting": {
+            "hsn": "9701", "gst": "12%",
+            "title": "Framed Authentic Madhubani / Warli Folk Art Diplomatic Keepsake",
+            "desc": "Hand-painted by certified master artisans on handmade acid-free paper using natural mineral and vegetal pigments. Celebrates indigenous Indian living traditions.",
+            "pack": "Corner-cushioned wooden frame with shatter-proof acrylic and gift envelope with artisan bio card.",
+            "qa": "Original hand-rendered artwork; authenticated MoSJE artisan signoff.",
+            "price": 650, "lead": "15-20 working days"
+        }
+    }
+
+    selected_category = category if category in hsn_presets else "Brass & Metalcraft"
+    for cat_name in hsn_presets:
+        if cat_name.lower() in (craft_hint + " " + (category or "")).lower():
+            selected_category = cat_name
+            break
+
+    preset = hsn_presets[selected_category]
+
+    if GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
+        prompt = f"""
+You are the Senior Institutional Procurement Manager for rural Indian artisans under the Ministry of Social Justice and Empowerment (MoSJE).
+An artisan wants to offer their craft in bulk for institutional procurement (e.g., Government GeM tenders, Corporate Gifting, TRIFED, or Retail Chains).
+
+Artisan Input / Craft details: "{craft_hint or 'Traditional handmade craft'}"
+Preferred Category: "{category or 'Auto-detect'}"
+Target Buyer: "{target_buyer or 'Government & Corporate Procurement'}"
+
+Analyze this craft and output a high-standard, professional institutional procurement listing that will appeal to corporate procurement heads and government tender committees.
+
+Return ONLY a valid JSON object matching this schema:
+{{
+  "product_name": "Professional, formal procurement title in English (e.g., 'Handcrafted Brass Dhokra Table Lamp & Pen Stand')",
+  "category": "Pick one: Handloom & Textiles, Pottery & Terracotta, Brass & Metalcraft, Cane & Bamboo, Woodcraft, Folk Art & Painting",
+  "hsn_code": "Realistic 4 or 8 digit Indian HSN code (e.g., 7419, 5208, 6912, 4420, 4602, 9701)",
+  "gst_rate": "5% or 12%",
+  "institutional_description": "2-3 sentences of formal procurement copy highlighting craftsmanship, material purity, cultural authenticity, and utility.",
+  "packaging_and_customization": "Detailed specification of packaging (e.g., individual kraft gift box) and custom branding options (e.g., corporate logo engraving, artisan story card).",
+  "quality_assurance": "Quality standard declaration (e.g., MoSJE verified, lead-free, batch quality testing).",
+  "suggested_unit_price": 450,
+  "suggested_lead_time": "12-15 working days"
+}}
+"""
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": GEMINI_API_KEY,
+        }
+        parts = [{"text": prompt}]
+        if image_bytes:
+            mime_type = detect_mime_type(image_bytes)
+            parts.append({
+                "inline_data": {
+                    "mime_type": mime_type,
+                    "data": encode_image_to_base64(image_bytes)
+                }
+            })
+
+        try:
+            resp = requests.post(
+                GEMINI_API_URL,
+                headers=headers,
+                json={
+                    "contents": [{"parts": parts}],
+                    "generationConfig": {
+                        "temperature": 0.2,
+                        "maxOutputTokens": 1024,
+                        "responseMimeType": "application/json"
+                    }
+                },
+                timeout=20
+            )
+            if resp.status_code == 200:
+                raw_json = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                parsed = clean_json_response(raw_json)
+                parsed["product_category"] = parsed.get("category", selected_category)
+                desc = parsed.get("institutional_description", "")
+                pack = parsed.get("packaging_and_customization", "")
+                qa = parsed.get("quality_assurance", "")
+                specs = []
+                if pack: specs.append(f"Packaging: {pack}")
+                if qa: specs.append(f"Quality Assurance: {qa}")
+                parsed["requirements"] = f"{desc}\n\n" + "\n• ".join(["Specifications:"] + specs) if specs else desc
+                parsed["lead_time"] = parsed.get("suggested_lead_time", "12-15 working days")
+                parsed["ai_engine"] = f"Google Gemini ({GEMINI_MODEL}) Institutional Intelligence"
+                parsed["is_ai_simulated"] = False
+                return parsed
+        except Exception as e:
+            logger.warning(f"Gemini RFQ generation fallback: {e}")
+
+    # Fallback to intelligent heuristic preset
+    derived_title = craft_hint.strip() if len(craft_hint.strip()) > 5 else preset["title"]
+    desc = preset["desc"]
+    pack = preset["pack"]
+    qa = preset["qa"]
+    return {
+        "product_name": derived_title if "Pack" in derived_title or "Set" in derived_title else f"{derived_title} (Institutional Batch)",
+        "category": selected_category,
+        "product_category": selected_category,
+        "hsn_code": preset["hsn"],
+        "gst_rate": preset["gst"],
+        "institutional_description": desc,
+        "packaging_and_customization": pack,
+        "quality_assurance": qa,
+        "requirements": f"{desc}\n\nSpecifications:\n• Packaging: {pack}\n• Quality Assurance: {qa}",
+        "suggested_unit_price": preset["price"],
+        "suggested_lead_time": preset["lead"],
+        "lead_time": preset["lead"],
+        "ai_engine": "Smart Institutional Cataloging Engine (Heuristic)",
+        "is_ai_simulated": True
+    }

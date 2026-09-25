@@ -411,8 +411,11 @@ async function imageUriToBase64(imageUri: string): Promise<{ base64: string; mim
   // 2. Fetch/XHR blob and FileReader conversion — works on Web, Android, and iOS
   try {
     let blob: Blob;
-    if (Platform.OS !== 'web' && (imageUri.startsWith('file://') || imageUri.startsWith('content://'))) {
-      // On React Native Android/iOS, local file/content URIs are read via XMLHttpRequest
+    try {
+      const response = await fetch(imageUri);
+      blob = await response.blob();
+    } catch {
+      // Fallback to XMLHttpRequest for React Native Android local schemes if fetch fails
       blob = await new Promise<Blob>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.onload = () => resolve(xhr.response as Blob);
@@ -421,9 +424,6 @@ async function imageUriToBase64(imageUri: string): Promise<{ base64: string; mim
         xhr.open('GET', imageUri, true);
         xhr.send(null);
       });
-    } else {
-      const response = await fetch(imageUri);
-      blob = await response.blob();
     }
 
     const resolvedMime = blob.type || mimeType;
@@ -460,14 +460,23 @@ async function imageUriToBase64(imageUri: string): Promise<{ base64: string; mim
 export async function analyzeCraftWithGeminiDirect(
   imageUri: string,
   notes: string = "",
-  priceHint: string = ""
+  priceHint: string = "",
+  preloadedBase64?: string
 ): Promise<AiAnalysisResult> {
   const apiKey = GEMINI_API_KEY;
   if (!apiKey || apiKey === "YOUR_GEMINI_API_KEY_HERE") {
     throw new Error("No Google Gemini API key configured.");
   }
 
-  const { base64, mimeType } = await imageUriToBase64(imageUri);
+  let base64: string;
+  let mimeType: string = 'image/jpeg';
+  if (preloadedBase64) {
+    base64 = preloadedBase64.replace(/[\r\n\s]/g, '');
+  } else {
+    const res = await imageUriToBase64(imageUri);
+    base64 = res.base64;
+    mimeType = res.mimeType;
+  }
 
   const prompt = `You are the AI Virtual Business Manager for rural and marginalized Indian artisans and weavers under the Ministry of Social Justice and Empowerment (MoSJE).
 Your mission is to empower low-literacy artisans by analyzing their handmade craft photo and auto-generating an e-commerce catalog entry that commands fair market value.
@@ -518,8 +527,8 @@ Return ONLY a valid JSON object matching this exact schema:
     }
   };
 
-  // gemini-2.5-flash is the premier active model; fallback to gemini-2.5-pro or gemini-flash-latest
-  const modelsToTry = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-flash-latest"];
+  // gemini-2.5-flash is the premier active model; fallback to gemini-flash-latest or gemini-2.5-flash-lite
+  const modelsToTry = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite"];
   let lastErrText = "";
 
   for (const model of modelsToTry) {
@@ -667,7 +676,8 @@ function generateLocalFallbackAnalysis(notes: string, priceHint: string, imageUr
 export async function analyzeProductPhoto(
   imageUri: string,
   notes: string = "",
-  priceHint: string = ""
+  priceHint: string = "",
+  preloadedBase64?: string
 ): Promise<AiAnalysisResult> {
   // Offline pre-check in web environment
   if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -678,7 +688,7 @@ export async function analyzeProductPhoto(
   if (GEMINI_API_KEY && GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY_HERE") {
     try {
       console.info("Analyzing craft image with Google Gemini Vision directly...");
-      return await analyzeCraftWithGeminiDirect(imageUri, notes, priceHint);
+      return await analyzeCraftWithGeminiDirect(imageUri, notes, priceHint, preloadedBase64);
     } catch (directErr) {
       console.warn("Direct Gemini Vision encountered an issue, trying backend endpoint:", directErr);
     }
@@ -751,7 +761,7 @@ export async function analyzeProductPhoto(
       if (result.is_ai_simulated && GEMINI_API_KEY) {
         console.info("Backend in simulation mode. Elevating to direct Gemini Vision...");
         try {
-          return await analyzeCraftWithGeminiDirect(imageUri, notes, priceHint);
+          return await analyzeCraftWithGeminiDirect(imageUri, notes, priceHint, preloadedBase64);
         } catch (directErr) {
           console.warn("Direct Gemini Vision fallback failed, returning backend result:", directErr);
           return result;
@@ -766,7 +776,7 @@ export async function analyzeProductPhoto(
     if (GEMINI_API_KEY) {
       console.info("Backend vision returned error. Attempting direct Gemini Vision...");
       try {
-        return await analyzeCraftWithGeminiDirect(imageUri, notes, priceHint);
+        return await analyzeCraftWithGeminiDirect(imageUri, notes, priceHint, preloadedBase64);
       } catch { /* fall through to local fallback */ }
     }
     // Use local heuristic fallback so artisan can always publish
@@ -1755,6 +1765,43 @@ export async function loginAdmin(email: string, password: string): Promise<strin
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.detail || 'Could not update order status');
+    }
+    return await res.json();
+  }
+
+  export interface InstitutionalRfqAiResult {
+    product_name: string;
+    category: string;
+    hsn_code: string;
+    gst_rate: string;
+    institutional_description: string;
+    packaging_and_customization: string;
+    quality_assurance: string;
+    suggested_unit_price: number;
+    suggested_lead_time: string;
+    ai_engine?: string;
+    is_ai_simulated?: boolean;
+  }
+
+  export async function generateInstitutionalRfqApi(
+    craftHint: string,
+    category: string = '',
+    targetBuyer: string = 'Corporate & Government',
+    imageBase64?: string
+  ): Promise<InstitutionalRfqAiResult> {
+    const res = await fetch(`${getBackendUrl()}/api/ai/institutional-rfq`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        craft_hint: craftHint,
+        category,
+        target_buyer: targetBuyer,
+        image_base64: imageBase64
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to generate institutional RFQ');
     }
     return await res.json();
   }

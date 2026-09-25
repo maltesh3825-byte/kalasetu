@@ -404,6 +404,9 @@ def init_db():
         safe_add_column_pg(cursor, conn, "institutional_requests", "unit_price", "REAL DEFAULT 0")
         safe_add_column_pg(cursor, conn, "institutional_requests", "lead_time", "TEXT")
         safe_add_column_pg(cursor, conn, "institutional_requests", "target_buyer", "TEXT DEFAULT 'Open to all'")
+        safe_add_column_pg(cursor, conn, "institutional_requests", "product_name", "TEXT DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "institutional_requests", "hsn_code", "TEXT DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "institutional_requests", "gst_rate", "TEXT DEFAULT ''")
 
         safe_execute(
             cursor,
@@ -581,6 +584,12 @@ def init_db():
             cursor.execute("ALTER TABLE institutional_requests ADD COLUMN lead_time TEXT")
         if "target_buyer" not in request_columns:
             cursor.execute("ALTER TABLE institutional_requests ADD COLUMN target_buyer TEXT DEFAULT 'Open to all'")
+        if "product_name" not in request_columns:
+            cursor.execute("ALTER TABLE institutional_requests ADD COLUMN product_name TEXT DEFAULT ''")
+        if "hsn_code" not in request_columns:
+            cursor.execute("ALTER TABLE institutional_requests ADD COLUMN hsn_code TEXT DEFAULT ''")
+        if "gst_rate" not in request_columns:
+            cursor.execute("ALTER TABLE institutional_requests ADD COLUMN gst_rate TEXT DEFAULT ''")
 
         cursor.execute(
             """

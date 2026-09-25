@@ -255,34 +255,382 @@ function downloadBlob(blobContent, filename, mimeType) {
   URL.revokeObjectURL(url);
 }
 
-async function exportGemCsv() {
+let complianceState = {
+  activeTab: 'gem',
+  gemCsvText: '',
+  ondcJsonData: null
+};
+
+async function openExportComplianceModal(initialTab = 'gem') {
+  const modal = document.getElementById('exportComplianceModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  switchComplianceTab(initialTab);
+
   try {
-    const res = await fetch('/api/export/gem-csv');
-    if (!res.ok) throw new Error('CSV export failed');
-    const csv = await res.text();
-    downloadBlob(csv, 'kalakriti-gem-catalog.csv', 'text/csv;charset=utf-8');
-    showToast('GeM CSV exported');
-  } catch (error) {
-    console.error(error);
-    showToast('GeM CSV export unavailable');
+    if (!complianceState.gemCsvText) {
+      const res = await fetch('/api/export/gem-csv');
+      if (res.ok) {
+        complianceState.gemCsvText = await res.text();
+        renderGemTable(complianceState.gemCsvText);
+      }
+    } else {
+      renderGemTable(complianceState.gemCsvText);
+    }
+  } catch (err) {
+    console.error('Error fetching GeM CSV:', err);
+  }
+
+  try {
+    if (!complianceState.ondcJsonData) {
+      const res = await fetch('/api/export/ondc');
+      if (res.ok) {
+        complianceState.ondcJsonData = await res.json();
+        renderOndcJson(complianceState.ondcJsonData);
+      }
+    } else {
+      renderOndcJson(complianceState.ondcJsonData);
+    }
+  } catch (err) {
+    console.error('Error fetching ONDC JSON:', err);
   }
 }
 
-async function generateOndcJson() {
-  try {
-    const res = await fetch('/api/export/ondc');
-    if (!res.ok) throw new Error('ONDC export failed');
-    const data = await res.json();
-    downloadBlob(JSON.stringify(data, null, 2), 'kalakriti-ondc-beckn.json', 'application/json;charset=utf-8');
-    showToast('ONDC JSON generated');
-  } catch (error) {
-    console.error(error);
-    showToast('ONDC JSON unavailable');
+function renderGemTable(csvText) {
+  const lines = csvText.trim().split('\n');
+  if (lines.length === 0) return;
+  const header = parseCsvLine(lines[0]);
+  const rows = lines.slice(1).map(line => parseCsvLine(line));
+
+  const thead = document.getElementById('gemTableHeader');
+  const tbody = document.getElementById('gemTableBody');
+  const countEl = document.getElementById('gemRowCount');
+  if (countEl) countEl.textContent = rows.length;
+
+  if (thead) {
+    thead.innerHTML = `<tr>${header.map(h => `<th class="px-3 py-2 text-xs font-bold uppercase tracking-wider">${escapeHtml(h.replace(/_/g, ' '))}</th>`).join('')}</tr>`;
   }
+  if (tbody) {
+    tbody.innerHTML = rows.map(r => `
+      <tr class="hover:bg-slate-50 transition-colors">
+        ${r.map((cell, idx) => `
+          <td class="px-3 py-2 border-b border-slate-100 text-[11px] ${idx === 1 ? 'font-bold text-slate-800 font-sans' : ''} ${idx === 7 ? 'text-emerald-700 font-bold' : ''}">
+            ${escapeHtml(cell)}
+          </td>
+        `).join('')}
+      </tr>
+    `).join('');
+  }
+}
+
+function renderOndcJson(data) {
+  const pre = document.getElementById('ondcJsonPre');
+  if (pre && data) {
+    pre.textContent = JSON.stringify(data, null, 2);
+  }
+}
+
+function parseCsvLine(line) {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  values.push(current.trim());
+  return values;
+}
+
+function switchComplianceTab(tab) {
+  complianceState.activeTab = tab;
+  const gemView = document.getElementById('gemCsvView');
+  const ondcView = document.getElementById('ondcJsonView');
+  const tabGem = document.getElementById('tabGemCsv');
+  const tabOndc = document.getElementById('tabOndcJson');
+  const dlLabel = document.getElementById('exportModalDownloadLabel');
+  const waShare = document.getElementById('exportModalWhatsAppShare');
+
+  if (tab === 'gem') {
+    gemView?.classList.remove('hidden');
+    ondcView?.classList.add('hidden');
+    tabGem?.classList.add('bg-white', 'text-terracotta-700', 'border-t', 'border-l', 'border-r', 'border-slate-200');
+    tabGem?.classList.remove('bg-slate-100', 'text-slate-600');
+    tabOndc?.classList.remove('bg-white', 'text-terracotta-700', 'border-t', 'border-l', 'border-r', 'border-slate-200');
+    tabOndc?.classList.add('bg-slate-100', 'text-slate-600');
+    if (dlLabel) dlLabel.textContent = 'Download GeM CSV';
+
+    if (waShare) {
+      const msg = `🤝 *KalaSetu GeM Procurement Package*\n` +
+        `📦 Mapped to Government e-Marketplace procurement schema\n` +
+        `🏷️ Features: Verified HSN classification, GST slabs, and direct purchase eligibility\n` +
+        `🏢 Prepared for cluster coordinator/DIC bulk onboarding\n` +
+        `🔗 Portal: https://gem.gov.in/`;
+      waShare.href = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+    }
+  } else {
+    ondcView?.classList.remove('hidden');
+    gemView?.classList.add('hidden');
+    tabOndc?.classList.add('bg-white', 'text-terracotta-700', 'border-t', 'border-l', 'border-r', 'border-slate-200');
+    tabOndc?.classList.remove('bg-slate-100', 'text-slate-600');
+    tabGem?.classList.remove('bg-white', 'text-terracotta-700', 'border-t', 'border-l', 'border-r', 'border-slate-200');
+    tabGem?.classList.add('bg-slate-100', 'text-slate-600');
+    if (dlLabel) dlLabel.textContent = 'Download ONDC JSON';
+
+    if (waShare) {
+      const msg = `⚡ *KalaSetu ONDC Beckn 1.1.0 Catalog Payload*\n` +
+        `🛍️ Domain: ONDC:RET10 (Handicrafts & Handlooms)\n` +
+        `📜 Specification: Beckn Protocol Core 1.1.0\n` +
+        `🏢 Prepared for Seller Network Participant (SNP) onboarding\n` +
+        `🌐 Open Digital Commerce Protocol`;
+      waShare.href = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+    }
+  }
+}
+
+function handleComplianceDownload() {
+  if (complianceState.activeTab === 'gem') {
+    if (!complianceState.gemCsvText) return;
+    downloadBlob(complianceState.gemCsvText, 'kalasetu-gem-procurement-catalog.csv', 'text/csv;charset=utf-8');
+    showToast('GeM CSV package downloaded');
+  } else {
+    if (!complianceState.ondcJsonData) return;
+    downloadBlob(JSON.stringify(complianceState.ondcJsonData, null, 2), 'kalasetu-ondc-beckn.json', 'application/json;charset=utf-8');
+    showToast('ONDC Beckn JSON downloaded');
+  }
+}
+
+function handleComplianceCopy() {
+  const text = complianceState.activeTab === 'gem'
+    ? complianceState.gemCsvText
+    : JSON.stringify(complianceState.ondcJsonData, null, 2);
+
+  if (text) {
+    navigator.clipboard?.writeText(text).then(() => {
+      showToast('Copied to clipboard');
+    }).catch(() => {
+      showToast('Copy unavailable');
+    });
+  }
+}
+
+function shareRfqViaWhatsApp() {
+  const productName = document.getElementById('institutionalProductName')?.value || 'Handcrafted Artisan Craft Batch';
+  const category = document.getElementById('institutionalCategory')?.value || 'Handloom & Textiles';
+  const qty = document.getElementById('institutionalQuantity')?.value || '10';
+  const unitPrice = document.getElementById('institutionalUnitPrice')?.value || '250';
+  const leadTime = document.getElementById('institutionalLeadTime')?.value || '7-15 working days';
+  const targetBuyer = document.getElementById('institutionalTargetBuyer')?.value || 'Government & Corporate Procurement';
+  const notes = document.getElementById('institutionalRequirements')?.value || 'Handmade artisan pieces ready for bulk dispatch.';
+  const hsn = document.getElementById('aiBulkHsnText')?.textContent.trim();
+  const gst = document.getElementById('aiBulkGstText')?.textContent.trim();
+
+  let msg = `📋 *KalaSetu Institutional Procurement Pitch*\n\n` +
+    `📦 *Product Name:* ${productName}\n` +
+    `🏷️ *Craft Category:* ${category}\n`;
+  if (hsn) {
+    msg += `🏛️ *Compliance / Tax:* ${hsn} | ${gst || 'GST Exempt'}\n`;
+  }
+  msg += `🔢 *Required Volume:* ${qty} units\n` +
+    `💰 *Unit Price (Wholesale):* ₹${Number(unitPrice).toLocaleString('en-IN')}\n` +
+    `⏱️ *Dispatch Lead Time:* ${leadTime}\n` +
+    `🏢 *Target Buyer:* ${targetBuyer}\n` +
+    `📝 *Specifications & Packaging:* ${notes}\n\n` +
+    `🤝 *Prepared via KalaSetu Institutional Desk*\n` +
+    `MoSJE Beneficiary Verified | Compliance Ready`;
+
+  window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+let isGeneratingInstitutionalAi = false;
+
+async function generateInstitutionalRfqWithAi() {
+  if (isGeneratingInstitutionalAi) return;
+
+  const nameInput = document.getElementById('institutionalProductName');
+  const catSelect = document.getElementById('institutionalCategory');
+  const targetSelect = document.getElementById('institutionalTargetBuyer');
+  const priceInput = document.getElementById('institutionalUnitPrice');
+  const leadInput = document.getElementById('institutionalLeadTime');
+  const reqText = document.getElementById('institutionalRequirements');
+  const btnText = document.getElementById('aiAutoFillBtnText');
+  const btnIcon = document.getElementById('aiAutoFillBtnIcon');
+  const autoFillBtn = document.getElementById('aiAutoFillRfqBtn');
+
+  const craftHint = nameInput?.value.trim() || catSelect?.value || 'Handicraft';
+  const category = catSelect?.value || 'Handloom & Textiles';
+  const targetBuyer = targetSelect?.value || 'Open to all';
+
+  isGeneratingInstitutionalAi = true;
+  if (btnText) btnText.textContent = 'Analyzing...';
+  if (btnIcon) btnIcon.textContent = '⏳';
+  if (autoFillBtn) autoFillBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/ai/institutional-rfq', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        craft_hint: craftHint,
+        category: category,
+        target_buyer: targetBuyer
+      })
+    });
+
+    if (!res.ok) {
+      throw new Error(`Server returned ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    if (nameInput) {
+      nameInput.value = data.product_name || craftHint;
+    }
+
+    if (catSelect && data.product_category) {
+      for (let i = 0; i < catSelect.options.length; i++) {
+        if (catSelect.options[i].value.toLowerCase() === data.product_category.toLowerCase() ||
+            data.product_category.toLowerCase().includes(catSelect.options[i].value.toLowerCase())) {
+          catSelect.selectedIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (reqText && data.requirements) {
+      reqText.value = data.requirements;
+    }
+
+    if (priceInput && (!priceInput.value || priceInput.value === '250' || priceInput.value === '0')) {
+      priceInput.value = data.suggested_unit_price || 250;
+    }
+
+    if (leadInput && (!leadInput.value || leadInput.value === '7-15 working days')) {
+      leadInput.value = data.lead_time || '7-15 working days';
+    }
+
+    const taxBadge = document.getElementById('aiBulkTaxBadge');
+    const hsnText = document.getElementById('aiBulkHsnText');
+    const gstText = document.getElementById('aiBulkGstText');
+    if (taxBadge && hsnText && gstText) {
+      hsnText.textContent = `HSN ${data.hsn_code}`;
+      gstText.textContent = `GST ${data.gst_rate}`;
+      taxBadge.classList.remove('hidden');
+    }
+
+    updateBulkPricingTiers();
+    showToast('✨ AI generated formal RFQ title, pitch & compliance codes!');
+  } catch (err) {
+    console.error('Error generating AI institutional RFQ:', err);
+    showToast('AI generator offline, applied smart institutional template.');
+    if (nameInput && !nameInput.value.trim()) {
+      nameInput.value = `Premium Handcrafted ${category} (Institutional Batch)`;
+    }
+    if (reqText && !reqText.value.trim()) {
+      reqText.value = `Bulk institutional specification: Export-grade corrugated carton packaging with inner moisture barrier. Handcrafted authentication certificate included per unit. Pre-dispatch lot inspection assured.`;
+    }
+  } finally {
+    isGeneratingInstitutionalAi = false;
+    if (btnText) btnText.textContent = 'AI Auto-Fill Pitch';
+    if (btnIcon) btnIcon.textContent = '✨';
+    if (autoFillBtn) autoFillBtn.disabled = false;
+  }
+}
+
+function openInstitutionalCatalogModal() {
+  const modal = document.getElementById('institutionalCatalogModal');
+  const list = document.getElementById('institutionalCatalogList');
+  if (!modal || !list) return;
+
+  const catalog = state.products && state.products.length > 0 ? state.products : [];
+  if (catalog.length === 0) {
+    list.innerHTML = `<div class="p-8 text-center text-slate-500 text-sm">No digitized crafts found in catalog yet. Publish your first craft in Studio!</div>`;
+  } else {
+    list.innerHTML = catalog.map(p => {
+      const wholesale = Math.round(Number(p.price || 500) * 0.7);
+      return `
+        <div class="flex items-center justify-between gap-4 p-3.5 rounded-2xl border border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 transition-all bg-white shadow-sm">
+          <div class="flex items-center gap-3">
+            <img src="${p.image_url || '/static/images/placeholder.jpg'}" alt="${escapeHtml(p.name)}" class="w-14 h-14 rounded-xl object-cover bg-slate-100 border border-slate-200" onerror="this.src='/static/images/placeholder.jpg'">
+            <div>
+              <h5 class="text-sm font-black text-slate-900">${escapeHtml(p.name)}</h5>
+              <div class="flex items-center gap-2 mt-0.5">
+                <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 font-bold text-slate-700">${escapeHtml(p.category)}</span>
+                <span class="text-xs text-slate-400 line-through">₹${Number(p.price).toLocaleString('en-IN')}</span>
+                <span class="text-xs font-bold text-emerald-700">₹${wholesale.toLocaleString('en-IN')} bulk</span>
+              </div>
+            </div>
+          </div>
+          <button type="button" class="btn-select-bulk-craft px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-sm whitespace-nowrap cursor-pointer transition-transform hover:scale-105 active:scale-95" data-craft-id="${p.id}">
+            Select & Auto-fill
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.btn-select-bulk-craft').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.dataset.craftId);
+        const craft = catalog.find(c => c.id === id);
+        if (craft) {
+          loadCraftIntoInstitutionalRfq(craft);
+        }
+      });
+    });
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closeInstitutionalCatalogModal() {
+  document.getElementById('institutionalCatalogModal')?.classList.add('hidden');
+}
+
+function loadCraftIntoInstitutionalRfq(craft) {
+  closeInstitutionalCatalogModal();
+  const nameInput = document.getElementById('institutionalProductName');
+  const catSelect = document.getElementById('institutionalCategory');
+  const priceInput = document.getElementById('institutionalUnitPrice');
+  const qtyInput = document.getElementById('institutionalQuantity');
+  const reqText = document.getElementById('institutionalRequirements');
+
+  if (nameInput) nameInput.value = craft.name;
+  if (catSelect && craft.category) {
+    for (let i = 0; i < catSelect.options.length; i++) {
+      if (catSelect.options[i].value.toLowerCase() === craft.category.toLowerCase() ||
+          craft.category.toLowerCase().includes(catSelect.options[i].value.toLowerCase())) {
+        catSelect.selectedIndex = i;
+        break;
+      }
+    }
+  }
+  const wholesalePrice = Math.round(Number(craft.price || 300) * 0.7);
+  if (priceInput) priceInput.value = wholesalePrice;
+  if (qtyInput && Number(qtyInput.value) <= 1) qtyInput.value = 50;
+
+  if (reqText) {
+    reqText.value = `Institutional procurement batch for authentic ${craft.category}: ${craft.description || craft.name}. Includes export packaging, moisture-barrier wrapping, and artisan certificate of authenticity.`;
+  }
+
+  updateBulkPricingTiers();
+  showToast(`Loaded "${craft.name}"! Analyzing formal procurement specs with AI...`);
+  // Automatically trigger AI auto-fill to get formal compliance and specs
+  generateInstitutionalRfqWithAi();
 }
 
 function getInstitutionalPayloadText() {
+  const productName = document.getElementById('institutionalProductName')?.value || 'Handcrafted Artisan Craft';
+  const hsn = document.getElementById('aiBulkHsnText')?.textContent.trim();
+  const gst = document.getElementById('aiBulkGstText')?.textContent.trim();
   const payload = {
+    product_name: productName,
     product_category: document.getElementById('institutionalCategory')?.value || 'Handloom & Textiles',
     quantity: document.getElementById('institutionalQuantity')?.value || '1',
     unit_price: document.getElementById('institutionalUnitPrice')?.value || '0',
@@ -291,7 +639,8 @@ function getInstitutionalPayloadText() {
     requirements: document.getElementById('institutionalRequirements')?.value || 'No extra requirements'
   };
 
-  return `Bulk RFQ request. Product category: ${payload.product_category}. Quantity: ${payload.quantity}. Unit price expectation: ${payload.unit_price}. Lead time: ${payload.lead_time}. Preferred bulk outlet: ${payload.target_buyer}. Requirements: ${payload.requirements}.`;
+  const taxPart = hsn ? ` Tax code ${hsn}, ${gst || 'exempt'}.` : '';
+  return `Bulk RFQ request for ${payload.product_name}. Product category: ${payload.product_category}.${taxPart} Quantity: ${payload.quantity}. Unit price expectation: ${payload.unit_price} rupees. Lead time: ${payload.lead_time}. Preferred bulk outlet: ${payload.target_buyer}. Requirements: ${payload.requirements}.`;
 }
 
 function listenInstitutionalRequest() {
@@ -429,10 +778,36 @@ function setupEventListeners() {
   if (loginForm) loginForm.addEventListener('submit', loginAccount);
 
   const exportGemCsvBtn = document.getElementById('exportGemCsvBtn');
-  if (exportGemCsvBtn) exportGemCsvBtn.addEventListener('click', exportGemCsv);
+  if (exportGemCsvBtn) exportGemCsvBtn.addEventListener('click', () => openExportComplianceModal('gem'));
 
   const generateOndcJsonBtn = document.getElementById('generateOndcJsonBtn');
-  if (generateOndcJsonBtn) generateOndcJsonBtn.addEventListener('click', generateOndcJson);
+  if (generateOndcJsonBtn) generateOndcJsonBtn.addEventListener('click', () => openExportComplianceModal('ondc'));
+
+  const openGemPreviewBtn = document.getElementById('openGemPreviewBtn');
+  if (openGemPreviewBtn) openGemPreviewBtn.addEventListener('click', () => openExportComplianceModal('gem'));
+
+  const openOndcPreviewBtn = document.getElementById('openOndcPreviewBtn');
+  if (openOndcPreviewBtn) openOndcPreviewBtn.addEventListener('click', () => openExportComplianceModal('ondc'));
+
+  const shareRfqWhatsAppBtn = document.getElementById('shareRfqWhatsAppBtn');
+  if (shareRfqWhatsAppBtn) shareRfqWhatsAppBtn.addEventListener('click', shareRfqViaWhatsApp);
+
+  const closeExportModalBtn = document.getElementById('closeExportModalBtn');
+  if (closeExportModalBtn) closeExportModalBtn.addEventListener('click', () => {
+    document.getElementById('exportComplianceModal')?.classList.add('hidden');
+  });
+
+  const tabGemCsv = document.getElementById('tabGemCsv');
+  if (tabGemCsv) tabGemCsv.addEventListener('click', () => switchComplianceTab('gem'));
+
+  const tabOndcJson = document.getElementById('tabOndcJson');
+  if (tabOndcJson) tabOndcJson.addEventListener('click', () => switchComplianceTab('ondc'));
+
+  const exportModalCopyBtn = document.getElementById('exportModalCopyBtn');
+  if (exportModalCopyBtn) exportModalCopyBtn.addEventListener('click', handleComplianceCopy);
+
+  const exportModalDownloadBtn = document.getElementById('exportModalDownloadBtn');
+  if (exportModalDownloadBtn) exportModalDownloadBtn.addEventListener('click', handleComplianceDownload);
 
   const listenBtn = document.getElementById('listenBtn');
   if (listenBtn) listenBtn.addEventListener('click', listenInstitutionalRequest);
@@ -441,6 +816,30 @@ function setupEventListeners() {
     if (input) input.addEventListener('input', updateBulkPricingTiers);
   });
   updateBulkPricingTiers();
+
+  const aiAutoFillRfqBtn = document.getElementById('aiAutoFillRfqBtn');
+  if (aiAutoFillRfqBtn) aiAutoFillRfqBtn.addEventListener('click', generateInstitutionalRfqWithAi);
+
+  const aiGenerateNameDescBtn = document.getElementById('aiGenerateNameDescBtn');
+  if (aiGenerateNameDescBtn) aiGenerateNameDescBtn.addEventListener('click', generateInstitutionalRfqWithAi);
+
+  const loadCatalogRfqBtn = document.getElementById('loadCatalogRfqBtn');
+  if (loadCatalogRfqBtn) loadCatalogRfqBtn.addEventListener('click', openInstitutionalCatalogModal);
+
+  const closeInstitutionalCatalogModalBtn = document.getElementById('closeInstitutionalCatalogModalBtn');
+  if (closeInstitutionalCatalogModalBtn) closeInstitutionalCatalogModalBtn.addEventListener('click', closeInstitutionalCatalogModal);
+
+  document.querySelectorAll('.rfq-spec-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const snippet = chip.dataset.snippet;
+      const reqText = document.getElementById('institutionalRequirements');
+      if (reqText && snippet) {
+        const current = reqText.value.trim();
+        reqText.value = current ? `${current}\n• ${snippet}` : `• ${snippet}`;
+        showToast('Added spec note');
+      }
+    });
+  });
 
   const aiHsnTaxBtn = document.getElementById('aiHsnTaxBtn');
   if (aiHsnTaxBtn) aiHsnTaxBtn.addEventListener('click', () => handleBusinessManagerTool('hsn'));
@@ -1694,6 +2093,9 @@ async function submitInstitutionalRequest(event) {
 
   const payload = {
     artisan_name: document.getElementById('institutionalName')?.value.trim(),
+    product_name: document.getElementById('institutionalProductName')?.value.trim() || 'Handcrafted Artisan Craft Batch',
+    hsn_code: document.getElementById('aiBulkHsnText')?.textContent.replace('HSN', '').trim() || '',
+    gst_rate: document.getElementById('aiBulkGstText')?.textContent.replace('GST', '').trim() || '',
     email: document.getElementById('institutionalEmail')?.value.trim(),
     phone: document.getElementById('institutionalPhone')?.value.trim(),
     location: document.getElementById('institutionalLocation')?.value.trim(),
@@ -1706,9 +2108,9 @@ async function submitInstitutionalRequest(event) {
     requirements: document.getElementById('institutionalRequirements')?.value.trim()
   };
   const status = document.getElementById('institutionalRequestStatus');
-  const subject = encodeURIComponent(`KalaSetu bulk request - ${payload.product_category}`);
+  const subject = encodeURIComponent(`KalaSetu bulk request - ${payload.product_name || payload.product_category}`);
   const body = encodeURIComponent(
-    `Name: ${payload.artisan_name}\nEmail: ${payload.email}\nPhone: ${payload.phone}\nLocation: ${payload.location}\nPreferred bulk outlet / target buyer: ${payload.target_buyer}\nCategory: ${payload.product_category}\nQuantity: ${payload.quantity}\nUnit price expectation: ${payload.unit_price}\nLead time: ${payload.lead_time}\nRequirements: ${payload.requirements}`
+    `Product: ${payload.product_name}\nHSN/GST: ${payload.hsn_code} (${payload.gst_rate})\nName: ${payload.artisan_name}\nEmail: ${payload.email}\nPhone: ${payload.phone}\nLocation: ${payload.location}\nPreferred bulk outlet / target buyer: ${payload.target_buyer}\nCategory: ${payload.product_category}\nQuantity: ${payload.quantity}\nUnit price expectation: ${payload.unit_price}\nLead time: ${payload.lead_time}\nRequirements: ${payload.requirements}`
   );
 
   try {
@@ -2663,12 +3065,24 @@ function openProductModal(productId) {
     };
   }
 
-  // WhatsApp Button
+  // WhatsApp Direct Inquiry Button
   const waBtn = document.getElementById('modalWhatsAppBtn');
   if (waBtn) {
     const cleanPhone = (product.artisan_phone || '').replace(/[^0-9]/g, '');
     const msg = `Namaste ${product.artisan_name}, I saw your handcrafted '${product.name}' on KalaSetu marketplace for ₹${product.price}. I would like to order directly from you.`;
     waBtn.href = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+  }
+
+  // WhatsApp Share Button (forward listing to any buyer or group)
+  const shareWaBtn = document.getElementById('modalShareWhatsAppBtn');
+  if (shareWaBtn) {
+    const shareMsg = `🏺 *${product.name}*\n` +
+      `💰 *Price:* ₹${product.price.toLocaleString('en-IN')}\n` +
+      `🧵 *Craft Category:* ${product.category}\n` +
+      `📍 *Artisan:* ${product.artisan_name} (${product.artisan_location})\n` +
+      `✅ *Verified by KalaSetu AI & MoSJE*\n\n` +
+      `Order directly from the artisan on KalaSetu: ${window.location.origin}/#marketplace`;
+    shareWaBtn.href = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareMsg)}`;
   }
 
   modal.classList.remove('hidden');
