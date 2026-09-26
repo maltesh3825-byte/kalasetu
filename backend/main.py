@@ -4,6 +4,7 @@ Smart India Hackathon 2026 - SIH26090
 Ministry of Social Justice and Empowerment (MoSJE)
 """
 import json
+import base64
 import uuid
 import hashlib
 import hmac
@@ -190,10 +191,12 @@ class InstitutionalRequestCreate(BaseModel):
     unit_price: float = 0
     lead_time: str = ""
     target_buyer: str = "Open to all"
+    target_market: str = "Open to all"
     product_name: str = ""
     hsn_code: str = ""
     gst_rate: str = ""
     requirements: str = ""
+    image_url: Optional[str] = ""
 
 
 class AdminLogin(BaseModel):
@@ -1839,13 +1842,26 @@ class InstitutionalRfqAiRequest(BaseModel):
 def ai_generate_institutional_rfq(payload: InstitutionalRfqAiRequest):
     """AI Analyzer for Bulk / Institutional RFQ listings."""
     image_bytes = None
+    saved_image_url = None
     if payload.image_base64:
         try:
             raw_b64 = payload.image_base64
             if "," in raw_b64:
                 raw_b64 = raw_b64.split(",", 1)[1]
             image_bytes = base64.b64decode(raw_b64)
-        except Exception:
+
+            ext = "jpg"
+            if payload.image_base64.startswith("data:image/png"):
+                ext = "png"
+            elif payload.image_base64.startswith("data:image/webp"):
+                ext = "webp"
+            fname = f"rfq_{uuid.uuid4().hex[:10]}.{ext}"
+            file_path = os.path.join(UPLOAD_DIR, fname)
+            with open(file_path, "wb") as f:
+                f.write(image_bytes)
+            saved_image_url = f"/static/uploads/{fname}"
+        except Exception as e:
+            logger.warning(f"Could not save RFQ image: {e}")
             image_bytes = None
 
     result = generate_institutional_rfq_ai(
@@ -1854,6 +1870,8 @@ def ai_generate_institutional_rfq(payload: InstitutionalRfqAiRequest):
         target_buyer=payload.target_buyer,
         image_bytes=image_bytes
     )
+    if saved_image_url:
+        result["saved_image_url"] = saved_image_url
     return JSONResponse(content=result)
 
 

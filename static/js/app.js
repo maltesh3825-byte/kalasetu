@@ -541,6 +541,186 @@ function shareRfqViaWhatsApp() {
   window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
+// Bulk / Institutional AI Vision State & Dropzone
+const bulkVisionState = {
+  selectedFile: null,
+  imageUrl: null,
+  isAnalyzing: false,
+  suggestedTags: []
+};
+
+function setBulkProductImage(source, file = null, name = '') {
+  const dropzone = document.getElementById('bulkImageDropzone');
+  const placeholder = document.getElementById('bulkImagePlaceholder');
+  const previewContainer = document.getElementById('bulkImagePreviewContainer');
+  const previewImg = document.getElementById('bulkPreviewImg');
+  const previewTitle = document.getElementById('bulkPreviewTitle');
+  const previewSubtitle = document.getElementById('bulkPreviewSubtitle');
+
+  bulkVisionState.selectedFile = file;
+  bulkVisionState.imageUrl = typeof source === 'string' ? source : null;
+
+  if (previewImg) {
+    if (typeof source === 'string' && source) {
+      previewImg.src = source;
+    } else if (file) {
+      try {
+        previewImg.src = URL.createObjectURL(file);
+      } catch (e) {
+        console.warn('Could not create ObjectURL:', e);
+      }
+    }
+  }
+
+  if (previewTitle) {
+    previewTitle.textContent = name || (file ? file.name : 'Craft Photo Selected');
+  }
+
+  if (previewSubtitle) {
+    previewSubtitle.textContent = 'Photo loaded. Tap "Analyze with AI Vision" to suggest description, price & tags.';
+  }
+
+  if (placeholder) placeholder.classList.add('hidden');
+  if (previewContainer) previewContainer.classList.remove('hidden');
+  if (dropzone) {
+    dropzone.classList.remove('border-dashed');
+    dropzone.classList.add('border-solid', 'border-amber-400');
+  }
+}
+
+function resetBulkProductImage() {
+  bulkVisionState.selectedFile = null;
+  bulkVisionState.imageUrl = null;
+  const dropzone = document.getElementById('bulkImageDropzone');
+  const placeholder = document.getElementById('bulkImagePlaceholder');
+  const previewContainer = document.getElementById('bulkImagePreviewContainer');
+  const previewImg = document.getElementById('bulkPreviewImg');
+  const fileInput = document.getElementById('bulkProductImageInput');
+
+  if (fileInput) fileInput.value = '';
+  if (previewImg) previewImg.src = '';
+  if (placeholder) placeholder.classList.remove('hidden');
+  if (previewContainer) previewContainer.classList.add('hidden');
+  if (dropzone) {
+    dropzone.classList.add('border-dashed');
+    dropzone.classList.remove('border-solid', 'border-amber-400');
+  }
+}
+
+function renderBulkTags(tags) {
+  const container = document.getElementById('bulkTagsContainer');
+  const list = document.getElementById('bulkTagsList');
+  if (!container || !list) return;
+
+  if (!tags || !Array.isArray(tags) || tags.length === 0) {
+    container.classList.add('hidden');
+    list.innerHTML = '';
+    return;
+  }
+
+  bulkVisionState.suggestedTags = tags;
+  list.innerHTML = tags.map(tag => {
+    const cleanTag = tag.replace(/^#/, '');
+    return `<button type="button" class="bulk-tag-chip px-2.5 py-1 bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-slate-300 hover:border-amber-400 rounded-lg text-xs font-semibold shadow-2xs transition-all flex items-center gap-1 cursor-pointer" data-tag="${escapeHtml(cleanTag)}">
+      <span class="text-amber-600">#</span><span>${escapeHtml(cleanTag)}</span>
+      <span class="text-[10px] text-slate-400 font-bold ml-0.5">+</span>
+    </button>`;
+  }).join('');
+
+  list.querySelectorAll('.bulk-tag-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tag = btn.dataset.tag;
+      const reqText = document.getElementById('institutionalRequirements');
+      if (reqText && tag) {
+        const current = reqText.value.trim();
+        const tagText = `#${tag}`;
+        if (!current.includes(tagText)) {
+          reqText.value = current ? `${current} ${tagText}` : tagText;
+          showToast(`Added #${tag} to description`);
+          btn.classList.add('bg-amber-100', 'border-amber-400', 'text-amber-900');
+        }
+      }
+    });
+  });
+
+  container.classList.remove('hidden');
+}
+
+function initBulkProductImageDropzone() {
+  const dropzone = document.getElementById('bulkImageDropzone');
+  const input = document.getElementById('bulkProductImageInput');
+  const placeholder = document.getElementById('bulkImagePlaceholder');
+  const cameraBtn = document.getElementById('bulkCameraBtn');
+  const changeBtn = document.getElementById('bulkChangePhotoBtn');
+  const analyzeBtn = document.getElementById('bulkAnalyzeVisionBtn');
+
+  if (input) {
+    input.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        if (!file.type.startsWith('image/')) {
+          alert('Please select an image file (PNG, JPG, WEBP).');
+          return;
+        }
+        setBulkProductImage(null, file, file.name);
+      }
+    });
+  }
+
+  if (placeholder && input) {
+    placeholder.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      input.removeAttribute('capture');
+      input.click();
+    });
+  }
+
+  if (cameraBtn && input) {
+    cameraBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      input.setAttribute('capture', 'environment');
+      input.click();
+    });
+  }
+
+  if (changeBtn && input) {
+    changeBtn.addEventListener('click', () => {
+      input.removeAttribute('capture');
+      input.click();
+    });
+  }
+
+  if (dropzone) {
+    ['dragenter', 'dragover'].forEach(name => {
+      dropzone.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzone.classList.add('border-terracotta-500', 'bg-amber-100/40');
+      });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+      dropzone.addEventListener(name, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzone.classList.remove('border-terracotta-500', 'bg-amber-100/40');
+      });
+    });
+    dropzone.addEventListener('drop', (e) => {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+      if (files && files.length > 0 && files[0].type.startsWith('image/')) {
+        setBulkProductImage(null, files[0], files[0].name);
+      }
+    });
+  }
+
+  if (analyzeBtn) {
+    analyzeBtn.addEventListener('click', () => {
+      generateInstitutionalRfqWithAi();
+    });
+  }
+}
+
 let isGeneratingInstitutionalAi = false;
 
 async function generateInstitutionalRfqWithAi() {
@@ -556,6 +736,13 @@ async function generateInstitutionalRfqWithAi() {
   const btnIcon = document.getElementById('aiAutoFillBtnIcon');
   const autoFillBtn = document.getElementById('aiAutoFillRfqBtn');
 
+  // Vision analyzer UI elements
+  const bulkVisionBtn = document.getElementById('bulkAnalyzeVisionBtn');
+  const bulkVisionSpinner = document.getElementById('bulkVisionSpinner');
+  const bulkVisionBtnText = document.getElementById('bulkVisionBtnText');
+  const bulkProgressBox = document.getElementById('bulkVisionProgressBox');
+  const bulkProgressText = document.getElementById('bulkVisionProgressText');
+
   const craftHint = nameInput?.value.trim() || catSelect?.value || 'Handicraft';
   const category = catSelect?.value || 'Handloom & Textiles';
   const targetBuyer = targetSelect?.value || 'Open to all';
@@ -565,61 +752,121 @@ async function generateInstitutionalRfqWithAi() {
   if (btnIcon) btnIcon.textContent = '⏳';
   if (autoFillBtn) autoFillBtn.disabled = true;
 
-  try {
-    const res = await fetch('/api/ai/institutional-rfq', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        craft_hint: craftHint,
-        category: category,
-        target_buyer: targetBuyer
-      })
-    });
+  if (bulkVisionBtn) bulkVisionBtn.disabled = true;
+  if (bulkVisionSpinner) bulkVisionSpinner.classList.remove('hidden');
+  if (bulkVisionBtnText) bulkVisionBtnText.textContent = 'Analyzing Vision...';
+  if (bulkProgressBox) bulkProgressBox.classList.remove('hidden');
 
-    if (!res.ok) {
-      throw new Error(`Server returned ${res.status}`);
+  const visionSteps = [
+    'Analyzing craft texture, materials & cultural technique with AI Vision...',
+    'Identifying standard HSN compliance & wholesale price points...',
+    'Formulating institutional specifications and GeM procurement tags...'
+  ];
+  let stepIdx = 0;
+  const progressInterval = setInterval(() => {
+    stepIdx = (stepIdx + 1) % visionSteps.length;
+    if (bulkProgressText) bulkProgressText.textContent = visionSteps[stepIdx];
+  }, 1000);
+
+  try {
+    const imageSource = bulkVisionState.selectedFile || bulkVisionState.imageUrl;
+    let data = null;
+
+    // PATH 1: Direct Gemini Vision if image available
+    if (imageSource && typeof _callBulkGeminiVisionDirect === 'function') {
+      try {
+        data = await _callBulkGeminiVisionDirect(imageSource, craftHint, category, targetBuyer);
+      } catch (geminiErr) {
+        console.warn('[KalaSetu] Direct Gemini Vision bulk failed, trying backend:', geminiErr);
+        data = null;
+      }
     }
 
-    const data = await res.json();
+    // PATH 2: Backend AI institutional-rfq endpoint (handles both multimodal image & text heuristics)
+    if (!data) {
+      let imageBase64 = null;
+      if (imageSource) {
+        try {
+          const rawB64 = await _imageToBase64(imageSource);
+          const mime = (imageSource instanceof Blob) ? (imageSource.type || 'image/jpeg') : 'image/jpeg';
+          imageBase64 = `data:${mime};base64,${rawB64}`;
+        } catch (b64Err) {
+          console.warn('[KalaSetu] Could not convert RFQ image to base64:', b64Err);
+        }
+      }
+
+      const res = await fetch('/api/ai/institutional-rfq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          craft_hint: craftHint,
+          category: category,
+          target_buyer: targetBuyer,
+          image_base64: imageBase64
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}`);
+      }
+
+      data = await res.json();
+    }
+
+    clearInterval(progressInterval);
 
     if (nameInput) {
       nameInput.value = data.product_name || craftHint;
     }
 
-    if (catSelect && data.product_category) {
+    if (catSelect && (data.product_category || data.category)) {
+      const targetCat = data.product_category || data.category;
       for (let i = 0; i < catSelect.options.length; i++) {
-        if (catSelect.options[i].value.toLowerCase() === data.product_category.toLowerCase() ||
-            data.product_category.toLowerCase().includes(catSelect.options[i].value.toLowerCase())) {
+        if (catSelect.options[i].value.toLowerCase() === targetCat.toLowerCase() ||
+            targetCat.toLowerCase().includes(catSelect.options[i].value.toLowerCase()) ||
+            catSelect.options[i].value.toLowerCase().includes(targetCat.toLowerCase())) {
           catSelect.selectedIndex = i;
           break;
         }
       }
     }
 
-    if (reqText && data.requirements) {
-      reqText.value = data.requirements;
+    if (reqText && (data.requirements || data.institutional_description)) {
+      reqText.value = data.requirements || data.institutional_description;
     }
 
-    if (priceInput && (!priceInput.value || priceInput.value === '250' || priceInput.value === '0')) {
+    if (priceInput) {
       priceInput.value = data.suggested_unit_price || 250;
     }
 
-    if (leadInput && (!leadInput.value || leadInput.value === '7-15 working days')) {
-      leadInput.value = data.lead_time || '7-15 working days';
+    if (leadInput) {
+      leadInput.value = data.lead_time || data.suggested_lead_time || '7-15 working days';
     }
 
     const taxBadge = document.getElementById('aiBulkTaxBadge');
     const hsnText = document.getElementById('aiBulkHsnText');
     const gstText = document.getElementById('aiBulkGstText');
     if (taxBadge && hsnText && gstText) {
-      hsnText.textContent = `HSN ${data.hsn_code}`;
-      gstText.textContent = `GST ${data.gst_rate}`;
+      hsnText.textContent = `HSN ${data.hsn_code || '6912'}`;
+      gstText.textContent = `GST ${data.gst_rate || '12%'}`;
       taxBadge.classList.remove('hidden');
     }
 
+    // Render tags
+    if (data.tags && Array.isArray(data.tags)) {
+      renderBulkTags(data.tags);
+    }
+
+    // If backend saved the uploaded image, save the URL
+    if (data.saved_image_url) {
+      bulkVisionState.imageUrl = data.saved_image_url;
+      setBulkProductImage(data.saved_image_url, null, data.product_name);
+    }
+
     updateBulkPricingTiers();
-    showToast('✨ AI generated formal RFQ title, pitch & compliance codes!');
+    showToast('✨ AI Vision analyzed craft: Suggested title, price, tags & packaging specs!');
   } catch (err) {
+    clearInterval(progressInterval);
     console.error('Error generating AI institutional RFQ:', err);
     showToast('AI generator offline, applied smart institutional template.');
     if (nameInput && !nameInput.value.trim()) {
@@ -628,11 +875,18 @@ async function generateInstitutionalRfqWithAi() {
     if (reqText && !reqText.value.trim()) {
       reqText.value = `Bulk institutional specification: Export-grade corrugated carton packaging with inner moisture barrier. Handcrafted authentication certificate included per unit. Pre-dispatch lot inspection assured.`;
     }
+    renderBulkTags(["Handcrafted", "HeritageCraft", "GeMEligible", "BulkGifting", "EcoFriendly"]);
   } finally {
     isGeneratingInstitutionalAi = false;
+    clearInterval(progressInterval);
     if (btnText) btnText.textContent = 'AI Auto-Fill Pitch';
     if (btnIcon) btnIcon.textContent = '✨';
     if (autoFillBtn) autoFillBtn.disabled = false;
+
+    if (bulkVisionBtn) bulkVisionBtn.disabled = false;
+    if (bulkVisionSpinner) bulkVisionSpinner.classList.add('hidden');
+    if (bulkVisionBtnText) bulkVisionBtnText.textContent = 'Analyze with AI Vision';
+    if (bulkProgressBox) bulkProgressBox.classList.add('hidden');
   }
 }
 
@@ -724,8 +978,13 @@ function loadCraftIntoInstitutionalRfq(craft) {
     reqText.value = `Institutional procurement batch for authentic ${craft.category}: ${craft.description || craft.name}. Includes export packaging, moisture-barrier wrapping, and artisan certificate of authenticity.`;
   }
 
+  // Load craft photo into bulk vision dropzone preview
+  if (craft.image_url) {
+    setBulkProductImage(craft.image_url, null, craft.name);
+  }
+
   updateBulkPricingTiers();
-  showToast(`Loaded "${craft.name}"! Analyzing formal procurement specs with AI...`);
+  showToast(`Loaded "${craft.name}"! Analyzing formal procurement specs with AI Vision...`);
   // Automatically trigger AI auto-fill to get formal compliance and specs
   generateInstitutionalRfqWithAi();
 }
@@ -942,6 +1201,7 @@ function setupEventListeners() {
     if (input) input.addEventListener('input', updateBulkPricingTiers);
   });
   updateBulkPricingTiers();
+  initBulkProductImageDropzone();
 
   const aiAutoFillRfqBtn = document.getElementById('aiAutoFillRfqBtn');
   if (aiAutoFillRfqBtn) aiAutoFillRfqBtn.addEventListener('click', generateInstitutionalRfqWithAi);
@@ -2231,12 +2491,13 @@ async function submitInstitutionalRequest(event) {
     lead_time: document.getElementById('institutionalLeadTime')?.value.trim(),
     target_buyer: document.getElementById('institutionalTargetBuyer')?.value || 'Open to all',
     target_market: document.getElementById('institutionalTargetBuyer')?.value || 'Open to all',
-    requirements: document.getElementById('institutionalRequirements')?.value.trim()
+    requirements: document.getElementById('institutionalRequirements')?.value.trim(),
+    image_url: bulkVisionState.imageUrl || ''
   };
   const status = document.getElementById('institutionalRequestStatus');
   const subject = encodeURIComponent(`KalaSetu bulk request - ${payload.product_name || payload.product_category}`);
   const body = encodeURIComponent(
-    `Product: ${payload.product_name}\nHSN/GST: ${payload.hsn_code} (${payload.gst_rate})\nName: ${payload.artisan_name}\nEmail: ${payload.email}\nPhone: ${payload.phone}\nLocation: ${payload.location}\nPreferred bulk outlet / target buyer: ${payload.target_buyer}\nCategory: ${payload.product_category}\nQuantity: ${payload.quantity}\nUnit price expectation: ${payload.unit_price}\nLead time: ${payload.lead_time}\nRequirements: ${payload.requirements}`
+    `Product: ${payload.product_name}\nHSN/GST: ${payload.hsn_code} (${payload.gst_rate})\nName: ${payload.artisan_name}\nEmail: ${payload.email}\nPhone: ${payload.phone}\nLocation: ${payload.location}\nPreferred bulk outlet / target buyer: ${payload.target_buyer}\nCategory: ${payload.product_category}\nQuantity: ${payload.quantity}\nUnit price expectation: ${payload.unit_price}\nLead time: ${payload.lead_time}\nImage: ${payload.image_url || 'None'}\nRequirements: ${payload.requirements}`
   );
 
   try {
@@ -2516,6 +2777,87 @@ Return ONLY a valid JSON object matching this exact schema:
   result.ai_engine = `Direct Gemini Vision (${model})`;
   result.ai_provider = result.ai_engine;
   return result;
+}
+
+async function _callBulkGeminiVisionDirect(imageSource, craftHint, category, targetBuyer) {
+  const { key, model } = await _fetchWebGeminiConfig();
+  if (!key) throw new Error('NO_GEMINI_KEY');
+
+  const base64 = await _imageToBase64(imageSource);
+  const mimeType = (imageSource instanceof Blob) ? (imageSource.type || 'image/jpeg') : 'image/jpeg';
+
+  const prompt = `You are the Lead Institutional Procurement Manager & AI Vision Specialist for KalaSetu under the Ministry of Social Justice and Empowerment (MoSJE).
+Analyze this handmade artisan craft photo for wholesale/institutional RFQ procurement (e.g. Government GeM tenders, luxury corporate gifting, export houses, cultural events).
+
+Artisan context:
+- Hint/Title: "${craftHint || 'Handmade Indian Craft'}"
+- Suggested Category: "${category || 'Handloom & Textiles'}"
+- Target Buyer / Procurement Channel: "${targetBuyer || 'Open to all'}"
+
+Analyze visual craftsmanship, technique, materials, authenticity motifs, and wholesale requirements shown in the photo.
+Return ONLY a valid JSON object matching this schema:
+{
+  "product_name": "Formal bulk procurement product title (e.g. 'Handcrafted Terracotta Warli Jug Set (Export Batch)')",
+  "product_category": "Pick exact match from: Handloom & Textiles, Pottery & Terracotta, Brass & Metalcraft, Cane & Bamboo, Woodcraft, Folk Art & Painting",
+  "suggested_unit_price": 450,
+  "suggested_lead_time": "15-20 working days",
+  "hsn_code": "Realistic 4-digit Indian HSN code (e.g. 6912, 5208, 7419, 4420, 4602, 9701)",
+  "gst_rate": "5% or 12%",
+  "tags": ["GeM Eligible", "GI Authenticated", "Export Packaging", "Eco-Friendly", "Corporate Gift"],
+  "institutional_description": "Comprehensive 2-3 sentences formal procurement copy covering craft heritage, purity of materials, wholesale batch inspection assurance, and export packaging specifications."
+}`;
+
+  const body = {
+    contents: [{
+      parts: [
+        { text: prompt },
+        { inline_data: { mime_type: mimeType, data: base64 } }
+      ]
+    }],
+    generationConfig: {
+      temperature: 0.2,
+      topP: 0.8,
+      maxOutputTokens: 1024,
+      responseMimeType: 'application/json'
+    }
+  };
+
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gemini API error ${res.status}: ${errText.slice(0, 300)}`);
+  }
+
+  const json = await res.json();
+  const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const cleanText = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  let result;
+  try {
+    result = JSON.parse(cleanText);
+  } catch (e) {
+    const m = rawText.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('Gemini returned no valid JSON');
+    result = JSON.parse(m[0]);
+  }
+
+  return {
+    product_name: result.product_name,
+    product_category: result.product_category || category,
+    category: result.product_category || category,
+    suggested_unit_price: Number(result.suggested_unit_price) || 350,
+    suggested_lead_time: result.suggested_lead_time || '10-20 working days',
+    lead_time: result.suggested_lead_time || '10-20 working days',
+    hsn_code: result.hsn_code || '6912',
+    gst_rate: result.gst_rate || '12%',
+    tags: Array.isArray(result.tags) ? result.tags : ['Handcrafted', 'GeM Eligible', 'Bulk Ready'],
+    requirements: result.institutional_description || result.requirements || ''
+  };
 }
 
 async function triggerAiAnalysis() {

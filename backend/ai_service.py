@@ -360,7 +360,8 @@ def generate_institutional_rfq_ai(
             "desc": "Master weaver handloom fabric woven from natural certified cotton and silk yarns. Breathable, AZO-free skin-friendly natural dyes, ideal for institutional conferences, dignitary shawls, and corporate felicitations.",
             "pack": "Individual recycled handmade paper sleeves with gold foil embossing option. Custom woven institutional logo tags available on minimum order.",
             "qa": "Handloom Mark & MoSJE artisan cluster certified; color-fastness laboratory tested.",
-            "price": 380, "lead": "12-15 working days"
+            "price": 380, "lead": "12-15 working days",
+            "tags": ["Handloom", "NaturalSilk", "TussarWeave", "GeMEligible", "CorporateShawl"]
         },
         "Pottery & Terracotta": {
             "hsn": "6912", "gst": "12%",
@@ -368,7 +369,8 @@ def generate_institutional_rfq_ai(
             "desc": "Kiln-fired earthenware crafted from purified alluvial river clay. Completely lead-free, microwave safe, and 100% biodegradable. Perfect for eco-friendly hospitality, institutional cafeterias, and cultural events.",
             "pack": "Biodegradable corrugated partitions with shredded straw cushioning. Customized stamped emblem on base available.",
             "qa": "100% non-toxic, food-grade verified, pre-dispatch thermal shock tested.",
-            "price": 120, "lead": "10-14 working days"
+            "price": 120, "lead": "10-14 working days",
+            "tags": ["Terracotta", "ClayCraft", "EcoFriendly", "LeadFree", "Hospitality"]
         },
         "Brass & Metalcraft": {
             "hsn": "7419", "gst": "12%",
@@ -376,7 +378,8 @@ def generate_institutional_rfq_ai(
             "desc": "Ancient bell-metal casting handcrafted by indigenous metalsmiths. Uniquely antiqued patina celebrating tribal heritage. Ideal for prestigious government awards, corporate summits, and cultural gifts.",
             "pack": "Velvet-lined rigid gift box with magnetic catch. Optional laser-engraved institutional brass nameplate.",
             "qa": "Solid virgin brass/bell-metal alloy; hand-polished with microcrystalline protective wax.",
-            "price": 550, "lead": "15-20 working days"
+            "price": 550, "lead": "15-20 working days",
+            "tags": ["DhokraArt", "BellMetal", "TribalHeritage", "Memento", "GeMEligible"]
         },
         "Woodcraft": {
             "hsn": "4420", "gst": "12%",
@@ -384,7 +387,8 @@ def generate_institutional_rfq_ai(
             "desc": "Carved from sustainably seasoned hardwood with natural grain wax finish. Functional compartments for executive stationery and tablets. Premium institutional memento for executive gifting.",
             "pack": "Individual kraft paper gift carton with eco-friendly protective sleeves. Laser engraving of organization logo on front panel.",
             "qa": "Moisture-content below 10% to prevent warping; non-toxic natural beeswax polish.",
-            "price": 420, "lead": "14-18 working days"
+            "price": 420, "lead": "14-18 working days",
+            "tags": ["SheeshamWood", "HandCarved", "DeskOrganizer", "CorporateGifting", "MoSJE"]
         },
         "Cane & Bamboo": {
             "hsn": "4602", "gst": "5%",
@@ -392,7 +396,8 @@ def generate_institutional_rfq_ai(
             "desc": "Ultra-lightweight indigenous bamboo weave treated against moisture and borers. Clean minimalist finish designed for eco-conscious symposiums and corporate kits.",
             "pack": "Flat-pack bundles of 25 with eco-twine wrap. Custom screen-printed branding on inner flap.",
             "qa": "Non-chemical borax treatment; splinter-free fine edge burnishing.",
-            "price": 280, "lead": "10-12 working days"
+            "price": 280, "lead": "10-12 working days",
+            "tags": ["BambooCraft", "EcoStationery", "HandWoven", "Sustainable", "ConferenceKit"]
         },
         "Folk Art & Painting": {
             "hsn": "9701", "gst": "12%",
@@ -400,7 +405,8 @@ def generate_institutional_rfq_ai(
             "desc": "Hand-painted by certified master artisans on handmade acid-free paper using natural mineral and vegetal pigments. Celebrates indigenous Indian living traditions.",
             "pack": "Corner-cushioned wooden frame with shatter-proof acrylic and gift envelope with artisan bio card.",
             "qa": "Original hand-rendered artwork; authenticated MoSJE artisan signoff.",
-            "price": 650, "lead": "15-20 working days"
+            "price": 650, "lead": "15-20 working days",
+            "tags": ["Madhubani", "FolkPainting", "NaturalPigments", "HandmadePaper", "CulturalGift"]
         }
     }
 
@@ -433,7 +439,8 @@ Return ONLY a valid JSON object matching this schema:
   "packaging_and_customization": "Detailed specification of packaging (e.g., individual kraft gift box) and custom branding options (e.g., corporate logo engraving, artisan story card).",
   "quality_assurance": "Quality standard declaration (e.g., MoSJE verified, lead-free, batch quality testing).",
   "suggested_unit_price": 450,
-  "suggested_lead_time": "12-15 working days"
+  "suggested_lead_time": "12-15 working days",
+  "tags": ["Handcrafted", "HeritageCraft", "GeMEligible", "BulkGifting", "EcoFriendly"]
 }}
 """
         headers = {
@@ -476,6 +483,7 @@ Return ONLY a valid JSON object matching this schema:
                 if qa: specs.append(f"Quality Assurance: {qa}")
                 parsed["requirements"] = f"{desc}\n\n" + "\n• ".join(["Specifications:"] + specs) if specs else desc
                 parsed["lead_time"] = parsed.get("suggested_lead_time", "12-15 working days")
+                parsed["tags"] = parsed.get("tags") or preset.get("tags", ["Handcrafted", "HeritageCraft", "GeMEligible"])
                 parsed["ai_engine"] = f"Google Gemini ({GEMINI_MODEL}) Institutional Intelligence"
                 parsed["is_ai_simulated"] = False
                 return parsed
@@ -500,6 +508,7 @@ Return ONLY a valid JSON object matching this schema:
         "suggested_unit_price": preset["price"],
         "suggested_lead_time": preset["lead"],
         "lead_time": preset["lead"],
+        "tags": preset.get("tags", ["Handcrafted", "HeritageCraft", "GeMEligible"]),
         "ai_engine": "Smart Institutional Cataloging Engine (Heuristic)",
         "is_ai_simulated": True
     }

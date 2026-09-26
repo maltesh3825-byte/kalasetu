@@ -777,6 +777,59 @@
         </div>
 
         <form id="institutionalRequestForm" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Institutional Product Image & AI Vision Analyzer Dropzone -->
+          <div class="sm:col-span-2 bg-gradient-to-r from-amber-50/70 to-orange-50/70 border-2 border-dashed border-amber-300 hover:border-terracotta-500 rounded-3xl p-5 sm:p-6 transition-all bg-white text-center relative shadow-sm" id="bulkImageDropzone">
+            <input type="file" id="bulkProductImageInput" accept="image/*" class="hidden">
+            
+            <div id="bulkImagePlaceholder" class="flex flex-col items-center justify-center cursor-pointer">
+              <div class="w-16 h-16 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center text-3xl mb-3 shadow-inner">
+                📸
+              </div>
+              <p class="font-extrabold text-slate-800 text-sm sm:text-base">
+                Upload Craft Photo for AI Vision Analysis
+              </p>
+              <p class="text-xs text-slate-500 mt-1 max-w-lg mx-auto">
+                Drag & drop or tap to choose a photo. AI Vision will analyze your craft to auto-suggest formal description, wholesale price & GeM/procurement tags.
+              </p>
+              <div class="flex items-center gap-2 mt-4">
+                <button type="button" onclick="document.getElementById('bulkProductImageInput').click()" class="px-4 py-2 bg-terracotta-600 hover:bg-terracotta-700 text-white rounded-xl text-xs font-bold shadow-sm transition-transform active:scale-95 flex items-center gap-1.5 cursor-pointer">
+                  <span>📁</span> Choose Photo
+                </button>
+                <button type="button" id="bulkCameraBtn" class="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold shadow-sm transition-transform active:scale-95 flex items-center gap-1.5 cursor-pointer">
+                  <span>📷</span> Use Camera
+                </button>
+              </div>
+            </div>
+
+            <!-- Preview Container (shown when image is selected or craft loaded) -->
+            <div id="bulkImagePreviewContainer" class="hidden flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div class="flex items-center gap-3.5 text-left">
+                <img id="bulkPreviewImg" src="" alt="Selected Craft" class="w-20 h-20 rounded-2xl object-cover border border-amber-300 shadow-md bg-slate-100">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-extrabold text-slate-800" id="bulkPreviewTitle">Craft Photo Selected</span>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Ready for Vision</span>
+                  </div>
+                  <p class="text-xs text-slate-500 mt-0.5" id="bulkPreviewSubtitle">Photo loaded. Tap "Analyze with AI Vision" to suggest description, price & tags.</p>
+                  <button type="button" id="bulkChangePhotoBtn" class="mt-1.5 text-xs text-terracotta-600 font-bold hover:underline flex items-center gap-1 cursor-pointer">
+                    <span>↺</span> Change Photo
+                  </button>
+                </div>
+              </div>
+              <button type="button" id="bulkAnalyzeVisionBtn" class="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-terracotta-600 to-amber-600 hover:from-terracotta-700 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all hover:scale-105 active:scale-95 cursor-pointer">
+                <div id="bulkVisionSpinner" class="hidden w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>✨</span>
+                <span id="bulkVisionBtnText">Analyze with AI Vision</span>
+              </button>
+            </div>
+
+            <!-- Progress status indicator -->
+            <div id="bulkVisionProgressBox" class="hidden mt-3 p-2.5 bg-amber-100/70 rounded-xl border border-amber-300 flex items-center justify-center gap-2 text-xs font-bold text-amber-900">
+              <div class="w-3.5 h-3.5 border-2 border-amber-700 border-t-transparent rounded-full animate-spin"></div>
+              <span id="bulkVisionProgressText">Analyzing craft texture, materials & cultural technique with AI Vision...</span>
+            </div>
+          </div>
+
           <!-- Institutional Product Name -->
           <label class="sm:col-span-2 text-xs font-bold text-slate-700 required-label">
             <span>Product / Craft Name for Bulk Procurement</span>
@@ -841,6 +894,19 @@
           <label class="text-xs font-bold text-slate-700 required-label"><span data-i18n="bulk_lead_time_label">Production / Dispatch lead time</span>
             <input id="institutionalLeadTime" class="institutional-input" placeholder="7-15 working days">
           </label>
+
+          <!-- AI Suggested Procurement & Craft Tags -->
+          <div id="bulkTagsContainer" class="sm:col-span-2 hidden p-4 bg-slate-50 border border-slate-200 rounded-2xl transition-all">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <span>🏷️</span>
+                <span>AI Suggested Craft & GeM Tags:</span>
+              </span>
+              <span class="text-[11px] text-slate-500 font-medium">Click any tag to append to buyer notes</span>
+            </div>
+            <div id="bulkTagsList" class="flex flex-wrap gap-1.5"></div>
+          </div>
+
           <label class="sm:col-span-2 text-xs font-bold text-slate-700"><span data-i18n="bulk_notes_label">What should the buyer know? (Packaging, specs, certifications)</span>
             <div class="flex flex-wrap gap-1.5 my-1.5">
               <button type="button" class="rfq-spec-chip text-[11px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded-full font-medium text-slate-700 border border-slate-200 transition-colors" data-snippet="Corrugated export-grade carton packaging with moisture barrier.">+ Export Packaging</button>
