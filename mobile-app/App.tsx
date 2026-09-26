@@ -424,6 +424,7 @@ export default function App() {
   const [complianceCsvData, setComplianceCsvData] = useState<string>('');
   const [complianceJsonData, setComplianceJsonData] = useState<any>(null);
   const [isComplianceLoading, setIsComplianceLoading] = useState(false);
+  const [complianceFilter, setComplianceFilter] = useState<{ productId?: number; artisanName?: string }>({});
 
   // Artisan Studio State
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -1608,19 +1609,31 @@ export default function App() {
   };
 
   // Open Compliance Modal for GeM CSV or ONDC Beckn JSON preview
-  const openComplianceModal = async (tab: 'gem' | 'ondc') => {
+  const openComplianceModal = async (tab: 'gem' | 'ondc', filters?: { productId?: number; artisanName?: string }) => {
     setComplianceTab(tab);
+    const activeFilters = filters !== undefined ? filters : complianceFilter;
+    if (filters !== undefined) {
+      setComplianceFilter(filters);
+    }
     setComplianceModalVisible(true);
     setIsComplianceLoading(true);
     try {
+      const params = new URLSearchParams();
+      if (activeFilters.productId) {
+        params.append('product_id', String(activeFilters.productId));
+      } else if (activeFilters.artisanName && activeFilters.artisanName.trim()) {
+        params.append('artisan_name', activeFilters.artisanName.trim());
+      }
+      const qs = params.toString() ? `?${params.toString()}` : '';
+
       if (tab === 'gem') {
-        const res = await fetch(`${getBackendUrl()}/api/export/gem-csv`);
+        const res = await fetch(`${getBackendUrl()}/api/export/gem-csv${qs}`);
         if (res.ok) {
           const txt = await res.text();
           setComplianceCsvData(txt);
         }
       } else if (tab === 'ondc') {
-        const res = await fetch(`${getBackendUrl()}/api/export/ondc`);
+        const res = await fetch(`${getBackendUrl()}/api/export/ondc${qs}`);
         if (res.ok) {
           const json = await res.json();
           setComplianceJsonData(json);
@@ -2083,7 +2096,7 @@ export default function App() {
               <TouchableOpacity style={styles.secondaryButton} onPress={saveBulkDraft}><Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text></TouchableOpacity>
               {bulkDrafts.length > 0 && (<View><Text style={styles.helperText}>{bulkDrafts.length} bulk draft(s) saved on this device.</Text><TouchableOpacity onPress={() => restoreBulkDraft(bulkDrafts[0])}><Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text></TouchableOpacity></View>)}
             </View>
-            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 2</Text><Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text><Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text><View style={styles.bulkPricingCard}><View style={styles.bulkPricingHeader}><Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text><Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text></View><Text style={styles.bulkPricingHint}>Based on {bulkQuantityNumber || 0} units at ₹{bulkUnitPriceNumber.toLocaleString('en-IN')} base price</Text>{bulkPricingTiers.map(tier => (<View key={tier.volume} style={styles.bulkPricingRow}><Text style={styles.bulkPricingVolume}>{tier.volume}</Text><Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text><Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>{bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}</Text></View>))}</View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => { if (!bulkQuantityNumber || !bulkUnitPriceNumber) { Alert.alert('Bulk pricing', 'Enter both quantity and unit price to calculate your live bulk total.'); return; } const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0; const tier = bulkPricingTiers[tierIndex]; const total = Math.round(tier.price) * bulkQuantityNumber; const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber)); Alert.alert('Bulk pricing', `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`); }}><Text style={styles.bulkToolText}>📊 Bulk pricing calculator</Text></TouchableOpacity><TouchableOpacity style={[styles.bulkToolButton, { backgroundColor: '#10B981' }]} onPress={shareRfqPitchToWhatsApp}><Text style={[styles.bulkToolText, { color: '#FFFFFF', fontWeight: '800' }]}>📲 Share RFQ to WhatsApp</Text></TouchableOpacity></View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('gem')}><Text style={styles.bulkToolText}>📦 GeM-ready export</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('ondc')}><Text style={styles.bulkToolText}>⚡ ONDC JSON</Text></TouchableOpacity></View></View>
+            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 2</Text><Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text><Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text><View style={styles.bulkPricingCard}><View style={styles.bulkPricingHeader}><Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text><Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text></View><Text style={styles.bulkPricingHint}>Based on {bulkQuantityNumber || 0} units at ₹{bulkUnitPriceNumber.toLocaleString('en-IN')} base price</Text>{bulkPricingTiers.map(tier => (<View key={tier.volume} style={styles.bulkPricingRow}><Text style={styles.bulkPricingVolume}>{tier.volume}</Text><Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text><Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>{bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}</Text></View>))}</View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => { if (!bulkQuantityNumber || !bulkUnitPriceNumber) { Alert.alert('Bulk pricing', 'Enter both quantity and unit price to calculate your live bulk total.'); return; } const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0; const tier = bulkPricingTiers[tierIndex]; const total = Math.round(tier.price) * bulkQuantityNumber; const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber)); Alert.alert('Bulk pricing', `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`); }}><Text style={styles.bulkToolText}>📊 Bulk pricing calculator</Text></TouchableOpacity><TouchableOpacity style={[styles.bulkToolButton, { backgroundColor: '#10B981' }]} onPress={shareRfqPitchToWhatsApp}><Text style={[styles.bulkToolText, { color: '#FFFFFF', fontWeight: '800' }]}>📲 Share RFQ to WhatsApp</Text></TouchableOpacity></View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('gem', { artisanName: bulkArtisanName || undefined })}><Text style={styles.bulkToolText}>📦 GeM-ready export</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('ondc', { artisanName: bulkArtisanName || undefined })}><Text style={styles.bulkToolText}>⚡ ONDC JSON</Text></TouchableOpacity></View></View>
             <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 3</Text><Text style={styles.profileSectionTitle}>{tx('connectChannels')}</Text><Text style={styles.bulkHelpText}>{tx('connectHelp')}</Text><View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 12 }}><Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E', marginBottom: 3 }}>🤝 Cluster Coordinator Handoff Mode</Text><Text style={{ fontSize: 11, color: '#78350F', lineHeight: 15 }}>Government (GeM) & ONDC platforms require verified entity onboarding (GSTIN, Udyam, DIC). KalaSetu packages compliant catalogs so your local Cluster Facilitator or Cooperative Lead can complete registration with zero data re-entry.</Text></View><View style={styles.bulkChannelRow}><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://gem.gov.in/')}><Text style={styles.bulkToolText}>GeM ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://ondc.org/')}><Text style={styles.bulkToolText}>ONDC ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://trifed.tribal.gov.in/')}><Text style={styles.bulkToolText}>TRIFED ↗</Text></TouchableOpacity></View><TouchableOpacity style={styles.secondaryAction} onPress={() => openBulkChannel('mailto:kalasetu24824.9@gmail.com?subject=KalaSetu%20Bulk%20Buyer%20Support')}><Text style={styles.secondaryActionText}>{tx('emailSupport')}</Text></TouchableOpacity></View>
           </View>
         );
@@ -2830,12 +2843,33 @@ export default function App() {
             </View>
 
             {/* Facilitator Notice */}
-            <View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 12, padding: 10, marginBottom: 14 }}>
+            <View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 12, padding: 10, marginBottom: 10 }}>
               <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400E', marginBottom: 2 }}>🤝 Cluster Coordinator Handoff Mode</Text>
               <Text style={{ fontSize: 10, color: '#78350F', lineHeight: 14 }}>
                 Ready for upload by your local District Industries Centre (DIC) or SHG coordinator without manual data re-entry.
               </Text>
             </View>
+
+            {/* Scope Filter Indicator */}
+            {complianceFilter.productId ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E40AF' }}>🎯 Filtered: Product #{complianceFilter.productId}</Text>
+                <TouchableOpacity onPress={() => openComplianceModal(complianceTab, {})}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>View All Products ↺</Text>
+                </TouchableOpacity>
+              </View>
+            ) : complianceFilter.artisanName ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 12 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E40AF' }}>👤 Filtered: {complianceFilter.artisanName}</Text>
+                <TouchableOpacity onPress={() => openComplianceModal(complianceTab, {})}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>View All Products ↺</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 12 }}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B' }}>🌐 Scope: Entire Marketplace Catalog (All Artisans)</Text>
+              </View>
+            )}
 
             {/* Tabs */}
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>

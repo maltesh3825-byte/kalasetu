@@ -258,23 +258,77 @@ function downloadBlob(blobContent, filename, mimeType) {
 let complianceState = {
   activeTab: 'gem',
   gemCsvText: '',
-  ondcJsonData: null
+  ondcJsonData: null,
+  filters: {
+    productId: null,
+    artisanName: null
+  }
 };
 
-async function openExportComplianceModal(initialTab = 'gem') {
-  const modal = document.getElementById('exportComplianceModal');
-  if (!modal) return;
-  modal.classList.remove('hidden');
-  switchComplianceTab(initialTab);
+function populateComplianceScopeSelector() {
+  const scopeSelect = document.getElementById('complianceScopeSelect');
+  const artisanOptGroup = document.getElementById('complianceScopeArtisans');
+  const productOptGroup = document.getElementById('complianceScopeProducts');
+  if (!scopeSelect) return;
+
+  const artisans = new Set();
+  const products = (state.products && state.products.length > 0) ? state.products : [];
+
+  products.forEach(p => {
+    if (p.artisan_name && p.artisan_name.trim()) artisans.add(p.artisan_name.trim());
+  });
+
+  if (artisanOptGroup) {
+    artisanOptGroup.innerHTML = Array.from(artisans).map(name => 
+      `<option value="artisan:${escapeHtml(name)}">Artisan: ${escapeHtml(name)}</option>`
+    ).join('');
+  }
+
+  if (productOptGroup) {
+    productOptGroup.innerHTML = products.map(p => 
+      `<option value="product:${p.id}">Product #${p.id}: ${escapeHtml(p.name)}</option>`
+    ).join('');
+  }
+}
+
+async function fetchComplianceData() {
+  const params = new URLSearchParams();
+  if (complianceState.filters.productId) {
+    params.append('product_id', complianceState.filters.productId);
+  } else if (complianceState.filters.artisanName) {
+    params.append('artisan_name', complianceState.filters.artisanName);
+  }
+  const qs = params.toString() ? `?${params.toString()}` : '';
+
+  const badge = document.getElementById('complianceScopeBadge');
+  const scopeSelect = document.getElementById('complianceScopeSelect');
+
+  if (badge) {
+    if (complianceState.filters.productId) {
+      badge.textContent = `🎯 Filtered: Product #${complianceState.filters.productId}`;
+      badge.classList.remove('hidden');
+    } else if (complianceState.filters.artisanName) {
+      badge.textContent = `👤 Filtered: ${complianceState.filters.artisanName}`;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+
+  if (scopeSelect) {
+    if (complianceState.filters.productId) {
+      scopeSelect.value = `product:${complianceState.filters.productId}`;
+    } else if (complianceState.filters.artisanName) {
+      scopeSelect.value = `artisan:${complianceState.filters.artisanName}`;
+    } else {
+      scopeSelect.value = 'all';
+    }
+  }
 
   try {
-    if (!complianceState.gemCsvText) {
-      const res = await fetch('/api/export/gem-csv');
-      if (res.ok) {
-        complianceState.gemCsvText = await res.text();
-        renderGemTable(complianceState.gemCsvText);
-      }
-    } else {
+    const res = await fetch(`/api/export/gem-csv${qs}`);
+    if (res.ok) {
+      complianceState.gemCsvText = await res.text();
       renderGemTable(complianceState.gemCsvText);
     }
   } catch (err) {
@@ -282,18 +336,42 @@ async function openExportComplianceModal(initialTab = 'gem') {
   }
 
   try {
-    if (!complianceState.ondcJsonData) {
-      const res = await fetch('/api/export/ondc');
-      if (res.ok) {
-        complianceState.ondcJsonData = await res.json();
-        renderOndcJson(complianceState.ondcJsonData);
-      }
-    } else {
+    const res = await fetch(`/api/export/ondc${qs}`);
+    if (res.ok) {
+      complianceState.ondcJsonData = await res.json();
       renderOndcJson(complianceState.ondcJsonData);
     }
   } catch (err) {
     console.error('Error fetching ONDC JSON:', err);
   }
+}
+
+async function openExportComplianceModal(initialTab = 'gem', filters = {}) {
+  const modal = document.getElementById('exportComplianceModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+
+  populateComplianceScopeSelector();
+
+  complianceState.filters = {
+    productId: filters.productId || null,
+    artisanName: filters.artisanName || null
+  };
+
+  switchComplianceTab(initialTab);
+  await fetchComplianceData();
+}
+
+function handleComplianceScopeChange(event) {
+  const val = event.target.value;
+  if (val === 'all') {
+    complianceState.filters = { productId: null, artisanName: null };
+  } else if (val.startsWith('artisan:')) {
+    complianceState.filters = { productId: null, artisanName: val.replace('artisan:', '') };
+  } else if (val.startsWith('product:')) {
+    complianceState.filters = { productId: Number(val.replace('product:', '')), artisanName: null };
+  }
+  fetchComplianceData();
 }
 
 function renderGemTable(csvText) {
@@ -398,12 +476,26 @@ function switchComplianceTab(tab) {
 function handleComplianceDownload() {
   if (complianceState.activeTab === 'gem') {
     if (!complianceState.gemCsvText) return;
-    downloadBlob(complianceState.gemCsvText, 'kalasetu-gem-procurement-catalog.csv', 'text/csv;charset=utf-8');
-    showToast('GeM CSV package downloaded');
+    let fileName = 'kalasetu-gem-procurement-catalog.csv';
+    if (complianceState.filters.productId) {
+      fileName = `kalasetu-gem-product-${complianceState.filters.productId}.csv`;
+    } else if (complianceState.filters.artisanName) {
+      const slug = complianceState.filters.artisanName.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+      fileName = `kalasetu-gem-artisan-${slug}.csv`;
+    }
+    downloadBlob(complianceState.gemCsvText, fileName, 'text/csv;charset=utf-8');
+    showToast(`GeM CSV downloaded: ${fileName}`);
   } else {
     if (!complianceState.ondcJsonData) return;
-    downloadBlob(JSON.stringify(complianceState.ondcJsonData, null, 2), 'kalasetu-ondc-beckn.json', 'application/json;charset=utf-8');
-    showToast('ONDC Beckn JSON downloaded');
+    let fileName = 'kalasetu-ondc-beckn.json';
+    if (complianceState.filters.productId) {
+      fileName = `kalasetu-ondc-product-${complianceState.filters.productId}.json`;
+    } else if (complianceState.filters.artisanName) {
+      const slug = complianceState.filters.artisanName.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+      fileName = `kalasetu-ondc-artisan-${slug}.json`;
+    }
+    downloadBlob(JSON.stringify(complianceState.ondcJsonData, null, 2), fileName, 'application/json;charset=utf-8');
+    showToast(`ONDC Beckn JSON downloaded: ${fileName}`);
   }
 }
 
@@ -595,11 +687,24 @@ function closeInstitutionalCatalogModal() {
 
 function loadCraftIntoInstitutionalRfq(craft) {
   closeInstitutionalCatalogModal();
+  const form = document.getElementById('institutionalForm');
+  if (form && craft?.id) {
+    form.dataset.productId = craft.id;
+  }
   const nameInput = document.getElementById('institutionalProductName');
   const catSelect = document.getElementById('institutionalCategory');
   const priceInput = document.getElementById('institutionalUnitPrice');
   const qtyInput = document.getElementById('institutionalQuantity');
   const reqText = document.getElementById('institutionalRequirements');
+  const artisanInput = document.getElementById('institutionalName');
+  const locationInput = document.getElementById('institutionalLocation');
+
+  if (artisanInput && (!artisanInput.value || artisanInput.value.trim() === '')) {
+    artisanInput.value = craft.artisan_name || '';
+  }
+  if (locationInput && (!locationInput.value || locationInput.value.trim() === '')) {
+    locationInput.value = craft.artisan_location || '';
+  }
 
   if (nameInput) nameInput.value = craft.name;
   if (catSelect && craft.category) {
@@ -778,16 +883,37 @@ function setupEventListeners() {
   if (loginForm) loginForm.addEventListener('submit', loginAccount);
 
   const exportGemCsvBtn = document.getElementById('exportGemCsvBtn');
-  if (exportGemCsvBtn) exportGemCsvBtn.addEventListener('click', () => openExportComplianceModal('gem'));
+  if (exportGemCsvBtn) exportGemCsvBtn.addEventListener('click', () => {
+    const craftId = document.getElementById('institutionalForm')?.dataset?.productId;
+    const artisanName = document.getElementById('institutionalName')?.value?.trim();
+    openExportComplianceModal('gem', { productId: craftId ? Number(craftId) : null, artisanName: artisanName || null });
+  });
 
   const generateOndcJsonBtn = document.getElementById('generateOndcJsonBtn');
-  if (generateOndcJsonBtn) generateOndcJsonBtn.addEventListener('click', () => openExportComplianceModal('ondc'));
+  if (generateOndcJsonBtn) generateOndcJsonBtn.addEventListener('click', () => {
+    const craftId = document.getElementById('institutionalForm')?.dataset?.productId;
+    const artisanName = document.getElementById('institutionalName')?.value?.trim();
+    openExportComplianceModal('ondc', { productId: craftId ? Number(craftId) : null, artisanName: artisanName || null });
+  });
 
   const openGemPreviewBtn = document.getElementById('openGemPreviewBtn');
   if (openGemPreviewBtn) openGemPreviewBtn.addEventListener('click', () => openExportComplianceModal('gem'));
 
   const openOndcPreviewBtn = document.getElementById('openOndcPreviewBtn');
   if (openOndcPreviewBtn) openOndcPreviewBtn.addEventListener('click', () => openExportComplianceModal('ondc'));
+
+  const complianceScopeSelect = document.getElementById('complianceScopeSelect');
+  if (complianceScopeSelect) complianceScopeSelect.addEventListener('change', handleComplianceScopeChange);
+
+  const modalExportGemBtn = document.getElementById('modalExportGemBtn');
+  if (modalExportGemBtn) modalExportGemBtn.addEventListener('click', () => {
+    if (state.selectedProductForModal) {
+      openExportComplianceModal('gem', {
+        productId: state.selectedProductForModal.id,
+        artisanName: state.selectedProductForModal.artisan_name
+      });
+    }
+  });
 
   const shareRfqWhatsAppBtn = document.getElementById('shareRfqWhatsAppBtn');
   if (shareRfqWhatsAppBtn) shareRfqWhatsAppBtn.addEventListener('click', shareRfqViaWhatsApp);

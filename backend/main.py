@@ -18,7 +18,7 @@ from typing import Optional, List, Dict, Any
 logger = logging.getLogger("kalasetu")
 
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -2120,13 +2120,36 @@ def get_product(product_id: int):
 
 
 @app.get("/api/export/gem-csv")
-def export_gem_csv():
-    """Expose a government-compliant GeM-ready CSV package from the product catalog."""
+def export_gem_csv(
+    product_id: Optional[int] = Query(None, description="Filter for a single product ID"),
+    artisan_name: Optional[str] = Query(None, description="Filter for a specific artisan/seller name"),
+    artisan_id: Optional[int] = Query(None, description="Filter for artisan user ID"),
+):
+    """Expose a government-compliant GeM-ready CSV package from the product catalog.
+    Supports scoping to a single product or a single artisan/seller."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, name, artisan_name, artisan_location, category, price, quantity, description_en, image_url FROM products ORDER BY id DESC"
-    )
+
+    conditions = []
+    params = []
+
+    if product_id is not None:
+        conditions.append("id = ?")
+        params.append(int(product_id))
+
+    if artisan_name and artisan_name.strip():
+        clean_name = artisan_name.strip()
+        conditions.append("LOWER(artisan_name) LIKE LOWER(?)")
+        params.append(f"%{clean_name}%")
+
+    if artisan_id is not None:
+        conditions.append("owner_user_id = ?")
+        params.append(int(artisan_id))
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    query = f"SELECT id, name, artisan_name, artisan_location, category, price, quantity, description_en, image_url FROM products {where_clause} ORDER BY id DESC"
+
+    cursor.execute(query, tuple(params))
     rows = cursor.fetchall()
     conn.close()
 
@@ -2173,15 +2196,52 @@ def export_gem_csv():
         row_vals = [p_id, p_name, p_artisan, p_loc, p_cat, hsn, gst, price, qty, lead_days, udyam, proc_mode, facilitator]
         lines.append(",".join(row_vals))
 
-    return PlainTextResponse("\n".join(lines), media_type="text/csv")
+    filename = "kalasetu-gem-procurement-catalog.csv"
+    if product_id is not None:
+        filename = f"kalasetu-gem-product-{product_id}.csv"
+    elif artisan_name and artisan_name.strip():
+        safe_artisan = re.sub(r'[^a-zA-Z0-9_-]', '_', artisan_name.strip().lower())
+        filename = f"kalasetu-gem-artisan-{safe_artisan}.csv"
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"'
+    }
+
+    return PlainTextResponse("\n".join(lines), media_type="text/csv", headers=headers)
 
 
 @app.get("/api/export/ondc")
-def export_ondc():
-    """Expose an ONDC/Beckn 1.1.0 compliant JSON payload from the catalog for network providers."""
+def export_ondc(
+    product_id: Optional[int] = Query(None, description="Filter for a single product ID"),
+    artisan_name: Optional[str] = Query(None, description="Filter for a specific artisan/seller name"),
+    artisan_id: Optional[int] = Query(None, description="Filter for artisan user ID"),
+):
+    """Expose an ONDC/Beckn 1.1.0 compliant JSON payload from the catalog for network providers.
+    Supports scoping to a single product or a single artisan/seller."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, artisan_name, artisan_location, category, price, quantity, description_en, image_url FROM products ORDER BY id DESC LIMIT 25")
+
+    conditions = []
+    params = []
+
+    if product_id is not None:
+        conditions.append("id = ?")
+        params.append(int(product_id))
+
+    if artisan_name and artisan_name.strip():
+        clean_name = artisan_name.strip()
+        conditions.append("LOWER(artisan_name) LIKE LOWER(?)")
+        params.append(f"%{clean_name}%")
+
+    if artisan_id is not None:
+        conditions.append("owner_user_id = ?")
+        params.append(int(artisan_id))
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    limit_clause = "LIMIT 25" if not conditions else ""
+    query = f"SELECT id, name, artisan_name, artisan_location, category, price, quantity, description_en, image_url FROM products {where_clause} ORDER BY id DESC {limit_clause}"
+
+    cursor.execute(query, tuple(params))
     rows = cursor.fetchall()
     conn.close()
 
@@ -2216,6 +2276,12 @@ def export_ondc():
             }
         })
 
+    scope_descriptor = "KalaSetu Artisan Network"
+    if product_id is not None and rows:
+        scope_descriptor = f"KalaSetu Item #{product_id} - {rows[0][1]}"
+    elif artisan_name and artisan_name.strip():
+        scope_descriptor = f"KalaSetu Artisan Catalog - {artisan_name.strip()}"
+
     payload = {
         "context": {
             "domain": "ONDC:RET10",
@@ -2232,7 +2298,7 @@ def export_ondc():
         "message": {
             "catalog": {
                 "bpp/descriptor": {
-                    "name": "KalaSetu Artisan Network",
+                    "name": scope_descriptor,
                     "short_desc": "Empowering micro-artisans & weavers with direct institutional & retail linkage"
                 },
                 "bpp/providers": [
@@ -2256,10 +2322,13 @@ def export_ondc():
         "export_metadata": {
             "specification": "ONDC Beckn Protocol 1.1.0",
             "readiness_status": "Compliance_Ready_For_BPP_Onboarding",
-            "facilitator_note": "Ready for submission to registered ONDC Seller Network Participant (SNP)"
+            "facilitator_note": "Ready for submission to registered ONDC Seller Network Participant (SNP)",
+            "item_count": len(items),
+            "filtered_artisan": artisan_name or None,
+            "filtered_product_id": product_id or None
         }
     }
-    return JSONResponse(payload)
+    return JSONResponse(content=payload)
 
 
 @app.get("/api/users/{user_id}/documents")

@@ -1440,6 +1440,12 @@
             <span>📲</span>
             <span>Share Listing</span>
           </a>
+          <button id="modalExportGemBtn" type="button" 
+             class="flex-1 py-3.5 px-4 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-extrabold text-sm flex items-center justify-center gap-1.5 border border-amber-300 transition-all"
+             title="Preview and Export GeM-ready CSV for this single craft">
+            <span>📦</span>
+            <span>GeM Listing</span>
+          </button>
         </div>
         <div id="deliveryDetailsForm" class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <h4 class="text-sm font-black text-slate-900" data-i18n="delivery_details">Delivery details</h4>
@@ -1484,6 +1490,24 @@
         <div>
           <strong class="font-extrabold text-amber-900">Cluster Coordinator Handoff Mode:</strong>
           <span>This file conforms to official procurement schemas. Ready for direct bulk upload by your DIC, TRIFED or cooperative manager.</span>
+        </div>
+      </div>
+
+      <!-- Scope Filter Selector (Single Artisan / Single Product / Entire Marketplace) -->
+      <div class="bg-white border-b border-slate-200 px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-2">
+          <label for="complianceScopeSelect" class="font-bold text-slate-700 flex items-center gap-1.5">
+            <span>🎯</span>
+            <span>Export Scope:</span>
+          </label>
+          <select id="complianceScopeSelect" class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs bg-slate-50 font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none max-w-xs sm:max-w-md">
+            <option value="all">Entire Marketplace Catalog (All Artisans)</option>
+            <optgroup label="Filter by Single Artisan" id="complianceScopeArtisans"></optgroup>
+            <optgroup label="Filter by Single Product" id="complianceScopeProducts"></optgroup>
+          </select>
+        </div>
+        <div id="complianceScopeBadge" class="hidden px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">
+          Targeted Scope Active
         </div>
       </div>
 
