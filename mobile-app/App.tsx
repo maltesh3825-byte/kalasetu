@@ -1475,6 +1475,18 @@ export default function App() {
 
   // Publish to Marketplace
   const handlePublish = async () => {
+    if (!currentUser || !currentUser.id) {
+      Alert.alert(
+        "Artisan Account Required",
+        "You must be logged in to an artisan account to publish products to the marketplace. Please sign in or register your profile first.",
+        [
+          { text: "Sign In", onPress: () => setActiveTab('profile') },
+          { text: "Cancel", style: "cancel" }
+        ]
+      );
+      return;
+    }
+
     if (!editTitle || !editPrice) {
       Alert.alert("Incomplete Listing", "Please provide a title and price.");
       return;

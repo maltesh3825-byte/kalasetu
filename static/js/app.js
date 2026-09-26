@@ -27,7 +27,8 @@ const state = {
   accountNotifications: [],
   accountWishlist: [],
   accountAdminRequests: [],
-  adminToken: localStorage.getItem('kalakriti_admin_token') || ''
+  adminToken: localStorage.getItem('kalakriti_admin_token') || '',
+  userToken: localStorage.getItem('kalakriti_access_token') || ''
 };
 
 // Fullscreen Opening Animation Controller
@@ -1402,6 +1403,7 @@ function setupEventListeners() {
 }
 
 function syncStudioArtisanInfo() {
+  updateStudioAuthBanner();
   if (!state.currentUser) return;
   const nameEl = document.getElementById('artisanName');
   const phoneEl = document.getElementById('artisanPhone');
@@ -1414,6 +1416,13 @@ function syncStudioArtisanInfo() {
   }
   if (locEl && (!locEl.value || locEl.value === 'Madhubani, Bihar')) {
     locEl.value = state.currentUser.city || '';
+  }
+}
+
+function updateStudioAuthBanner() {
+  const notice = document.getElementById('studioAuthNotice');
+  if (notice) {
+    notice.classList.toggle('hidden', Boolean(state.currentUser));
   }
 }
 
@@ -1450,6 +1459,7 @@ function switchTab(tab) {
     institutionalSection?.classList.add('hidden');
     accountSection?.classList.add('hidden');
     syncStudioArtisanInfo();
+    updateStudioAuthBanner();
   } else if (tab === 'institutional') {
     homeSection?.classList.add('hidden');
     studioSection?.classList.add('hidden');
@@ -1602,6 +1612,10 @@ async function handlePasswordAuth(event) {
       role: payload.role || 'artisan',
     };
     localStorage.setItem('kalakriti_user', JSON.stringify(state.currentUser));
+    if (data.access_token) {
+      state.userToken = data.access_token;
+      localStorage.setItem('kalakriti_access_token', data.access_token);
+    }
 
     try {
       await loadAccountData();
@@ -1877,10 +1891,13 @@ const resendOtp = () => handleSendPhoneOtp(null);
 
 function logoutAccount() {
   state.currentUser = null;
+  state.userToken = '';
   state.accountOrders = [];
   state.accountWishlist = [];
   localStorage.removeItem('kalakriti_user');
+  localStorage.removeItem('kalakriti_access_token');
   renderAccountShell();
+  updateStudioAuthBanner();
 }
 
 async function loadAccountData() {
@@ -3137,15 +3154,31 @@ function renderEditableTags(tags) {
 
 // Publish Product to Marketplace
 async function publishProductToMarketplace() {
+  // Enforce artisan account authentication
+  if (!state.currentUser || !state.currentUser.id) {
+    showInteractiveModal({
+      type: 'auth',
+      title: 'Artisan Account Required',
+      subtitle: 'Sign In to Publish Your Craft',
+      message: 'You must be signed in with an artisan account to publish products to the KalaSetu marketplace. Signing in protects your artisan identity, tracks your monthly quota (up to 3 listings/month), and links customer inquiries directly to you.',
+      primaryText: 'Sign In / Register',
+      onPrimary: () => {
+        switchTab('account');
+      },
+      secondaryText: 'Cancel'
+    });
+    return;
+  }
+
   const title = document.getElementById('editProductTitle')?.value.trim();
   const category = document.getElementById('editProductCategory')?.value;
   const price = parseInt(document.getElementById('editProductPrice')?.value, 10);
   const quantity = parseInt(document.getElementById('editProductQuantity')?.value, 10);
   const descEn = document.getElementById('editDescEn')?.value.trim();
   const descHi = document.getElementById('editDescHi')?.value.trim();
-  const artisanName = document.getElementById('artisanName')?.value.trim() || "Artisan Beneficiary";
-  const artisanLoc = document.getElementById('artisanLocation')?.value.trim() || "Rural Cluster, India";
-  const artisanPhone = document.getElementById('artisanPhone')?.value.trim() || "+919876543210";
+  const artisanName = document.getElementById('artisanName')?.value.trim() || state.currentUser?.name || "Artisan Beneficiary";
+  const artisanLoc = document.getElementById('artisanLocation')?.value.trim() || state.currentUser?.city || "Rural Cluster, India";
+  const artisanPhone = document.getElementById('artisanPhone')?.value.trim() || state.currentUser?.phone || "+919876543210";
 
   if (!title) {
     alert("Please enter a product title.");
@@ -3193,9 +3226,15 @@ async function publishProductToMarketplace() {
   };
 
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    const token = localStorage.getItem('kalakriti_access_token') || state.userToken;
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const res = await fetch('/api/products', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: headers,
       body: JSON.stringify(payload)
     });
 

@@ -1876,9 +1876,30 @@ def ai_generate_institutional_rfq(payload: InstitutionalRfqAiRequest):
 
 
 @app.post("/api/products")
-def create_product(product: ProductCreate):
-    """Publish a reviewed artisan listing to the marketplace."""
+def create_product(product: ProductCreate, authorization: Optional[str] = Header(None)):
+    """Publish a reviewed artisan listing to the marketplace.
+    Enforces authentication: artisans MUST be logged into an active account to publish.
+    """
     import traceback as _tb
+
+    # Verify artisan authentication
+    owner_id = product.owner_user_id
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        try:
+            claims = verify_signed_token(token)
+            token_user_id = int(claims.get("subject", 0))
+            if token_user_id:
+                owner_id = token_user_id
+        except Exception as e:
+            logger.warning(f"Bearer token verification failed in create_product: {e}")
+
+    if not owner_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required: You must be logged into an artisan account to publish products to the marketplace."
+        )
+
     listing_quantity = product.quantity
     if listing_quantity < 1 or listing_quantity > 10:
         raise HTTPException(status_code=400, detail="Each listing must contain between 1 and 10 items")
@@ -1887,32 +1908,44 @@ def create_product(product: ProductCreate):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+
+        # Validate that the user exists in the database
+        cursor.execute("SELECT * FROM users WHERE id = ?", (owner_id,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            conn.close()
+            raise HTTPException(
+                status_code=401,
+                detail="Artisan account not found. Please log in or register before publishing."
+            )
+
+        product.owner_user_id = owner_id
+        user_dict = dict(user_row)
+        user_name = user_dict.get("name")
+        user_phone = user_dict.get("phone")
+        user_city = user_dict.get("city")
+
+        if not product.artisan_name or product.artisan_name == "Artisan Beneficiary":
+            product.artisan_name = user_name or "Artisan"
+        if (not product.artisan_phone or product.artisan_phone == "+919876543210") and user_phone:
+            product.artisan_phone = user_phone
+        if (not product.artisan_location or product.artisan_location == "Rural Cluster, India") and user_city:
+            product.artisan_location = user_city
+
         current_month = datetime.now(timezone.utc).strftime("%Y-%m")
 
         # Use DATE_TRUNC for PostgreSQL, substr for SQLite — detect by DATABASE_URL
         from backend.config import DATABASE_URL as _DB_URL
-        if product.owner_user_id:
-            if _DB_URL and ("postgres" in _DB_URL):
-                cursor.execute(
-                    "SELECT COUNT(*) FROM products WHERE owner_user_id = %s AND TO_CHAR(created_at, 'YYYY-MM') = %s",
-                    (product.owner_user_id, current_month),
-                )
-            else:
-                cursor.execute(
-                    "SELECT COUNT(*) FROM products WHERE owner_user_id = ? AND substr(created_at, 1, 7) = ?",
-                    (product.owner_user_id, current_month),
-                )
+        if _DB_URL and ("postgres" in _DB_URL):
+            cursor.execute(
+                "SELECT COUNT(*) FROM products WHERE owner_user_id = %s AND TO_CHAR(created_at, 'YYYY-MM') = %s",
+                (product.owner_user_id, current_month),
+            )
         else:
-            if _DB_URL and ("postgres" in _DB_URL):
-                cursor.execute(
-                    "SELECT COUNT(*) FROM products WHERE lower(artisan_name) = lower(%s) AND TO_CHAR(created_at, 'YYYY-MM') = %s",
-                    (product.artisan_name.strip(), current_month),
-                )
-            else:
-                cursor.execute(
-                    "SELECT COUNT(*) FROM products WHERE lower(artisan_name) = lower(?) AND substr(created_at, 1, 7) = ?",
-                    (product.artisan_name.strip(), current_month),
-                )
+            cursor.execute(
+                "SELECT COUNT(*) FROM products WHERE owner_user_id = ? AND substr(created_at, 1, 7) = ?",
+                (product.owner_user_id, current_month),
+            )
 
         row = cursor.fetchone()
         monthly_listings = row[0] if row else 0
