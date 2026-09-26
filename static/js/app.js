@@ -2513,6 +2513,11 @@ async function submitInstitutionalRequest(event) {
     requirements: document.getElementById('institutionalRequirements')?.value.trim(),
     image_url: bulkVisionState.imageUrl || ''
   };
+
+  if (payload.quantity < 50) {
+    alert("Bulk & Institutional procurement requires a minimum order quantity of 50 units. For individual items or smaller retail quantities, please publish through the Artisan Studio.");
+    return;
+  }
   const status = document.getElementById('institutionalRequestStatus');
   const subject = encodeURIComponent(`KalaSetu bulk request - ${payload.product_name || payload.product_category}`);
   const body = encodeURIComponent(
@@ -3160,7 +3165,7 @@ async function publishProductToMarketplace() {
       type: 'auth',
       title: 'Artisan Account Required',
       subtitle: 'Sign In to Publish Your Craft',
-      message: 'You must be signed in with an artisan account to publish products to the KalaSetu marketplace. Signing in protects your artisan identity, tracks your monthly quota (up to 3 listings/month), and links customer inquiries directly to you.',
+      message: 'You must be signed in with an artisan account to publish products to the KalaSetu marketplace. Signing in protects your artisan identity, links customer inquiries directly to you, and verifies your craft authenticity.',
       primaryText: 'Sign In / Register',
       onPrimary: () => {
         switchTab('account');
@@ -3190,8 +3195,8 @@ async function publishProductToMarketplace() {
     return;
   }
 
-  if (!quantity || quantity < 1 || quantity > 10) {
-    alert('Enter a quantity from 1 to 10. Each artisan can publish 3 listings per month.');
+  if (!quantity || quantity < 1) {
+    alert('Please specify a valid quantity of at least 1 item. For wholesale batch procurement (50+ units), use the Bulk / Institutional tab.');
     return;
   }
 

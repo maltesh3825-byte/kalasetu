@@ -1492,8 +1492,8 @@ export default function App() {
       return;
     }
     const listingQuantityValue = Number(listingQuantity);
-    if (!Number.isInteger(listingQuantityValue) || listingQuantityValue < 1 || listingQuantityValue > 10) {
-      Alert.alert('Invalid quantity', 'Each listing must contain between 1 and 10 products.');
+    if (!Number.isInteger(listingQuantityValue) || listingQuantityValue < 1) {
+      Alert.alert('Invalid quantity', 'Please specify a valid quantity of at least 1 item.');
       return;
     }
 

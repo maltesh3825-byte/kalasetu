@@ -399,6 +399,8 @@ def init_db():
             """,
             conn=conn,
         )
+        safe_add_column_pg(cursor, conn, "institutional_requests", "location", "TEXT DEFAULT ''")
+        safe_add_column_pg(cursor, conn, "institutional_requests", "buyer_type", "TEXT DEFAULT ''")
         safe_add_column_pg(cursor, conn, "institutional_requests", "quality_flags", "TEXT DEFAULT ''")
         safe_add_column_pg(cursor, conn, "institutional_requests", "admin_notes", "TEXT DEFAULT ''")
         safe_add_column_pg(cursor, conn, "institutional_requests", "unit_price", "REAL DEFAULT 0")
@@ -574,6 +576,10 @@ def init_db():
             """
         )
         request_columns = {row[1] for row in cursor.execute("PRAGMA table_info(institutional_requests)").fetchall()}
+        if "location" not in request_columns:
+            cursor.execute("ALTER TABLE institutional_requests ADD COLUMN location TEXT DEFAULT ''")
+        if "buyer_type" not in request_columns:
+            cursor.execute("ALTER TABLE institutional_requests ADD COLUMN buyer_type TEXT DEFAULT ''")
         if "quality_flags" not in request_columns:
             cursor.execute("ALTER TABLE institutional_requests ADD COLUMN quality_flags TEXT DEFAULT ''")
         if "admin_notes" not in request_columns:

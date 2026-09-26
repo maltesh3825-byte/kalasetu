@@ -1567,8 +1567,11 @@ def persist_institutional_request(payload: InstitutionalRequestCreate):
         quality_flags.append("Missing product category")
     if not payload.requirements.strip() or len(payload.requirements.strip()) < 12:
         quality_flags.append("Requirements are too vague")
-    if payload.quantity < 1:
-        quality_flags.append("Quantity must be at least 1")
+    if payload.quantity < 50:
+        raise HTTPException(
+            status_code=400,
+            detail="Bulk & Institutional procurement requires a minimum order quantity of 50 units. For smaller retail quantities, please publish through the Artisan Studio to the marketplace."
+        )
 
     target_buyer = payload.target_buyer.strip() or payload.target_market.strip() or "Open to all"
     target_market = payload.target_market.strip() or target_buyer
@@ -1901,8 +1904,8 @@ def create_product(product: ProductCreate, authorization: Optional[str] = Header
         )
 
     listing_quantity = product.quantity
-    if listing_quantity < 1 or listing_quantity > 10:
-        raise HTTPException(status_code=400, detail="Each listing must contain between 1 and 10 items")
+    if listing_quantity < 1:
+        raise HTTPException(status_code=400, detail="Listing quantity must be at least 1")
 
     conn = None
     try:
@@ -1931,27 +1934,6 @@ def create_product(product: ProductCreate, authorization: Optional[str] = Header
             product.artisan_phone = user_phone
         if (not product.artisan_location or product.artisan_location == "Rural Cluster, India") and user_city:
             product.artisan_location = user_city
-
-        current_month = datetime.now(timezone.utc).strftime("%Y-%m")
-
-        # Use DATE_TRUNC for PostgreSQL, substr for SQLite — detect by DATABASE_URL
-        from backend.config import DATABASE_URL as _DB_URL
-        if _DB_URL and ("postgres" in _DB_URL):
-            cursor.execute(
-                "SELECT COUNT(*) FROM products WHERE owner_user_id = %s AND TO_CHAR(created_at, 'YYYY-MM') = %s",
-                (product.owner_user_id, current_month),
-            )
-        else:
-            cursor.execute(
-                "SELECT COUNT(*) FROM products WHERE owner_user_id = ? AND substr(created_at, 1, 7) = ?",
-                (product.owner_user_id, current_month),
-            )
-
-        row = cursor.fetchone()
-        monthly_listings = row[0] if row else 0
-        if monthly_listings >= 3:
-            conn.close()
-            raise HTTPException(status_code=429, detail="This artisan has used all 3 marketplace listings for this month")
 
         default_image = "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=800&q=80"
         gallery_json = json.dumps(product.image_gallery or [product.image_url or default_image])

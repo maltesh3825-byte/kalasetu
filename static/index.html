@@ -640,10 +640,10 @@
               </div>
             </div>
             <div>
-              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Quantity to sell (1-10)</label>
-              <input type="number" id="editProductQuantity" min="1" max="10" value="1"
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Available Stock / Quantity</label>
+              <input type="number" id="editProductQuantity" min="1" value="1"
                      class="w-full px-4 py-3 rounded-2xl border border-slate-300 focus:ring-2 focus:ring-terracotta-500 font-extrabold text-base text-slate-900">
-              <p class="text-[11px] text-slate-500 mt-1">Maximum 3 marketplace listings per artisan each calendar month.</p>
+              <p class="text-[11px] text-slate-500 mt-1">Retail marketplace stock. For wholesale batch procurement (50+ units), use the Bulk & Institutional tab.</p>
             </div>
           </div>
 
@@ -896,8 +896,9 @@
               <option>Folk Art & Painting</option>
             </select>
           </label>
-          <label class="text-xs font-bold text-slate-700 required-label"><span data-i18n="bulk_qty_label">Available quantity</span>
-            <input id="institutionalQuantity" type="number" min="1" value="100" class="institutional-input">
+          <label class="text-xs font-bold text-slate-700 required-label"><span data-i18n="bulk_qty_label">Procurement Quantity (Min. 50 units)</span>
+            <input id="institutionalQuantity" type="number" min="50" value="100" class="institutional-input">
+            <span class="text-[11px] text-amber-700 font-medium mt-0.5 block">Dedicated to wholesale batches (50+ units).</span>
           </label>
           <label class="text-xs font-bold text-slate-700 required-label"><span data-i18n="bulk_unit_price_label">Unit price / pricing expectation (₹)</span>
             <input id="institutionalUnitPrice" type="number" min="1" value="250" class="institutional-input">

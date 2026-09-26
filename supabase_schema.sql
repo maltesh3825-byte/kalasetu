@@ -92,12 +92,21 @@ CREATE TABLE IF NOT EXISTS institutional_requests (
     artisan_name TEXT NOT NULL,
     email TEXT NOT NULL,
     phone TEXT,
+    location TEXT DEFAULT '',
+    buyer_type TEXT DEFAULT '',
     product_category TEXT,
     quantity INTEGER NOT NULL DEFAULT 1,
+    unit_price REAL DEFAULT 0,
+    lead_time TEXT,
+    target_buyer TEXT DEFAULT 'Open to all',
     target_market TEXT DEFAULT 'Open to all',
     requirements TEXT,
-    status TEXT DEFAULT 'New',
+    quality_flags TEXT DEFAULT '',
     admin_notes TEXT DEFAULT '',
+    product_name TEXT DEFAULT '',
+    hsn_code TEXT DEFAULT '',
+    gst_rate TEXT DEFAULT '',
+    status TEXT DEFAULT 'New',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
