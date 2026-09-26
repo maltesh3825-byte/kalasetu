@@ -25,7 +25,8 @@ import {
   Easing,
   Dimensions,
   RefreshControl,
-  Share
+  Share,
+  KeyboardAvoidingView
 } from 'react-native';
 import Svg, {
   Path,
@@ -45,6 +46,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { Colors } from './constants/Colors';
 import { i18n, additionalTranslations, getAppText, Language } from './constants/i18n';
+import { DEMO_PRESETS_BASE64, DEMO_PRESETS_DATA_URIS } from './constants/demoPresets';
 
 import {
   CraftProduct,
@@ -81,7 +83,9 @@ import {
   getBackendUrl,
   setBackendUrl,
   getDevBackendUrl,
-  CLOUD_BACKEND_URL
+  CLOUD_BACKEND_URL,
+  askKalaSetuChatbot,
+  ChatMessage
 } from './services/api';
 
 type BrowserSpeechRecognition = {
@@ -417,6 +421,10 @@ export default function App() {
   const [bulkLeadTime, setBulkLeadTime] = useState('12-15 working days');
   const [isGeneratingBulkAi, setIsGeneratingBulkAi] = useState(false);
   const [craftPickerModalVisible, setCraftPickerModalVisible] = useState(false);
+  const [bulkImageUri, setBulkImageUri] = useState<string | null>(null);
+  const [bulkImageBase64, setBulkImageBase64] = useState<string | null>(null);
+  const [isAnalyzingBulkVision, setIsAnalyzingBulkVision] = useState(false);
+  const [bulkVisionProgress, setBulkVisionProgress] = useState('');
 
   // Compliance & Multi-Channel Syndication Preview State
   const [complianceModalVisible, setComplianceModalVisible] = useState(false);
@@ -425,6 +433,20 @@ export default function App() {
   const [complianceJsonData, setComplianceJsonData] = useState<any>(null);
   const [isComplianceLoading, setIsComplianceLoading] = useState(false);
   const [complianceFilter, setComplianceFilter] = useState<{ productId?: number; artisanName?: string }>({});
+
+  // KalaSetu AI Product Assistant Chatbot State
+  const [chatModalVisible, setChatModalVisible] = useState(false);
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatSending, setIsChatSending] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      id: 'init-1',
+      sender: 'bot',
+      text: 'Namaste! 🙏 I am your KalaSetu AI Assistant under MoSJE.\n\nAsk me anything about our authentic Indian artisan crafts, prices, materials, origins, or placing orders!',
+      timestamp: 'Just now'
+    }
+  ]);
 
   // Artisan Studio State
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -1095,10 +1117,113 @@ export default function App() {
     }
   };
 
+  const takeBulkPhoto = async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission Required", "Camera permission is needed to photograph crafts for bulk RFQ.");
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.6,
+        base64: true,
+      });
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setBulkImageUri(asset.uri);
+        setBulkImageBase64(asset.base64 || null);
+      }
+    } catch (err: any) {
+      console.warn("Bulk camera photo error:", err);
+      Alert.alert("Camera Error", err?.message || "Could not open camera.");
+    }
+  };
+
+  const pickBulkFromGallery = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission Required", "Gallery permission is needed to select craft photos.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.6,
+        base64: true,
+      });
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setBulkImageUri(asset.uri);
+        setBulkImageBase64(asset.base64 || null);
+      }
+    } catch (err: any) {
+      console.warn("Bulk gallery picker error:", err);
+      Alert.alert("Gallery Error", err?.message || "Could not open photo gallery.");
+    }
+  };
+
+  const handleAnalyzeBulkVision = async () => {
+    if (!bulkImageUri && !bulkImageBase64 && !bulkProductName && !bulkCategory) {
+      Alert.alert("Photo Required", "Please upload or select a craft photo for AI Vision analysis.");
+      return;
+    }
+    setIsAnalyzingBulkVision(true);
+    setBulkVisionProgress(lang === 'hi' ? "शिल्प सामग्री, बनावट और तकनीक का AI विज़न विश्लेषण..." : "Analyzing craft texture, materials & cultural technique with AI Vision...");
+
+    try {
+      const hint = bulkProductName || bulkCategory || 'Handcrafted traditional artisan product';
+      const result = await generateInstitutionalRfqApi(
+        hint,
+        bulkCategory,
+        bulkBuyerType,
+        bulkImageUri || undefined,
+        bulkImageBase64 || undefined
+      );
+
+      if (result) {
+        setBulkProductName(result.product_name || bulkProductName);
+        if (result.category) setBulkCategory(result.category);
+        if (result.hsn_code) setBulkHsnCode(result.hsn_code);
+        if (result.gst_rate) setBulkGstRate(result.gst_rate);
+        if (result.suggested_unit_price) {
+          setBulkUnitPrice(String(result.suggested_unit_price));
+        }
+        if (result.suggested_lead_time) {
+          setBulkLeadTime(result.suggested_lead_time);
+        }
+        const fullNeed = `Institutional Pitch:\n${result.institutional_description}\n\nMaterial & Quality Assurance:\n${result.quality_assurance}\n\nPackaging & Customization:\n${result.packaging_and_customization}`;
+        setBulkNeed(fullNeed);
+        Alert.alert(
+          '✨ AI Vision Auto-Fill Complete!',
+          `Generated formal institutional listing for "${result.product_name}" (Category: ${result.category} · HSN: ${result.hsn_code} · GST: ${result.gst_rate} · Wholesale: ₹${result.suggested_unit_price}).`
+        );
+      }
+    } catch (e: any) {
+      console.warn("Bulk Vision error:", e);
+      Alert.alert(
+        'AI Vision Notice',
+        'Could not complete vision analysis. Applying standard institutional procurement presets.'
+      );
+      await handleGenerateBulkAi();
+    } finally {
+      setIsAnalyzingBulkVision(false);
+      setBulkVisionProgress('');
+    }
+  };
+
   const loadCraftIntoBulk = (item: CraftProduct) => {
     setBulkProductName(`${item.name} (Wholesale Batch)`);
     setBulkCategory(item.category || 'Handicraft');
     setBulkUnitPrice(String(Math.round(item.price * 0.82)));
+    if (item.image_url) {
+      setBulkImageUri(item.image_url);
+      setBulkImageBase64(null);
+    }
     setBulkNeed(`Artisan Craft Description:\n${item.description_en || item.name}\n\nCustomization & Packaging:\nIndividual protective gift carton packaging with MoSJE artisan authenticity certificate.`);
     setCraftPickerModalVisible(false);
     Alert.alert('Craft Loaded', `"${item.name}" loaded into your bulk request with wholesale base pricing.`);
@@ -1186,7 +1311,7 @@ export default function App() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.6,
         base64: true,
       });
       if (!result.canceled && result.assets && result.assets[0]) {
@@ -1212,7 +1337,7 @@ export default function App() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.6,
         base64: true,
       });
       if (!result.canceled && result.assets && result.assets[0]) {
@@ -1226,21 +1351,69 @@ export default function App() {
     }
   };
 
-  // Load Demo Presets (for instant 1-click jury demonstrations)
+  // Load Demo Presets (for instant 1-click jury demonstrations with embedded offline Base64)
   const loadDemoPreset = (presetIndex: number) => {
-    setImageBase64(null);
-    if (presetIndex === 0) {
-      setImageUri("https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=800&q=80");
+    const validIdx = Math.min(Math.max(presetIndex, 0), DEMO_PRESETS_DATA_URIS.length - 1);
+    setImageUri(DEMO_PRESETS_DATA_URIS[validIdx]);
+    setImageBase64(DEMO_PRESETS_BASE64[validIdx]);
+    if (validIdx === 0) {
       setArtisanNotes("Red clay pot made on village wheel with floral engravings");
       setPriceIdea("600");
-    } else if (presetIndex === 1) {
-      setImageUri("https://images.unsplash.com/photo-1610701596007-11502861dcfa?auto=format&fit=crop&w=800&q=80");
+    } else if (validIdx === 1) {
       setArtisanNotes("Lost wax bell metal craft by Bastar tribal artisans");
       setPriceIdea("1800");
     } else {
-      setImageUri("https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?auto=format&fit=crop&w=800&q=80");
       setArtisanNotes("Traditional Kutchi mirrorwork embroidered textile");
       setPriceIdea("1400");
+    }
+  };
+
+  // KalaSetu AI Assistant Chat Handlers
+  const handleClearChat = () => {
+    setChatMessages([
+      {
+        id: `init-${Date.now()}`,
+        sender: 'bot',
+        text: 'Conversation cleared. 🙏 Ask me anything about our authentic Indian artisan crafts, prices, materials, or placing orders!',
+        timestamp: 'Just now'
+      }
+    ]);
+  };
+
+  const handleSendChatMessage = async (textToSend?: string) => {
+    const query = (textToSend || chatInput).trim();
+    if (!query || isChatSending) return;
+
+    const userMsg: ChatMessage = {
+      id: `user-${Date.now()}`,
+      sender: 'user',
+      text: query,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    setChatMessages(prev => [...prev, userMsg]);
+    setChatInput('');
+    setIsChatSending(true);
+
+    try {
+      const reply = await askKalaSetuChatbot(query, products, chatMessages);
+      const botMsg: ChatMessage = {
+        id: `bot-${Date.now()}`,
+        sender: 'bot',
+        text: reply,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setChatMessages(prev => [...prev, botMsg]);
+    } catch (e: any) {
+      const errorMsg: ChatMessage = {
+        id: `bot-err-${Date.now()}`,
+        sender: 'bot',
+        text: 'Please ask related queries only about our artisan products, heritage crafts, orders, and pricing.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setChatMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setIsChatSending(false);
     }
   };
 
@@ -2038,23 +2211,109 @@ export default function App() {
               <Text style={styles.profileSectionTitle}>{tx('createBulkRequest')}</Text>
               <Text style={styles.bulkHelpText}>{tx('bulkHelp')}</Text>
 
+              {/* 📸 Craft Photo for AI Vision Analysis */}
+              <View style={{ backgroundColor: '#FFFBEB', borderColor: '#FDE68A', borderWidth: 1.5, borderRadius: 16, padding: 14, marginBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ fontSize: 16 }}>📸</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#92400E' }}>Craft Photo for AI Vision</Text>
+                  </View>
+                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#B45309' }}>Gemini Multimodal</Text>
+                  </View>
+                </View>
+
+                {bulkImageUri ? (
+                  <View style={{ marginBottom: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF', padding: 8, borderRadius: 12, borderWidth: 1, borderColor: '#FDE68A' }}>
+                      <Image source={{ uri: bulkImageUri }} style={{ width: 64, height: 64, borderRadius: 10, backgroundColor: '#F1F5F9' }} resizeMode="cover" />
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>Craft Photo Loaded</Text>
+                          <View style={{ backgroundColor: '#D1FAE5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
+                            <Text style={{ fontSize: 9, fontWeight: '800', color: '#065F46' }}>Ready for Vision</Text>
+                          </View>
+                        </View>
+                        <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>Tap "Analyze Photo with AI Vision" to suggest description, wholesale price & HSN.</Text>
+                        <TouchableOpacity onPress={() => { setBulkImageUri(null); setBulkImageBase64(null); }} style={{ marginTop: 4 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#DC2626' }}>✕ Remove Photo</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#78350F', textAlign: 'center', marginBottom: 10, lineHeight: 16 }}>
+                      Upload or photograph your craft. Gemini AI Vision analyzes craft materials, texture & heritage motifs to auto-generate wholesale procurement details.
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#EA580C', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        onPress={takeBulkPhoto}
+                      >
+                        <Text style={{ fontSize: 13 }}>📷</Text>
+                        <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 11 }}>Camera</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderWidth: 1, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        onPress={pickBulkFromGallery}
+                      >
+                        <Text style={{ fontSize: 13 }}>📁</Text>
+                        <Text style={{ color: '#334155', fontWeight: '700', fontSize: 11 }}>Choose Photo</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderWidth: 1, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                        onPress={() => setCraftPickerModalVisible(true)}
+                      >
+                        <Text style={{ fontSize: 13 }}>📦</Text>
+                        <Text style={{ color: '#334155', fontWeight: '700', fontSize: 11 }}>My Crafts</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
+                {/* AI Vision Action Button */}
+                <TouchableOpacity
+                  style={{ backgroundColor: '#EA580C', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 }}
+                  onPress={handleAnalyzeBulkVision}
+                  disabled={isAnalyzingBulkVision}
+                >
+                  {isAnalyzingBulkVision ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Text style={{ fontSize: 14 }}>✨</Text>
+                      <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 12 }}>
+                        {bulkImageUri ? 'Analyze Photo with AI Vision' : '✨ Analyze with AI Vision'}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                {isAnalyzingBulkVision && (
+                  <View style={{ marginTop: 8, padding: 8, backgroundColor: '#FEF3C7', borderRadius: 8, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E' }}>{bulkVisionProgress}</Text>
+                  </View>
+                )}
+              </View>
+
               {/* ✨ AI Institutional Smart Assistant Box */}
               <View style={{ backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 14 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ fontSize: 16 }}>✨</Text>
-                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#0F172A' }}>AI Procurement Assistant</Text>
+                    <Text style={{ fontSize: 16 }}>🪄</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#0F172A' }}>Text-Based Auto-Fill</Text>
                   </View>
                   <View style={{ backgroundColor: '#E0F2FE', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>Gemini AI Ready</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>AI Pitch</Text>
                   </View>
                 </View>
                 <Text style={{ fontSize: 11, color: '#64748B', lineHeight: 16, marginBottom: 10 }}>
-                  Let AI generate your procurement title, HSN code, institutional description, and packaging specs. You just enter your workshop capacity!
+                  Already have a product name or category? Tap below to auto-complete formal institutional description, packaging, and QA specs without a photo.
                 </Text>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <TouchableOpacity
-                    style={{ flex: 1.2, backgroundColor: '#EA580C', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                    style={{ flex: 1, backgroundColor: '#475569', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
                     onPress={handleGenerateBulkAi}
                     disabled={isGeneratingBulkAi}
                   >
@@ -2063,16 +2322,9 @@ export default function App() {
                     ) : (
                       <>
                         <Text style={{ fontSize: 13 }}>🪄</Text>
-                        <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>AI Auto-Fill Pitch</Text>
+                        <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>Auto-Fill from Craft Title</Text>
                       </>
                     )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={{ flex: 1, backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderWidth: 1, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 5 }}
-                    onPress={() => setCraftPickerModalVisible(true)}
-                  >
-                    <Text style={{ fontSize: 13 }}>📦</Text>
-                    <Text style={{ color: '#334155', fontWeight: '700', fontSize: 11 }}>From My Crafts</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2108,7 +2360,7 @@ export default function App() {
               <TouchableOpacity style={styles.secondaryButton} onPress={saveBulkDraft}><Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text></TouchableOpacity>
               {bulkDrafts.length > 0 && (<View><Text style={styles.helperText}>{bulkDrafts.length} bulk draft(s) saved on this device.</Text><TouchableOpacity onPress={() => restoreBulkDraft(bulkDrafts[0])}><Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text></TouchableOpacity></View>)}
             </View>
-            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 2</Text><Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text><Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text><View style={styles.bulkPricingCard}><View style={styles.bulkPricingHeader}><Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text><Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text></View><Text style={styles.bulkPricingHint}>Based on {bulkQuantityNumber || 0} units at ₹{bulkUnitPriceNumber.toLocaleString('en-IN')} base price</Text>{bulkPricingTiers.map(tier => (<View key={tier.volume} style={styles.bulkPricingRow}><Text style={styles.bulkPricingVolume}>{tier.volume}</Text><Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text><Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>{bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}</Text></View>))}</View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => { if (!bulkQuantityNumber || !bulkUnitPriceNumber) { Alert.alert('Bulk pricing', 'Enter both quantity and unit price to calculate your live bulk total.'); return; } const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0; const tier = bulkPricingTiers[tierIndex]; const total = Math.round(tier.price) * bulkQuantityNumber; const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber)); Alert.alert('Bulk pricing', `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`); }}><Text style={styles.bulkToolText}>📊 Bulk pricing calculator</Text></TouchableOpacity><TouchableOpacity style={[styles.bulkToolButton, { backgroundColor: '#10B981' }]} onPress={shareRfqPitchToWhatsApp}><Text style={[styles.bulkToolText, { color: '#FFFFFF', fontWeight: '800' }]}>📲 Share RFQ to WhatsApp</Text></TouchableOpacity></View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('gem', { artisanName: bulkArtisanName || undefined })}><Text style={styles.bulkToolText}>📦 GeM-ready export</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('ondc', { artisanName: bulkArtisanName || undefined })}><Text style={styles.bulkToolText}>⚡ ONDC JSON</Text></TouchableOpacity></View></View>
+            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 2</Text><Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text><Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text><View style={styles.bulkPricingCard}><View style={styles.bulkPricingHeader}><Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text><Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text></View><Text style={styles.bulkPricingHint}>Based on {bulkQuantityNumber || 0} units at ₹{bulkUnitPriceNumber.toLocaleString('en-IN')} base price</Text>{bulkPricingTiers.map(tier => (<View key={tier.volume} style={styles.bulkPricingRow}><Text style={styles.bulkPricingVolume}>{tier.volume}</Text><Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text><Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>{bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}</Text></View>))}</View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => { if (!bulkQuantityNumber || !bulkUnitPriceNumber) { Alert.alert('Bulk pricing', 'Enter both quantity and unit price to calculate your live bulk total.'); return; } const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0; const tier = bulkPricingTiers[tierIndex]; const total = Math.round(tier.price) * bulkQuantityNumber; const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber)); Alert.alert('Bulk pricing', `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`); }}><Text style={styles.bulkToolText}>📊 Bulk pricing calculator</Text></TouchableOpacity><TouchableOpacity style={[styles.bulkToolButton, { backgroundColor: '#10B981' }]} onPress={shareRfqPitchToWhatsApp}><Text style={[styles.bulkToolText, { color: '#FFFFFF', fontWeight: '800' }]}>📲 Share RFQ to WhatsApp</Text></TouchableOpacity></View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('gem', { artisanName: artisanName || undefined })}><Text style={styles.bulkToolText}>📦 GeM-ready export</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('ondc', { artisanName: artisanName || undefined })}><Text style={styles.bulkToolText}>⚡ ONDC JSON</Text></TouchableOpacity></View></View>
             <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 3</Text><Text style={styles.profileSectionTitle}>{tx('connectChannels')}</Text><Text style={styles.bulkHelpText}>{tx('connectHelp')}</Text><View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 12 }}><Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E', marginBottom: 3 }}>🤝 Cluster Coordinator Handoff Mode</Text><Text style={{ fontSize: 11, color: '#78350F', lineHeight: 15 }}>Government (GeM) & ONDC platforms require verified entity onboarding (GSTIN, Udyam, DIC). KalaSetu packages compliant catalogs so your local Cluster Facilitator or Cooperative Lead can complete registration with zero data re-entry.</Text></View><View style={styles.bulkChannelRow}><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://gem.gov.in/')}><Text style={styles.bulkToolText}>GeM ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://ondc.org/')}><Text style={styles.bulkToolText}>ONDC ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://trifed.tribal.gov.in/')}><Text style={styles.bulkToolText}>TRIFED ↗</Text></TouchableOpacity></View><TouchableOpacity style={styles.secondaryAction} onPress={() => openBulkChannel('mailto:kalasetu24824.9@gmail.com?subject=KalaSetu%20Bulk%20Buyer%20Support')}><Text style={styles.secondaryActionText}>{tx('emailSupport')}</Text></TouchableOpacity></View>
           </View>
         );
@@ -2749,11 +3001,29 @@ export default function App() {
             <Text style={styles.appSub}>{t.appSubtitle}</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={styles.helpBtn} 
-          onPress={() => toggleSpeech(lang === 'hi' ? 'नमस्ते! कलासेतु में आपका स्वागत है। यहां आप अपने हस्तशिल्प की फोटो अपलोड करें। हमारा एआई आपके उत्पाद का नाम, कीमत और विवरण खुद तैयार करेगा।' : 'Welcome to KalaSetu! Take a photo of your craft. Our AI will automatically identify the craft category, suggest fair pricing, and write SEO descriptions.', lang)}>
-          <Text style={styles.helpBtnText}>{isSpeaking ? '⏹ Stop' : `🔊 ${lang === 'hi' ? 'मदद सुनें' : 'Audio Help'}`}</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#0F172A',
+              paddingHorizontal: 9,
+              paddingVertical: 6,
+              borderRadius: 20,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              borderWidth: 1,
+              borderColor: '#38BDF8',
+            }}
+            onPress={() => setChatModalVisible(true)}>
+            <Text style={{ fontSize: 13 }}>💬</Text>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: '#F8FAFC' }}>AI Assistant</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.helpBtn} 
+            onPress={() => toggleSpeech(lang === 'hi' ? 'नमस्ते! कलासेतु में आपका स्वागत है। यहां आप अपने हस्तशिल्प की फोटो अपलोड करें। हमारा एआई आपके उत्पाद का नाम, कीमत और विवरण खुद तैयार करेगा।' : 'Welcome to KalaSetu! Take a photo of your craft. Our AI will automatically identify the craft category, suggest fair pricing, and write SEO descriptions.', lang)}>
+            <Text style={styles.helpBtnText}>{isSpeaking ? '⏹ Stop' : `🔊 ${lang === 'hi' ? 'मदद' : 'Help'}`}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       <Modal visible={isLanguageMenuOpen} transparent animationType="fade" onRequestClose={() => setIsLanguageMenuOpen(false)}>
         <TouchableOpacity style={styles.languageModalBackdrop} activeOpacity={1} onPress={() => setIsLanguageMenuOpen(false)}>
@@ -2826,6 +3096,13 @@ export default function App() {
           <Text style={[styles.tabText, activeTab === 'institutional' && styles.tabTextActive]}>{tx('bulkTab')}</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity 
+          style={[styles.tabButton, chatModalVisible && styles.tabButtonActive]}
+          onPress={() => setChatModalVisible(true)}>
+          <Text style={styles.tabIcon}>💬</Text>
+          <Text style={[styles.tabText, chatModalVisible && styles.tabTextActive]}>AI Chat</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'account' && styles.tabButtonActive]}
           onPress={() => setActiveTab('account')}>
@@ -2833,6 +3110,215 @@ export default function App() {
           <Text style={[styles.tabText, activeTab === 'account' && styles.tabTextActive]}>{tx('accountTab')}</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Floating AI Assistant Pill */}
+      <TouchableOpacity
+        style={{
+          position: 'absolute',
+          bottom: 78,
+          right: 16,
+          backgroundColor: '#0F172A',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 7,
+          paddingVertical: 10,
+          paddingHorizontal: 16,
+          borderRadius: 28,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.35,
+          shadowRadius: 6,
+          elevation: 8,
+          borderWidth: 1.5,
+          borderColor: '#EA580C',
+          zIndex: 999
+        }}
+        onPress={() => setChatModalVisible(true)}
+      >
+        <Text style={{ fontSize: 16 }}>✨💬</Text>
+        <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 13 }}>AI Assistant</Text>
+      </TouchableOpacity>
+
+      {/* KalaSetu AI Assistant Chatbot Modal */}
+      <Modal
+        visible={chatModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setChatModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.7)', justifyContent: 'flex-end' }}
+        >
+          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '86%', padding: 18, display: 'flex', flexDirection: 'column' }}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: '#EA580C', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 20, color: '#FFFFFF' }}>✨</Text>
+                </View>
+                <View>
+                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A' }}>KalaSetu AI Assistant</Text>
+                  <Text style={{ fontSize: 11, color: '#64748B' }}>MoSJE Rural Artisan & Product Intelligence</Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, position: 'relative' }}>
+                <TouchableOpacity
+                  onPress={() => setChatMenuOpen(!chatMenuOpen)}
+                  style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' }}
+                  accessibilityLabel="Chat options"
+                >
+                  <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#334155' }}>⋮</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => { setChatMenuOpen(false); setChatModalVisible(false); }}
+                  style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#475569' }}>×</Text>
+                </TouchableOpacity>
+
+                {chatMenuOpen && (
+                  <View style={{
+                    position: 'absolute',
+                    top: 42,
+                    right: 0,
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: 14,
+                    padding: 6,
+                    minWidth: 175,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.18,
+                    shadowRadius: 10,
+                    elevation: 12,
+                    borderWidth: 1,
+                    borderColor: '#FED7AA',
+                    zIndex: 9999
+                  }}>
+                    <TouchableOpacity
+                      onPress={() => { setChatMenuOpen(false); handleClearChat(); }}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8 }}
+                    >
+                      <Text style={{ fontSize: 14 }}>🗑️</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#B91C1C' }}>Clear conversation</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setChatMenuOpen(false);
+                        setLang(prev => prev === 'hi' ? 'en' : 'hi');
+                      }}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8 }}
+                    >
+                      <Text style={{ fontSize: 14 }}>🌐</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155' }}>
+                        {lang === 'hi' ? 'Switch to English' : 'हिंदी में बदलें'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => { setChatMenuOpen(false); setChatModalVisible(false); }}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8 }}
+                    >
+                      <Text style={{ fontSize: 14 }}>✕</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Close chat</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Quick Suggestion Chips */}
+            <View style={{ paddingVertical: 8 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                {[
+                  'Tell me about Bastar Dhokra',
+                  'How is fair pricing calculated?',
+                  'What terracotta crafts are available?',
+                  'Which crafts have GI tags?'
+                ].map((chip, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={{ backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 5 }}
+                    onPress={() => handleSendChatMessage(chip)}
+                  >
+                    <Text style={{ fontSize: 11, color: '#334155', fontWeight: '600' }}>{chip}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Chat Messages */}
+            <ScrollView
+              style={{ flex: 1, marginVertical: 8 }}
+              contentContainerStyle={{ gap: 10, paddingBottom: 10 }}
+            >
+              {chatMessages.map(msg => (
+                <View
+                  key={msg.id}
+                  style={{
+                    alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
+                    maxWidth: '85%',
+                    backgroundColor: msg.sender === 'user' ? '#EA580C' : '#F1F5F9',
+                    borderRadius: 16,
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderBottomRightRadius: msg.sender === 'user' ? 4 : 16,
+                    borderBottomLeftRadius: msg.sender === 'bot' ? 4 : 16,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, lineHeight: 18, color: msg.sender === 'user' ? '#FFFFFF' : '#0F172A', fontWeight: msg.sender === 'user' ? '600' : '400' }}>
+                    {msg.text}
+                  </Text>
+                  <Text style={{ fontSize: 9, marginTop: 4, alignSelf: 'flex-end', color: msg.sender === 'user' ? '#FED7AA' : '#94A3B8' }}>
+                    {msg.timestamp}
+                  </Text>
+                </View>
+              ))}
+              {isChatSending && (
+                <View style={{ alignSelf: 'flex-start', backgroundColor: '#F1F5F9', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 }}>
+                  <Text style={{ fontSize: 12, color: '#64748B', fontStyle: 'italic' }}>KalaSetu AI is analyzing catalog... ✍️</Text>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Input Bar */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
+              <TextInput
+                style={{
+                  flex: 1,
+                  backgroundColor: '#F8FAFC',
+                  borderColor: '#E2E8F0',
+                  borderWidth: 1,
+                  borderRadius: 22,
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  fontSize: 14,
+                  color: '#0F172A'
+                }}
+                placeholder="Ask about crafts, prices, materials..."
+                placeholderTextColor="#94A3B8"
+                value={chatInput}
+                onChangeText={setChatInput}
+                onSubmitEditing={() => handleSendChatMessage()}
+                returnKeyType="send"
+              />
+              <TouchableOpacity
+                onPress={() => handleSendChatMessage()}
+                disabled={isChatSending || !chatInput.trim()}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: (!chatInput.trim() || isChatSending) ? '#CBD5E1' : '#EA580C',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <Text style={{ fontSize: 16, color: '#FFFFFF', fontWeight: 'bold' }}>➤</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* Compliance Artifacts Preview Modal (GeM CSV & ONDC Beckn JSON) */}
       <Modal visible={complianceModalVisible} animationType="slide" transparent onRequestClose={() => setComplianceModalVisible(false)}>

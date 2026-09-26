@@ -9,10 +9,11 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import requests
 from PIL import Image
 import io
+import time
 
 from backend.config import GEMINI_API_KEY, GEMINI_API_URL, GEMINI_MODEL
 
@@ -170,44 +171,47 @@ Return ONLY a valid JSON object matching this exact schema:
             "temperature": 0.2,
             "topP": 0.8,
             "maxOutputTokens": 2048,
-            "responseMimeType": "application/json",
-            **({"thinkingConfig": {"thinkingBudget": 0}} if "2.5" in GEMINI_MODEL else {})
+            "responseMimeType": "application/json"
         }
     }
 
-    try:
-        response = requests.post(
-            GEMINI_API_URL,
-            headers=headers,
-            json=payload,
-            timeout=25
-        )
+    candidate_models = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash", "gemini-2.5-flash"]
+    last_error = ""
 
-        if response.status_code == 200:
-            res_json = response.json()
-            candidates = res_json.get("candidates", [])
-            if candidates:
-                content_parts = candidates[0].get("content", {}).get("parts", [])
-                if content_parts:
-                    raw_text = content_parts[0].get("text", "")
-                    parsed = clean_json_response(raw_text)
-                    parsed["is_ai_simulated"] = False
-                    parsed["ai_engine"] = f"Google Gemini ({GEMINI_MODEL})"
-                    return parsed
-            raise ValueError("Empty or invalid candidate response from Gemini API")
-        else:
-            logger.error(f"Gemini API returned error {response.status_code}: {response.text}")
-            return generate_heuristic_craft_catalog(
-                image_bytes, artisan_notes, artisan_input_price,
-                f"Gemini API returned HTTP {response.status_code}. Using intelligent fallback."
+    for model_name in candidate_models:
+        try:
+            model_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+            response = requests.post(
+                model_url,
+                headers=headers,
+                json=payload,
+                timeout=25
             )
 
-    except Exception as e:
-        logger.exception(f"Error calling Gemini Vision API: {e}")
-        return generate_heuristic_craft_catalog(
-            image_bytes, artisan_notes, artisan_input_price,
-            f"AI Vision service fallback: {str(e)}"
-        )
+            if response.status_code == 200:
+                res_json = response.json()
+                candidates = res_json.get("candidates", [])
+                if candidates:
+                    content_parts = candidates[0].get("content", {}).get("parts", [])
+                    if content_parts:
+                        raw_text = content_parts[0].get("text", "")
+                        parsed = clean_json_response(raw_text)
+                        parsed["is_ai_simulated"] = False
+                        parsed["ai_engine"] = f"Google Gemini ({model_name} Vision)"
+                        return parsed
+                raise ValueError("Empty candidate response from Gemini API")
+            else:
+                last_error = f"HTTP {response.status_code}: {response.text[:120]}"
+                logger.warning(f"Gemini API ({model_name}) returned {last_error}")
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"Error calling Gemini Vision model {model_name}: {e}")
+
+    logger.error(f"All Gemini Vision models exhausted: {last_error}")
+    return generate_heuristic_craft_catalog(
+        image_bytes, artisan_notes, artisan_input_price,
+        f"Gemini Vision fallback ({last_error})"
+    )
 
 def generate_heuristic_craft_catalog(
     image_bytes: bytes,
@@ -469,37 +473,38 @@ Return ONLY a valid JSON object matching this schema:
             "maxOutputTokens": 2048,
             "responseMimeType": "application/json",
         }
-        if "2.5" in GEMINI_MODEL:
-            gen_config["thinkingConfig"] = {"thinkingBudget": 0}
 
-        try:
-            resp = requests.post(
-                GEMINI_API_URL,
-                headers=headers,
-                json={
-                    "contents": [{"parts": parts}],
-                    "generationConfig": gen_config
-                },
-                timeout=20
-            )
-            if resp.status_code == 200:
-                raw_json = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                parsed = clean_json_response(raw_json)
-                parsed["product_category"] = parsed.get("category", selected_category)
-                desc = parsed.get("institutional_description", "")
-                pack = parsed.get("packaging_and_customization", "")
-                qa = parsed.get("quality_assurance", "")
-                specs = []
-                if pack: specs.append(f"Packaging: {pack}")
-                if qa: specs.append(f"Quality Assurance: {qa}")
-                parsed["requirements"] = f"{desc}\n\n" + "\n• ".join(["Specifications:"] + specs) if specs else desc
-                parsed["lead_time"] = parsed.get("suggested_lead_time", "12-15 working days")
-                parsed["tags"] = parsed.get("tags") or preset.get("tags", ["Handcrafted", "HeritageCraft", "GeMEligible"])
-                parsed["ai_engine"] = f"Google Gemini ({GEMINI_MODEL}) Institutional Intelligence"
-                parsed["is_ai_simulated"] = False
-                return parsed
-        except Exception as e:
-            logger.warning(f"Gemini RFQ generation fallback: {e}")
+        candidate_rfq_models = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash", "gemini-2.5-flash"]
+        for model_name in candidate_rfq_models:
+            try:
+                model_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+                resp = requests.post(
+                    model_url,
+                    headers=headers,
+                    json={
+                        "contents": [{"parts": parts}],
+                        "generationConfig": gen_config
+                    },
+                    timeout=22
+                )
+                if resp.status_code == 200:
+                    raw_json = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    parsed = clean_json_response(raw_json)
+                    parsed["product_category"] = parsed.get("category", selected_category)
+                    desc = parsed.get("institutional_description", "")
+                    pack = parsed.get("packaging_and_customization", "")
+                    qa = parsed.get("quality_assurance", "")
+                    specs = []
+                    if pack: specs.append(f"Packaging: {pack}")
+                    if qa: specs.append(f"Quality Assurance: {qa}")
+                    parsed["requirements"] = f"{desc}\n\n" + "\n• ".join(["Specifications:"] + specs) if specs else desc
+                    parsed["lead_time"] = parsed.get("suggested_lead_time", "12-15 working days")
+                    parsed["tags"] = parsed.get("tags") or preset.get("tags", ["Handcrafted", "HeritageCraft", "GeMEligible"])
+                    parsed["ai_engine"] = f"Google Gemini ({model_name} Institutional Intelligence)"
+                    parsed["is_ai_simulated"] = False
+                    return parsed
+            except Exception as e:
+                logger.warning(f"Gemini RFQ generation ({model_name}) fallback: {e}")
 
     # Fallback to intelligent heuristic preset
     derived_title = craft_hint.strip() if len(craft_hint.strip()) > 5 else preset["title"]
@@ -523,3 +528,304 @@ Return ONLY a valid JSON object matching this schema:
         "ai_engine": "Smart Institutional Cataloging Engine (Heuristic)",
         "is_ai_simulated": True
     }
+
+
+# =========================================================================
+# 💬 KALASETU AI ASSISTANT (GEMINI CONVERSATIONAL CHATBOT WITH PRODUCT CATALOG)
+# =========================================================================
+
+_CATALOG_CACHE: Dict[str, Any] = {"text": "", "expires_at": 0}
+
+
+def get_catalog_context_for_ai() -> str:
+    """
+    Fetch all active published products from KalaSetu database
+    and summarize them into structured context for Gemini.
+    Cached for 300 seconds (5 min) to optimize DB query frequency.
+    """
+    now = time.time()
+    if _CATALOG_CACHE["text"] and now < _CATALOG_CACHE["expires_at"]:
+        return _CATALOG_CACHE["text"]
+
+    try:
+        from backend.database import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, name, category, price, artisan_name, artisan_location, description_en, tags "
+            "FROM products WHERE quantity > 0 ORDER BY id ASC LIMIT 50"
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return "No products currently listed in catalog."
+
+        lines = ["KALASETU VERIFIED HANDICRAFT PRODUCT CATALOG:"]
+        for r in rows:
+            p = dict(r)
+            tags_val = p.get("tags") or ""
+            if isinstance(tags_val, (list, tuple)):
+                tags_str = ", ".join(str(t) for t in tags_val)
+            else:
+                tags_str = str(tags_val)
+            lines.append(
+                f"- Product #{p.get('id')}: \"{p.get('name')}\"\n"
+                f"  Category: {p.get('category')} | Price: Rs.{p.get('price')} | Artisan: {p.get('artisan_name')}, {p.get('artisan_location')}\n"
+                f"  Description: {p.get('description_en')}\n"
+                f"  Tags: {tags_str}"
+            )
+        catalog_text = "\n\n".join(lines)
+        _CATALOG_CACHE["text"] = catalog_text
+        _CATALOG_CACHE["expires_at"] = now + 300  # 5-minute cache
+        return catalog_text
+    except Exception as e:
+        logger.warning(f"Error fetching catalog context: {e}")
+        return "KalaSetu authentic crafts: Silk Sarees, Terracotta Pottery, Dhokra Brassware, Wooden Toys & Carvings, Folk Paintings."
+
+
+def build_kalasetu_system_prompt() -> str:
+    """Constructs dynamic Gemini system instructions including product catalog and strict domain guardrails."""
+    catalog_context = get_catalog_context_for_ai()
+    return f"""You are KalaSetu Assistant (कलासेतु सहायक), the dedicated AI assistant for the KalaSetu platform — an AI-driven initiative for marginalized Indian artisans, weavers, and craft buyers under MoSJE (SIH26090).
+
+CRITICAL DOMAIN & RELEVANCE POLICY:
+1. You ONLY answer queries related to:
+   - KalaSetu's authentic Indian handicraft products, descriptions, prices, materials, artisan backgrounds, and origins.
+   - Craft making techniques and traditional Indian arts (handloom weaving, terracotta pottery, Bastar Dhokra lost-wax casting, wood carving, folk painting).
+   - KalaSetu platform features: AI Studio (how to photograph and analyze crafts with multimodal AI to auto-generate bilingual titles, descriptions, and fair prices), Buyer Marketplace, and Institutional Bulk Procurement (RFQs).
+   - Fair craft pricing calculation formulas and artisan economics.
+   - Government artisan welfare schemes (PM Vishwakarma Scheme, MoSJE subsidies, Pehchan Artisan Card, GeM portal).
+
+2. UNRELATED QUERIES STRICTLY FORBIDDEN:
+   If the user asks ANY question unrelated to KalaSetu, our products, crafts, pricing, artisan schemes, or platform services (for example: software coding, generic math, movie trivia, sports, stock market, world history, politics, unrelated general knowledge), you MUST REFUSE and answer strictly with:
+   "Please ask related queries only."
+   (Or in Hindi if the user asked in Hindi: "कृपया केवल कलासेतु उत्पादों और हस्तशिल्प से संबंधित प्रश्न ही पूछें। / Please ask related queries only.")
+   Do NOT answer unrelated queries under any circumstances.
+
+KALASETU PRODUCT CATALOG REFERENCE:
+When answering questions about available items, recommendations, prices, craft materials, care tips, or artisan stories, REFER DIRECTLY to our verified product catalog below:
+
+{catalog_context}
+
+HOW USERS USE KALASETU FEATURES:
+- AI Studio Analysis: If the user asks how to analyze or catalog with AI:
+  1. Click on the 'Artisan Studio' tab in KalaSetu.
+  2. Upload an image of the handmade craft.
+  3. Speak or type details in your mother tongue.
+  4. Click 'Analyze with AI Studio'. Gemini Vision will automatically detect craft category, materials, generate bilingual English/Hindi product descriptions, suggest tags, and calculate fair retail pricing!
+- Fair Pricing: Fair Price = (Raw Materials + [Crafting Hours × Fair Hourly Wage] + Packaging) × 1.20 (20% Fair Profit Margin).
+- PM Vishwakarma: Collateral-free loans up to ₹3 Lakh at 5%, ₹15,000 toolkit voucher, ₹500/day training stipend, Pehchan card.
+- Bulk RFQ: Use the Institutional tab to generate B2B orders with HSN codes and GST invoices.
+
+TONE & STYLE:
+- Warm, respectful, helpful, and concise.
+- Use clean formatting with bullet points and tasteful emojis.
+- Match the language of the user (English, Hindi, Kannada, Tamil, etc.)."""
+
+
+def generate_heuristic_chat_response(last_user_message: str, language: str = "en") -> str:
+    """Intelligent fallback response checking catalog and domain rules when offline."""
+    msg = (last_user_message or "").lower().strip()
+
+    # Domain check for unrelated queries
+    unrelated_keywords = [
+        "code", "python", "javascript", "html", "css", "sql", "bug", "program",
+        "movie", "actor", "actress", "cinema", "cricket", "football", "world cup",
+        "stock", "crypto", "bitcoin", "weather", "capital of", "president", "prime minister of",
+        "math", "calculate 2", "solve", "essay", "physics", "chemistry"
+    ]
+    if any(k in msg for k in unrelated_keywords):
+        return "Please ask related queries only."
+
+    if any(k in msg for k in ["analyze", "analysis", "ai studio", "how to use", "how to analyze", "स्कैन", "विश्लेषण"]):
+        return (
+            "✨ **How to Analyze Your Craft with KalaSetu AI**\n\n"
+            "1. Switch to the **Artisan Studio** tab.\n"
+            "2. Upload a clear photograph of your handmade craft.\n"
+            "3. Speak or type details in your mother tongue.\n"
+            "4. Click **'Analyze with AI Studio'** — Gemini Vision will automatically detect the craft category, materials, generate bilingual English & Hindi descriptions, suggest tags, and calculate fair pricing!"
+        )
+
+    if any(k in msg for k in ["saree", "silk", "handloom", "साड़ी", "सिल्क"]):
+        return (
+            "🧵 **KalaSetu Handloom Silk Sarees**\n\n"
+            "• **Natural Indigo Bhagalpur Tussar Silk Saree** (₹3,450) by Manjula Ansari, Bhagalpur, Bihar — Pure handloom wild silk hand-dyed with organic indigo.\n"
+            "• **Traditional Purple Kanchi Silk Saree with Golden Zari** (₹6,000) by Rukmini, Mysore — Festive pure silk adorned with elephant and peacock motifs."
+        )
+
+    if any(k in msg for k in ["pottery", "terracotta", "planter", "pot", "बर्तन", "मिट्टी"]):
+        return (
+            "🏺 **KalaSetu Pottery & Terracotta Collection**\n\n"
+            "• **Turquoise Blue Floral Painted Ceramic Planter Pot** (₹680) — Glazed ceramic with drainage hole.\n"
+            "• **Khurja Hand-Painted Blue Pottery Tea Set** (₹1,250) — Ceramic teapot with 4 matching cups.\n"
+            "• **Hand-Painted Tribal Dot Art Clay Planter** (₹490) — Traditional terracotta with earthen breathability."
+        )
+
+    if any(k in msg for k in ["dhokra", "metal", "brass", "bull", "ढोकरा", "धातु"]):
+        return (
+            "🐂 **Bastar Lost-Wax Dhokra Bell Metal Bull** (₹2,100)\n\n"
+            "Handcrafted by Suresh Baghel in Bastar, Chhattisgarh using the 4,000-year-old lost-wax casting technique with non-ferrous brass and bell metal alloy."
+        )
+
+    if any(k in msg for k in ["wood", "wooden", "elephant", "लकड़ी", "हाथी"]):
+        return (
+            "🐘 **Traditional Hand-Carved Wooden Elephant Sculpture** (₹950)\n\n"
+            "Carved from single-block seasoned Sheesham wood by master artisan Ramesh Sharma in Saharanpur, Uttar Pradesh with traditional floral jaali fretwork."
+        )
+
+    if any(k in msg for k in ["price", "pricing", "cost", "rate", "मूल्य", "कीमत", "दाम"]):
+        return (
+            "💰 **KalaSetu Fair Pricing Guidance**\n\n"
+            "• **Formula**: `Fair Price = (Raw Materials + [Crafting Hours × Fair Hourly Wage] + Packaging) × 1.20 (20% Profit Margin)`\n"
+            "• Never sell below your raw material cost and labor time.\n"
+            "• KalaSetu's AI Studio auto-calculates regional fair prices upon photo upload!"
+        )
+
+    if any(k in msg for k in ["vishwakarma", "scheme", "loan", "subsidy", "योजना", "विश्वकर्मा"]):
+        return (
+            "🏛️ **PM Vishwakarma Scheme Benefits**\n\n"
+            "• Collateral-free loans up to **₹3,00,000** at 5% interest (Tranche 1: ₹1 Lakh, Tranche 2: ₹2 Lakh).\n"
+            "• **₹15,000 modern toolkit voucher**.\n"
+            "• Free 5–7 days skill training with a **₹500/day stipend** and Pehchan ID card."
+        )
+
+    return (
+        "🙏 **Namaste! I am KalaSetu Assistant (कलासेतु सहायक)**.\n\n"
+        "I can help you explore our verified handcrafted products, artisan stories, fair pricing, and AI Studio cataloging.\n\n"
+        "Ask me about any craft, product details, or how to analyze your crafts with AI!"
+    )
+
+
+def chat_with_gemini(
+    messages: List[Dict[str, str]],
+    language: str = "en"
+) -> Dict[str, Any]:
+    """
+    Conversational AI Chatbot powered by Google Gemini API.
+    Injects KalaSetu product descriptions and strictly enforces domain relevance.
+    Falls back across fast candidate models to prevent 429 quota exhaustion.
+    """
+    if not messages:
+        return {
+            "reply": generate_heuristic_chat_response("", language),
+            "engine": "KalaSetu Assistant (Heuristic)",
+            "is_ai_simulated": True
+        }
+
+    # Extract the last user question
+    last_user_msg = ""
+    for m in reversed(messages):
+        if m.get("role") in ("user", "human"):
+            last_user_msg = m.get("content", "")
+            break
+    if not last_user_msg and messages:
+        last_user_msg = messages[-1].get("content", "")
+
+    # Check for Gemini API key
+    if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
+        logger.info("Gemini API key not configured. Using KalaSetu heuristic chat assistant.")
+        return {
+            "reply": generate_heuristic_chat_response(last_user_msg, language),
+            "engine": "KalaSetu Assistant (Offline / Heuristic)",
+            "is_ai_simulated": True
+        }
+
+    # Build formatted conversation turns alternating between user and model
+    formatted_contents = []
+    current_role = None
+    accumulated_parts = []
+
+    for msg in messages:
+        role = "user" if msg.get("role") in ("user", "human") else "model"
+        text = str(msg.get("content", "")).strip()
+        if not text:
+            continue
+
+        if role == current_role:
+            accumulated_parts.append(text)
+        else:
+            if current_role is not None and accumulated_parts:
+                formatted_contents.append({
+                    "role": current_role,
+                    "parts": [{"text": "\n\n".join(accumulated_parts)}]
+                })
+            current_role = role
+            accumulated_parts = [text]
+
+    if current_role is not None and accumulated_parts:
+        formatted_contents.append({
+            "role": current_role,
+            "parts": [{"text": "\n\n".join(accumulated_parts)}]
+        })
+
+    # Gemini API requires the first turn to be 'user'
+    while formatted_contents and formatted_contents[0]["role"] != "user":
+        formatted_contents.pop(0)
+
+    if not formatted_contents:
+        formatted_contents = [{"role": "user", "parts": [{"text": last_user_msg or "Hello"}]}]
+
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY,
+    }
+
+    system_prompt = build_kalasetu_system_prompt()
+    payload = {
+        "system_instruction": {
+            "parts": [{"text": system_prompt}]
+        },
+        "contents": formatted_contents,
+        "generationConfig": {
+            "temperature": 0.5,
+            "topP": 0.9,
+            "maxOutputTokens": 1024,
+        }
+    }
+
+    # Candidate models in priority order for high quota reliability
+    candidate_models = ["gemini-flash-lite-latest", "gemini-3-flash-preview", "gemini-3.1-flash-lite-preview", GEMINI_MODEL]
+    # Deduplicate while preserving order
+    seen_models = set()
+    ordered_models = []
+    for cm in candidate_models:
+        if cm and cm not in seen_models:
+            seen_models.add(cm)
+            ordered_models.append(cm)
+
+    for model_name in ordered_models:
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+        try:
+            response = requests.post(
+                api_url,
+                headers=headers,
+                json=payload,
+                timeout=18
+            )
+
+            if response.status_code == 200:
+                res_json = response.json()
+                candidates = res_json.get("candidates", [])
+                if candidates:
+                    content_parts = candidates[0].get("content", {}).get("parts", [])
+                    if content_parts:
+                        reply_text = content_parts[0].get("text", "").strip()
+                        if reply_text:
+                            return {
+                                "reply": reply_text,
+                                "engine": f"Google Gemini ({model_name})",
+                                "is_ai_simulated": False
+                            }
+            else:
+                logger.warning(f"Model {model_name} returned HTTP {response.status_code}: {response.text[:120]}")
+        except Exception as exc:
+            logger.warning(f"Connection error trying {model_name}: {exc}")
+
+    # Fallback to intelligent heuristic response if all API endpoints fail
+    return {
+        "reply": generate_heuristic_chat_response(last_user_msg, language),
+        "engine": "KalaSetu Assistant (Intelligent Fallback)",
+        "is_ai_simulated": True
+    }
+

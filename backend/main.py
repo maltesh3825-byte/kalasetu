@@ -25,7 +25,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend.ai_service import analyze_craft_image_with_gemini, translate_text_with_gemini, CATEGORIES, generate_institutional_rfq_ai
+from backend.ai_service import analyze_craft_image_with_gemini, translate_text_with_gemini, CATEGORIES, generate_institutional_rfq_ai, chat_with_gemini
 from backend.config import STATIC_DIR, UPLOAD_DIR, GEMINI_API_KEY, HOST, PORT, ADMIN_EMAIL, ADMIN_PASSWORD
 from backend.database import get_db_connection, init_db
 from backend.email_service import is_smtp_configured, send_otp_email
@@ -181,6 +181,16 @@ class TranslationRequest(BaseModel):
     target_language: str = "English"
 
 
+class ChatMessage(BaseModel):
+    role: str = "user"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+    language: Optional[str] = "en"
+
+
 class InstitutionalRequestCreate(BaseModel):
     artisan_name: str
     email: str
@@ -334,6 +344,28 @@ def health_check():
 def get_categories():
     """Returns official handicraft categories."""
     return {"categories": CATEGORIES}
+
+
+@app.post("/api/chat")
+def chat_ai(payload: ChatRequest):
+    """
+    AI Chatbot endpoint powered by Google Gemini API.
+    Supports multi-turn conversation with fair pricing, government schemes,
+    and handicraft domain intelligence.
+    """
+    try:
+        messages = [{"role": m.role, "content": m.content} for m in payload.messages]
+        result = chat_with_gemini(messages=messages, language=payload.language or "en")
+        return result
+    except Exception as e:
+        logger.exception(f"Chat API error: {e}")
+        from backend.ai_service import generate_heuristic_chat_response
+        last_msg = payload.messages[-1].content if payload.messages else ""
+        return {
+            "reply": generate_heuristic_chat_response(last_msg, payload.language or "en"),
+            "engine": "KalaSetu Assistant (Emergency Recovery)",
+            "is_ai_simulated": True
+        }
 
 
 def normalize_phone(phone: str) -> str:
@@ -2513,8 +2545,12 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/")
 def serve_index():
-    """Serves the main application page."""
-    return FileResponse(STATIC_DIR / "index.html")
+    """Serves the main application page with no-cache headers."""
+    response = FileResponse(STATIC_DIR / "index.html")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 if __name__ == "__main__":
