@@ -170,7 +170,8 @@ Return ONLY a valid JSON object matching this exact schema:
             "temperature": 0.2,
             "topP": 0.8,
             "maxOutputTokens": 2048,
-            "responseMimeType": "application/json"
+            "responseMimeType": "application/json",
+            **({"thinkingConfig": {"thinkingBudget": 0}} if "2.5" in GEMINI_MODEL else {})
         }
     }
 
@@ -427,13 +428,19 @@ Artisan Input / Craft details: "{craft_hint or 'Traditional handmade craft'}"
 Preferred Category: "{category or 'Auto-detect'}"
 Target Buyer: "{target_buyer or 'Government & Corporate Procurement'}"
 
+CRITICAL INSTRUCTIONS FOR VISUAL ANALYSIS:
+If an image of the craft is provided, inspect the visual craft style, medium, and materials shown in the photo.
+Accurately identify the true craft category (e.g., Folk Art & Painting, Pottery & Terracotta, Brass & Metalcraft, Cane & Bamboo, Woodcraft, Handloom & Textiles).
+Do NOT assume Handloom or Textiles unless the image actually shows handloom fabric!
+If the photo depicts a painting (e.g., Madhubani, Warli, Pattachitra, canvas, or paper painting), you MUST classify it as "Folk Art & Painting", suggest HSN "9701", and detail the painting materials, pigments, and protective packaging.
+
 Analyze this craft and output a high-standard, professional institutional procurement listing that will appeal to corporate procurement heads and government tender committees.
 
 Return ONLY a valid JSON object matching this schema:
 {{
-  "product_name": "Professional, formal procurement title in English (e.g., 'Handcrafted Brass Dhokra Table Lamp & Pen Stand')",
-  "category": "Pick one: Handloom & Textiles, Pottery & Terracotta, Brass & Metalcraft, Cane & Bamboo, Woodcraft, Folk Art & Painting",
-  "hsn_code": "Realistic 4 or 8 digit Indian HSN code (e.g., 7419, 5208, 6912, 4420, 4602, 9701)",
+  "product_name": "Professional, formal procurement title in English (e.g., 'Handcrafted Authentic Folk Art Painting (Archival Mount)')",
+  "category": "Pick exact match: Handloom & Textiles, Pottery & Terracotta, Brass & Metalcraft, Cane & Bamboo, Woodcraft, Folk Art & Painting",
+  "hsn_code": "Realistic 4 or 8 digit Indian HSN code (e.g., 9701 for paintings, 6912 for terracotta, 7419 for brass, 5208 for handloom, 4420 for wood, 4602 for cane/bamboo)",
   "gst_rate": "5% or 12%",
   "institutional_description": "2-3 sentences of formal procurement copy highlighting craftsmanship, material purity, cultural authenticity, and utility.",
   "packaging_and_customization": "Detailed specification of packaging (e.g., individual kraft gift box) and custom branding options (e.g., corporate logo engraving, artisan story card).",
@@ -457,17 +464,21 @@ Return ONLY a valid JSON object matching this schema:
                 }
             })
 
+        gen_config = {
+            "temperature": 0.2,
+            "maxOutputTokens": 2048,
+            "responseMimeType": "application/json",
+        }
+        if "2.5" in GEMINI_MODEL:
+            gen_config["thinkingConfig"] = {"thinkingBudget": 0}
+
         try:
             resp = requests.post(
                 GEMINI_API_URL,
                 headers=headers,
                 json={
                     "contents": [{"parts": parts}],
-                    "generationConfig": {
-                        "temperature": 0.2,
-                        "maxOutputTokens": 1024,
-                        "responseMimeType": "application/json"
-                    }
+                    "generationConfig": gen_config
                 },
                 timeout=20
             )

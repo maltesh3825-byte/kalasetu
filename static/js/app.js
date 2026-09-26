@@ -743,8 +743,10 @@ async function generateInstitutionalRfqWithAi() {
   const bulkProgressBox = document.getElementById('bulkVisionProgressBox');
   const bulkProgressText = document.getElementById('bulkVisionProgressText');
 
-  const craftHint = nameInput?.value.trim() || catSelect?.value || 'Handicraft';
-  const category = catSelect?.value || 'Handloom & Textiles';
+  const hasImage = Boolean(bulkVisionState.selectedFile || bulkVisionState.imageUrl);
+  const userTypedName = nameInput?.value.trim() || '';
+  const craftHint = userTypedName || (hasImage ? '' : (catSelect?.value || 'Handicraft'));
+  const category = hasImage && !userTypedName ? 'Auto-detect' : (catSelect?.value || 'Auto-detect');
   const targetBuyer = targetSelect?.value || 'Open to all';
 
   isGeneratingInstitutionalAi = true;
@@ -2735,7 +2737,8 @@ Return ONLY a valid JSON object matching this exact schema:
       temperature: 0.2,
       topP: 0.8,
       maxOutputTokens: 2048,
-      responseMimeType: 'application/json'
+      responseMimeType: 'application/json',
+      ...(model && model.includes('2.5') ? { thinkingConfig: { thinkingBudget: 0 } } : {})
     }
   };
 
@@ -2789,19 +2792,29 @@ async function _callBulkGeminiVisionDirect(imageSource, craftHint, category, tar
   const prompt = `You are the Lead Institutional Procurement Manager & AI Vision Specialist for KalaSetu under the Ministry of Social Justice and Empowerment (MoSJE).
 Analyze this handmade artisan craft photo for wholesale/institutional RFQ procurement (e.g. Government GeM tenders, luxury corporate gifting, export houses, cultural events).
 
-Artisan context:
+CRITICAL INSTRUCTIONS FOR VISUAL ANALYSIS:
+Examine the image carefully. Prioritize the visual craft form shown in the photo above any preset dropdown options.
+Identify the true craft category:
+- If the photo depicts a painting (e.g., Madhubani, Warli, Pattachitra, canvas, or paper folk art), classify it as "Folk Art & Painting", suggest HSN "9701", and specify archival mounts, acid-free packaging, and artisan certification.
+- If it shows pottery, kulhars, clay or earthenware, classify as "Pottery & Terracotta" (HSN 6912).
+- If it shows brass or metal casting, classify as "Brass & Metalcraft" (HSN 7419).
+- If it shows wood carvings or lacquerware, classify as "Woodcraft" (HSN 4420).
+- If it shows bamboo or cane, classify as "Cane & Bamboo" (HSN 4602).
+- Only classify as "Handloom & Textiles" if the photo actually depicts woven fabrics, shawls, or apparel!
+
+Artisan context (if specified):
 - Hint/Title: "${craftHint || 'Handmade Indian Craft'}"
-- Suggested Category: "${category || 'Handloom & Textiles'}"
+- Suggested Category: "${category || 'Auto-detect'}"
 - Target Buyer / Procurement Channel: "${targetBuyer || 'Open to all'}"
 
 Analyze visual craftsmanship, technique, materials, authenticity motifs, and wholesale requirements shown in the photo.
 Return ONLY a valid JSON object matching this schema:
 {
-  "product_name": "Formal bulk procurement product title (e.g. 'Handcrafted Terracotta Warli Jug Set (Export Batch)')",
-  "product_category": "Pick exact match from: Handloom & Textiles, Pottery & Terracotta, Brass & Metalcraft, Cane & Bamboo, Woodcraft, Folk Art & Painting",
+  "product_name": "Formal bulk procurement product title in English",
+  "product_category": "Pick exact match: Handloom & Textiles, Pottery & Terracotta, Brass & Metalcraft, Cane & Bamboo, Woodcraft, Folk Art & Painting",
   "suggested_unit_price": 450,
   "suggested_lead_time": "15-20 working days",
-  "hsn_code": "Realistic 4-digit Indian HSN code (e.g. 6912, 5208, 7419, 4420, 4602, 9701)",
+  "hsn_code": "Realistic 4-digit Indian HSN code (e.g. 9701, 6912, 7419, 4420, 4602, 5208)",
   "gst_rate": "5% or 12%",
   "tags": ["GeM Eligible", "GI Authenticated", "Export Packaging", "Eco-Friendly", "Corporate Gift"],
   "institutional_description": "Comprehensive 2-3 sentences formal procurement copy covering craft heritage, purity of materials, wholesale batch inspection assurance, and export packaging specifications."
@@ -2817,8 +2830,9 @@ Return ONLY a valid JSON object matching this schema:
     generationConfig: {
       temperature: 0.2,
       topP: 0.8,
-      maxOutputTokens: 1024,
-      responseMimeType: 'application/json'
+      maxOutputTokens: 2048,
+      responseMimeType: 'application/json',
+      ...(model && model.includes('2.5') ? { thinkingConfig: { thinkingBudget: 0 } } : {})
     }
   };
 
