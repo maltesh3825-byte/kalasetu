@@ -2417,31 +2417,31 @@ export default function App() {
                     </View>
                   </View>
                 ) : (
-                  <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+                  <View style={{ width: '100%', paddingVertical: 6 }}>
                     <Text style={{ fontSize: 11, fontWeight: '700', color: '#78350F', textAlign: 'center', marginBottom: 10, lineHeight: 16 }}>
                       {tx('bulkPhotoUploadHint')}
                     </Text>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flexDirection: 'row', width: '100%', gap: 6, justifyContent: 'space-between' }}>
                       <TouchableOpacity
-                        style={{ backgroundColor: '#EA580C', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        style={{ flex: 1, backgroundColor: '#EA580C', paddingVertical: 7, paddingHorizontal: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}
                         onPress={takeBulkPhoto}
                       >
-                        <Text style={{ fontSize: 13 }}>📷</Text>
-                        <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 11 }}>{tx('btnCameraShort')}</Text>
+                        <Text style={{ fontSize: 11 }}>📷</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 10 }}>{tx('btnCameraShort')}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderWidth: 1, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        style={{ flex: 1, backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderWidth: 1, paddingVertical: 7, paddingHorizontal: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}
                         onPress={pickBulkFromGallery}
                       >
-                        <Text style={{ fontSize: 13 }}>📁</Text>
-                        <Text style={{ color: '#334155', fontWeight: '700', fontSize: 11 }}>{tx('btnChoosePhoto')}</Text>
+                        <Text style={{ fontSize: 11 }}>📁</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: '#334155', fontWeight: '700', fontSize: 10 }}>{tx('btnChoosePhoto')}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderWidth: 1, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                        style={{ flex: 1, backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderWidth: 1, paddingVertical: 7, paddingHorizontal: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}
                         onPress={() => setCraftPickerModalVisible(true)}
                       >
-                        <Text style={{ fontSize: 13 }}>📦</Text>
-                        <Text style={{ color: '#334155', fontWeight: '700', fontSize: 11 }}>{tx('btnMyCrafts')}</Text>
+                        <Text style={{ fontSize: 11 }}>📦</Text>
+                        <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: '#334155', fontWeight: '700', fontSize: 10 }}>{tx('btnMyCrafts')}</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -3317,7 +3317,7 @@ export default function App() {
         }}
         onPress={() => setChatModalVisible(true)}
       >
-        <Text style={{ fontSize: 16 }}>✨💬</Text>
+        <Text style={{ fontSize: 16 }}>💬</Text>
         <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 13 }}>{tx('aiAssistant')}</Text>
       </TouchableOpacity>
 
