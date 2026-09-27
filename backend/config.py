@@ -21,6 +21,8 @@ import re
 load_dotenv(BASE_DIR / ".env", override=False)
 
 DATABASE_URL = (os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL") or "").strip()
+SUPABASE_URL = (os.getenv("SUPABASE_URL") or os.getenv("EXPO_PUBLIC_SUPABASE_URL") or "https://fcabjzylxzdcqzrloaqr.supabase.co").strip()
+SUPABASE_KEY = (os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY") or os.getenv("EXPO_PUBLIC_SUPABASE_ANON_KEY") or "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjYWJqenlseHpkY3F6cmxvYXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMDA4NTAsImV4cCI6MjEwNDc3Njg1MH0.z7-C5sww2E6GRqip6HBJmLdoTHJAWZl70TYXqCJaiBg").strip()
 
 
 def find_available_port(start_port: int, host: str = "0.0.0.0", max_tries: int = 20) -> int:
