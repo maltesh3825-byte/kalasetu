@@ -1125,6 +1125,7 @@ body {
   justify-content: space-between !important;
   border-bottom: 1.5px solid #fdba74 !important;
   position: relative !important;
+  z-index: 500 !important;
   backdrop-filter: blur(4px) !important;
 }
 
@@ -1201,14 +1202,14 @@ body {
   right: 0 !important;
   background: #ffffff !important;
   border-radius: 12px !important;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.22), 0 3px 10px rgba(0, 0, 0, 0.08) !important;
   border: 1.5px solid #fed7aa !important;
-  padding: 6px !important;
-  min-width: 195px !important;
-  z-index: 1000 !important;
+  padding: 8px !important;
+  min-width: 205px !important;
+  z-index: 9999 !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 3px !important;
+  gap: 4px !important;
 }
 
 .nykaa-dropdown-menu.hidden,
@@ -1248,6 +1249,8 @@ body {
   flex-direction: column !important;
   gap: 12px !important;
   scroll-behavior: smooth !important;
+  position: relative !important;
+  z-index: 1 !important;
 }
 
 .nykaa-chat-messages::-webkit-scrollbar {

@@ -3364,7 +3364,7 @@ export default function App() {
         >
           <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '86%', padding: 18, display: 'flex', flexDirection: 'column' }}>
             {/* Header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', zIndex: 100, elevation: 10 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <View style={{ width: 38, height: 38, borderRadius: 12, overflow: 'hidden', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#EA580C' }}>
                   <Image
@@ -3378,7 +3378,7 @@ export default function App() {
                   <Text style={{ fontSize: 11, color: '#64748B' }}>{tx('botSubheading')}</Text>
                 </View>
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, position: 'relative' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, position: 'relative', zIndex: 100 }}>
                 <TouchableOpacity
                   onPress={() => setChatMenuOpen(!chatMenuOpen)}
                   style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' }}
