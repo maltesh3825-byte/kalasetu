@@ -3627,6 +3627,21 @@ function openProductModal(productId) {
     shareWaBtn.href = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareMsg)}`;
   }
 
+
+  // Fullscreen image viewer - click on image/button
+  const viewFullscreenBtn = document.getElementById('viewFullscreenBtn');
+  const imageUrlForFullscreen = resolveImageUrl(product.image_url);
+  if (viewFullscreenBtn) {
+    viewFullscreenBtn.onclick = (e) => {
+      e.stopPropagation();
+      openImageFullscreen(imageUrlForFullscreen, product.name);
+    };
+  }
+  const modalImgEl = document.getElementById('modalImage');
+  if (modalImgEl) {
+    modalImgEl.style.cursor = 'zoom-in';
+    modalImgEl.onclick = () => openImageFullscreen(imageUrlForFullscreen, product.name);
+  }
   modal.classList.remove('hidden');
 }
 
@@ -3824,3 +3839,23 @@ window.onLanguageChanged = (lang) => {
   const waBtn = document.querySelector('#modalWhatsAppBtn span');
   if (waBtn && typeof t === 'function') waBtn.textContent = t('btn_whatsapp_inquire');
 };
+
+function openImageFullscreen(imageUrl, altText) {
+  let existing = document.getElementById('ks-lightbox');
+  if (existing) existing.remove();
+  const lb = document.createElement('div');
+  lb.id = 'ks-lightbox';
+  lb.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.95);display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+  lb.innerHTML = `
+    <button id="ks-lb-close" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:24px;font-weight:900;width:44px;height:44px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;" title="Close">&times;</button>
+    <img src="${imageUrl}" alt="${altText || 'Product Image'}" style="max-width:95vw;max-height:93vh;object-fit:contain;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,0.8);" />
+    <div style="position:absolute;bottom:18px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.55);font-size:12px;white-space:nowrap;">Click anywhere or press Esc to close</div>
+  `;
+  document.body.appendChild(lb);
+  const close = () => lb.remove();
+  lb.onclick = close;
+  lb.querySelector('#ks-lb-close').onclick = (e) => { e.stopPropagation(); close(); };
+  lb.querySelector('img').onclick = (e) => e.stopPropagation();
+  const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
+}

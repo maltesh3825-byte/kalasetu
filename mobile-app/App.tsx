@@ -435,6 +435,12 @@ export default function App() {
   const [isComplianceLoading, setIsComplianceLoading] = useState(false);
   const [complianceFilter, setComplianceFilter] = useState<{ productId?: number; artisanName?: string }>({});
 
+  // Product Detail Modal State
+  const [selectedProduct, setSelectedProduct] = useState<CraftProduct | null>(null);
+  const [productModalVisible, setProductModalVisible] = useState(false);
+  const [fullscreenImageVisible, setFullscreenImageVisible] = useState(false);
+  const [fullscreenImageUrl, setFullscreenImageUrl] = useState('');
+
   // KalaSetu AI Product Assistant Chatbot State
   const [chatModalVisible, setChatModalVisible] = useState(false);
   const [chatMenuOpen, setChatMenuOpen] = useState(false);
@@ -2203,7 +2209,7 @@ export default function App() {
                   <View style={styles.inputLabelRow}>
                     <Text style={styles.inputLabel}>{t.artisanNotes}</Text>
                     <TouchableOpacity style={[styles.voiceButton, isListening && styles.voiceButtonActive]} onPress={toggleVoiceInput}>
-                      <Text style={styles.voiceButtonText}>{isListening ? `⏹️ ${tx('voiceListening')}` : `🎙️ ${tx('voiceInput')}`}</Text>
+                      <Text style={[styles.voiceButtonText, { fontSize: 9 }]} numberOfLines={1}>{isListening ? `⏹️ ${tx('voiceListening')}` : `🎙️ ${tx('voiceInput')}`}</Text>
                     </TouchableOpacity>
                   </View>
                   <View style={styles.voiceLanguageRow}>
@@ -2327,12 +2333,20 @@ export default function App() {
             <View style={styles.productsFeed}>
               {filteredProducts.map((product) => (
                 <View key={product.id} style={styles.productCard}>
-                  <View style={styles.productImageWrapper}>
+                  <TouchableOpacity
+                    style={styles.productImageWrapper}
+                    activeOpacity={0.92}
+                    onPress={() => { setSelectedProduct(product); setProductModalVisible(true); }}
+                  >
                     <Image source={{ uri: product.image_url }} style={styles.productImage} />
                     <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{getCategoryLabel(product.category)}</Text></View>
                     <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>★ {t.mosjeVerified}</Text></View>
                     <View style={styles.priceBadge}><Text style={styles.priceBadgeText}>₹{product.price}</Text></View>
-                  </View>
+                    {/* Tap-to-view hint */}
+                    <View style={{ position: 'absolute', bottom: 6, left: '50%', transform: [{ translateX: -50 }], backgroundColor: 'rgba(0,0,0,0.45)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 }}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '700' }}>👁 Tap to view details</Text>
+                    </View>
+                  </TouchableOpacity>
                   <View style={styles.productCardBody}>
                     <Text style={styles.productCardTitle}>{product.name}</Text>
                     <Text style={styles.productArtisan}>👤 {product.artisan_name} &bull; {product.artisan_location}</Text>
@@ -2389,13 +2403,13 @@ export default function App() {
 
               {/* 📸 Craft Photo for AI Vision Analysis */}
               <View style={{ backgroundColor: '#FFFBEB', borderColor: '#FDE68A', borderWidth: 1.5, borderRadius: 16, padding: 14, marginBottom: 14 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ fontSize: 16 }}>📸</Text>
-                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#92400E' }}>{tx('craftPhotoAiVision')}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }}>
+                    <Text style={{ fontSize: 13 }}>📸</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '900', color: '#92400E', flexShrink: 1 }} numberOfLines={1}>{tx('craftPhotoAiVision')}</Text>
                   </View>
-                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#B45309' }}>{tx('geminiMultimodal')}</Text>
+                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, flexShrink: 0 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '800', color: '#B45309' }}>{tx('geminiMultimodal')}</Text>
                   </View>
                 </View>
 
@@ -2457,12 +2471,9 @@ export default function App() {
                   {isAnalyzingBulkVision ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <>
-                      <Text style={{ fontSize: 14 }}>✨</Text>
-                      <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 12 }}>
-                        {bulkImageUri ? tx('btnAnalyzePhotoVision') : tx('btnAnalyzeAiVision')}
-                      </Text>
-                    </>
+                    <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 12 }}>
+                      {bulkImageUri ? tx('btnAnalyzePhotoVision') : tx('btnAnalyzeAiVision')}
+                    </Text>
                   )}
                 </TouchableOpacity>
 
@@ -3172,9 +3183,9 @@ export default function App() {
           <TouchableOpacity onPress={openHomeMarket} style={styles.logoBadge}>
             <Text style={styles.logoBadgeText}>क</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={openHomeMarket} style={{ flexShrink: 1 }}>
+          <TouchableOpacity onPress={openHomeMarket} style={{ flexShrink: 1, flex: 1 }}>
             <Text style={styles.appName}>KalaSetu</Text>
-            <Text style={styles.appSub} numberOfLines={1} ellipsizeMode="tail">{t.appSubtitle}</Text>
+            <Text style={[styles.appSub, { flexShrink: 1 }]} numberOfLines={1} ellipsizeMode="tail">{t.appSubtitle}</Text>
           </TouchableOpacity>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0 }}>
@@ -3592,6 +3603,204 @@ export default function App() {
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ─── Product Detail Modal ─────────────────────────── */}
+      <Modal
+        visible={productModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setProductModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.65)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '93%' }}>
+            {selectedProduct && (
+              <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+                {/* Product Image */}
+                <TouchableOpacity
+                  activeOpacity={0.88}
+                  onPress={() => {
+                    setFullscreenImageUrl(selectedProduct.image_url);
+                    setFullscreenImageVisible(true);
+                  }}
+                  style={{ width: '100%', height: 260, backgroundColor: '#F1F5F9', overflow: 'hidden' }}
+                >
+                  <Image
+                    source={{ uri: selectedProduct.image_url }}
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="cover"
+                  />
+                  {/* Fullscreen hint */}
+                  <View style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 20, padding: 7 }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 16 }}>⛶</Text>
+                  </View>
+                  {/* Close button */}
+                  <TouchableOpacity
+                    onPress={() => setProductModalVisible(false)}
+                    style={{ position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 20, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '900' }}>✕</Text>
+                  </TouchableOpacity>
+                  {/* Price badge */}
+                  <View style={{ position: 'absolute', bottom: 12, right: 12, backgroundColor: '#0F172A', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12 }}>
+                    <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 16 }}>₹{selectedProduct.price.toLocaleString('en-IN')}</Text>
+                  </View>
+                  {/* Category badge */}
+                  <View style={{ position: 'absolute', bottom: 12, left: 12, backgroundColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 }}>
+                    <Text style={{ color: '#0F172A', fontWeight: '700', fontSize: 11 }}>{getCategoryLabel(selectedProduct.category)}</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Gallery row */}
+                {(selectedProduct.image_gallery && selectedProduct.image_gallery.length > 1) && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+                    {selectedProduct.image_gallery.map((url, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => { setFullscreenImageUrl(url); setFullscreenImageVisible(true); }}
+                        style={{ marginRight: 8, borderRadius: 10, overflow: 'hidden', borderWidth: 2, borderColor: url === selectedProduct.image_url ? '#EA580C' : '#E2E8F0' }}
+                      >
+                        <Image source={{ uri: url }} style={{ width: 64, height: 64 }} resizeMode="cover" />
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+
+                <View style={{ padding: 16 }}>
+                  {/* MoSJE verified */}
+                  {selectedProduct.mosje_verified && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 }}>
+                        <Text style={{ color: '#92400E', fontWeight: '800', fontSize: 10 }}>★ {t.mosjeVerified}</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Title */}
+                  <Text style={{ fontSize: 18, fontWeight: '900', color: '#0F172A', lineHeight: 24, marginBottom: 6 }}>{selectedProduct.name}</Text>
+
+                  {/* Artisan */}
+                  <Text style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
+                    👤 {selectedProduct.artisan_name} • {selectedProduct.artisan_location}
+                  </Text>
+
+                  {/* Rating */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 14, color: '#EA580C', fontWeight: '800' }}>★ {Number(selectedProduct.rating || 4.5).toFixed(1)}</Text>
+                    <Text style={{ fontSize: 12, color: '#94A3B8' }}>{selectedProduct.reviews?.length || 0} {tx('reviews')}</Text>
+                  </View>
+
+                  {/* Description */}
+                  <View style={{ backgroundColor: '#FFFBEB', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#FDE68A', marginBottom: 14 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400E', marginBottom: 6, textTransform: 'uppercase' }}>Product Story & Details</Text>
+                    <Text style={{ fontSize: 13, color: '#334155', lineHeight: 20 }}>
+                      {lang === 'hi' && selectedProduct.description_hi ? selectedProduct.description_hi : selectedProduct.description_en}
+                    </Text>
+                  </View>
+
+                  {/* Tags */}
+                  {selectedProduct.tags && selectedProduct.tags.length > 0 && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                      {selectedProduct.tags.map((tag, idx) => (
+                        <View key={idx} style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                          <Text style={{ fontSize: 10, color: '#475569', fontWeight: '600' }}>#{tag}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Pricing justification */}
+                  {selectedProduct.price_justification && (
+                    <View style={{ backgroundColor: '#F0FDF4', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#BBF7D0', marginBottom: 14 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#065F46', marginBottom: 4 }}>💰 Fair Pricing Basis</Text>
+                      <Text style={{ fontSize: 11, color: '#047857', lineHeight: 16 }}>{selectedProduct.price_justification}</Text>
+                    </View>
+                  )}
+
+                  {/* Quantity & Buy */}
+                  <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '700', marginBottom: 6 }}>
+                    {tx('quantityForOrder')} ({Math.max(1, Number(selectedProduct.quantity ?? 10))} {tx('quantityAvailable')})
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+                    {Array.from({ length: Math.min(10, Math.max(1, Number(selectedProduct.quantity ?? 10))) }, (_, idx) => String(idx + 1)).map(opt => (
+                      <TouchableOpacity
+                        key={opt}
+                        onPress={() => setBuyQuantity(opt)}
+                        style={{ width: 38, height: 38, borderRadius: 10, borderWidth: 1.5, borderColor: buyQuantity === opt ? '#EA580C' : '#CBD5E1', backgroundColor: buyQuantity === opt ? '#EA580C' : '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Text style={{ fontWeight: '800', fontSize: 13, color: buyQuantity === opt ? '#FFFFFF' : '#334155' }}>{opt}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Action buttons */}
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                    <TouchableOpacity
+                      style={{ flex: 1, backgroundColor: '#F1F5F9', paddingVertical: 12, borderRadius: 14, alignItems: 'center', borderWidth: 1, borderColor: '#CBD5E1' }}
+                      onPress={() => toggleWishlist(selectedProduct.id)}
+                    >
+                      <Text style={{ fontWeight: '800', color: '#334155', fontSize: 13 }}>
+                        {wishlist.includes(selectedProduct.id) ? t.removeFromWishlist : t.addToWishlist}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[{ flex: 1, backgroundColor: '#EA580C', paddingVertical: 12, borderRadius: 14, alignItems: 'center' }, (isPlacingOrder || Number(selectedProduct.quantity ?? 10) <= 0) && styles.disabledButton]}
+                      onPress={() => { requestOrder(selectedProduct); setProductModalVisible(false); }}
+                      disabled={isPlacingOrder || Number(selectedProduct.quantity ?? 10) <= 0}
+                    >
+                      <Text style={{ fontWeight: '900', color: '#FFFFFF', fontSize: 13 }}>
+                        {isPlacingOrder ? tx('placingOrder') : Number(selectedProduct.quantity ?? 10) <= 0 ? tx('soldOut') : t.buyNow}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* WhatsApp */}
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#25D366', paddingVertical: 12, borderRadius: 14, alignItems: 'center', marginBottom: 8 }}
+                    onPress={() => openWhatsApp(selectedProduct.artisan_phone || '+919876543210', selectedProduct.name, selectedProduct.price)}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 13 }}>💬 {t.btnWhatsApp}</Text>
+                  </TouchableOpacity>
+
+                  {/* Share */}
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#F0FDF4', paddingVertical: 12, borderRadius: 14, alignItems: 'center', borderWidth: 1, borderColor: '#86EFAC', marginBottom: 20 }}
+                    onPress={() => { shareProductToWhatsApp(selectedProduct); }}
+                  >
+                    <Text style={{ color: '#166534', fontWeight: '800', fontSize: 13 }}>{tx('shareProductWhatsApp')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Fullscreen Image Viewer ──────────────────────── */}
+      <Modal
+        visible={fullscreenImageVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setFullscreenImageVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}>
+          <TouchableOpacity
+            onPress={() => setFullscreenImageVisible(false)}
+            style={{ position: 'absolute', top: 48, right: 20, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 22, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '900' }}>✕</Text>
+          </TouchableOpacity>
+          {fullscreenImageUrl ? (
+            <Image
+              source={{ uri: fullscreenImageUrl }}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="contain"
+            />
+          ) : null}
+          <View style={{ position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20 }}>
+            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>Tap anywhere outside to close</Text>
+          </View>
+        </View>
       </Modal>
 
       {/* Compliance Artifacts Preview Modal (GeM CSV & ONDC Beckn JSON) */}
