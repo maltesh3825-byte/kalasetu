@@ -1404,29 +1404,43 @@
   <!-- ===================================================================== -->
   <!-- PRODUCT DETAIL MODAL                                                  -->
   <!-- ===================================================================== -->
-  <div id="productDetailModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 flex flex-col">
+  <div id="productDetailModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+    <div id="productDetailCard" class="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 flex flex-col transition-all duration-200 relative">
       
       <!-- Modal Header Image -->
       <div class="relative aspect-video sm:aspect-[16/10] max-h-[55vh] bg-slate-100 overflow-hidden group cursor-zoom-in" id="modalImageContainer">
         <img id="modalImage" src="" alt="Product" class="w-full h-full object-contain transition-transform duration-200 hover:scale-105">
         
-        <!-- Fullscreen Button -->
-        <button id="viewFullscreenBtn" title="View full screen"
-                class="absolute top-14 right-4 w-9 h-9 rounded-full bg-slate-900/70 hover:bg-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-md transition-all opacity-0 group-hover:opacity-100" style="z-index:5">
-          &#x26F6;
-        </button>
-        
-        <button id="closeModalBtn" 
-                class="absolute top-4 right-4 w-9 h-9 rounded-full bg-slate-900/70 hover:bg-slate-900 text-white flex items-center justify-center font-bold text-lg shadow-md transition-all">
-          &times;
-        </button>
+        <!-- Top Action Controls (Always visible, sleek glassmorphism) -->
+        <div class="absolute top-4 right-4 flex items-center gap-2" style="z-index:10">
+          <button id="viewFullscreenBtn" title="View image full screen" type="button"
+                  class="px-3 py-1.5 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white flex items-center gap-1.5 font-bold text-xs shadow-lg backdrop-blur-md transition-all hover:scale-105 border border-white/20">
+            <span>⛶</span>
+            <span>Full screen</span>
+          </button>
+          
+          <button id="toggleModalFullscreenBtn" title="Expand modal to full screen" type="button"
+                  class="w-9 h-9 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-lg backdrop-blur-md transition-all hover:scale-105 border border-white/20">
+            <span id="modalFullscreenIcon">⤢</span>
+          </button>
+
+          <button id="closeModalBtn" title="Close" type="button"
+                  class="w-9 h-9 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white flex items-center justify-center font-bold text-lg shadow-lg backdrop-blur-md transition-all hover:scale-105 border border-white/20">
+            &times;
+          </button>
+        </div>
+
+        <!-- Center Image Hint Pill -->
+        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/75 text-white px-3.5 py-1.5 rounded-full text-[11px] font-bold flex items-center gap-1.5 shadow-lg backdrop-blur-md pointer-events-none transition-all">
+          <span>🔍</span>
+          <span>Click image to view full screen</span>
+        </div>
 
         <span id="modalCategory" class="absolute bottom-4 left-4 bg-white/95 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-slate-800 shadow-sm">
           Category
         </span>
 
-        <span class="absolute bottom-4 right-4 bg-indigoGov-900/90 text-amber-300 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+        <span class="absolute bottom-4 right-4 bg-indigoGov-900/90 text-amber-300 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 hidden sm:flex">
           <svg class="w-3.5 h-3.5 text-amber-400 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
           MoSJE Beneficiary Verified
         </span>
@@ -1436,7 +1450,15 @@
       <div class="p-6 sm:p-8 space-y-5">
         <div class="flex items-start justify-between gap-4">
           <div>
-            <h3 id="modalTitle" class="text-xl sm:text-2xl font-black text-slate-900">Product Title</h3>
+            <div class="flex items-center gap-3 flex-wrap">
+              <h3 id="modalTitle" class="text-xl sm:text-2xl font-black text-slate-900">Product Title</h3>
+              <!-- Persistent Title Full Screen Button -->
+              <button id="titleFullscreenBtn" type="button" title="View product image in full screen"
+                      class="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-terracotta-50 hover:bg-terracotta-100 text-terracotta-700 text-xs font-bold border border-terracotta-200 transition-all shadow-sm hover:scale-105">
+                <span>⛶</span>
+                <span>Full screen</span>
+              </button>
+            </div>
             <p class="text-xs text-slate-500 mt-1 flex items-center gap-2">
               <span>👤 Artisan: <strong id="modalArtisanName">Name</strong></span>
               &bull;

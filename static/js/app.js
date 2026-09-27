@@ -208,7 +208,30 @@ function escapeHtml(value) {
 
 function closeProductModal() {
   const modal = document.getElementById('productDetailModal');
+  const card = document.getElementById('productDetailCard');
+  const icon = document.getElementById('modalFullscreenIcon');
+  if (card) {
+    card.classList.remove('ks-modal-fullscreen');
+    card.style.cssText = '';
+  }
+  if (icon) icon.textContent = '⤢';
   if (modal) modal.classList.add('hidden');
+}
+
+function toggleModalFullscreen() {
+  const card = document.getElementById('productDetailCard');
+  const icon = document.getElementById('modalFullscreenIcon');
+  if (!card) return;
+  const isFull = card.classList.contains('ks-modal-fullscreen');
+  if (isFull) {
+    card.classList.remove('ks-modal-fullscreen');
+    card.style.cssText = '';
+    if (icon) icon.textContent = '⤢';
+  } else {
+    card.classList.add('ks-modal-fullscreen');
+    card.style.cssText = 'position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;border-radius:0!important;z-index:60;margin:0!important;';
+    if (icon) icon.textContent = '⤡';
+  }
 }
 
 function showCustomAlert(message, title = 'Notice') {
@@ -3403,6 +3426,14 @@ function renderProducts(products) {
             ${getCategoryLabel(p.category)}
           </span>
 
+          <!-- Quick Fullscreen Button on Card Image -->
+          <button onclick="event.stopPropagation(); openImageFullscreen('${resolveImageUrl(p.image_url)}', '${escapeHtml(p.name)}')"
+                  class="absolute top-3 right-16 bg-slate-900/80 hover:bg-slate-900 text-white px-2 py-0.5 rounded-full text-[10px] font-bold shadow-md flex items-center gap-1 backdrop-blur-md transition-all hover:scale-105 z-10 border border-white/20"
+                  title="View full screen">
+            <span>⛶</span>
+            <span class="hidden sm:inline">Fullscreen</span>
+          </button>
+
           <!-- MoSJE Verified Badge -->
           <span class="absolute top-3 right-3 bg-indigo-900/90 backdrop-blur-md text-[10px] font-bold px-2 py-0.5 rounded-full text-amber-300 shadow-sm flex items-center gap-1">
             <svg class="w-3 h-3 text-amber-400 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
@@ -3628,15 +3659,37 @@ function openProductModal(productId) {
   }
 
 
-  // Fullscreen image viewer - click on image/button
-  const viewFullscreenBtn = document.getElementById('viewFullscreenBtn');
+  // Fullscreen controls & image viewer
   const imageUrlForFullscreen = resolveImageUrl(product.image_url);
+  
+  // 1. Top Fullscreen Button on Image
+  const viewFullscreenBtn = document.getElementById('viewFullscreenBtn');
   if (viewFullscreenBtn) {
     viewFullscreenBtn.onclick = (e) => {
       e.stopPropagation();
       openImageFullscreen(imageUrlForFullscreen, product.name);
     };
   }
+
+  // 2. Persistent Title Fullscreen Button
+  const titleFullscreenBtn = document.getElementById('titleFullscreenBtn');
+  if (titleFullscreenBtn) {
+    titleFullscreenBtn.onclick = (e) => {
+      e.stopPropagation();
+      openImageFullscreen(imageUrlForFullscreen, product.name);
+    };
+  }
+
+  // 3. Toggle Modal Expand to Fullscreen
+  const toggleModalFsBtn = document.getElementById('toggleModalFullscreenBtn');
+  if (toggleModalFsBtn) {
+    toggleModalFsBtn.onclick = (e) => {
+      e.stopPropagation();
+      toggleModalFullscreen();
+    };
+  }
+
+  // 4. Click image to open fullscreen lightbox
   const modalImgEl = document.getElementById('modalImage');
   if (modalImgEl) {
     modalImgEl.style.cursor = 'zoom-in';
@@ -3845,17 +3898,43 @@ function openImageFullscreen(imageUrl, altText) {
   if (existing) existing.remove();
   const lb = document.createElement('div');
   lb.id = 'ks-lightbox';
-  lb.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.95);display:flex;align-items:center;justify-content:center;cursor:zoom-out;';
+  lb.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,0.96);backdrop-filter:blur(10px);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:zoom-out;user-select:none;animation:fadeIn 0.2s ease-out;';
   lb.innerHTML = `
-    <button id="ks-lb-close" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:24px;font-weight:900;width:44px;height:44px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;" title="Close">&times;</button>
-    <img src="${imageUrl}" alt="${altText || 'Product Image'}" style="max-width:95vw;max-height:93vh;object-fit:contain;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,0.8);" />
-    <div style="position:absolute;bottom:18px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.55);font-size:12px;white-space:nowrap;">Click anywhere or press Esc to close</div>
+    <div style="position:absolute;top:18px;left:24px;right:24px;display:flex;align-items:center;justify-content:space-between;gap:12px;z-index:10;">
+      <div style="color:#fff;font-weight:800;font-size:15px;max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 2px 8px rgba(0,0,0,0.6);display:flex;align-items:center;gap:8px;">
+        <span>🏺</span>
+        <span>${escapeHtml(altText || 'Craft Product')}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto;">
+        <a href="${imageUrl}" target="_blank" rel="noopener noreferrer" download
+           style="background:rgba(255,255,255,0.18);color:#fff;text-decoration:none;padding:8px 14px;border-radius:20px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,0.25);transition:all 0.15s;"
+           title="Open high-resolution photo in new tab">
+          <span>↗</span> Open original
+        </a>
+        <button id="ks-lb-close" 
+                style="background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.25);color:#fff;font-size:22px;font-weight:900;width:40px;height:40px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;" 
+                title="Close (Esc)">&times;</button>
+      </div>
+    </div>
+    <div style="position:relative;max-width:92vw;max-height:84vh;display:flex;align-items:center;justify-content:center;">
+      <img id="ks-lb-img" src="${imageUrl}" alt="${escapeHtml(altText || 'Product Image')}" 
+           style="max-width:92vw;max-height:84vh;object-fit:contain;border-radius:14px;box-shadow:0 25px 70px rgba(0,0,0,0.9);transition:transform 0.25s ease-out;cursor:default;" />
+    </div>
+    <div style="position:absolute;bottom:18px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.7);font-size:12px;white-space:nowrap;background:rgba(0,0,0,0.5);padding:7px 18px;border-radius:24px;backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.15);display:flex;align-items:center;gap:8px;">
+      <span>🔍</span>
+      <span>Click backdrop or press Esc to close</span>
+    </div>
   `;
   document.body.appendChild(lb);
   const close = () => lb.remove();
-  lb.onclick = close;
+  lb.onclick = (e) => {
+    const imgEl = document.getElementById('ks-lb-img');
+    if (e.target === lb || e.target.id === 'ks-lb-close' || (imgEl && !imgEl.contains(e.target))) {
+      close();
+    }
+  };
   lb.querySelector('#ks-lb-close').onclick = (e) => { e.stopPropagation(); close(); };
-  lb.querySelector('img').onclick = (e) => e.stopPropagation();
+  lb.querySelector('a').onclick = (e) => e.stopPropagation();
   const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
   document.addEventListener('keydown', onKey);
 }
