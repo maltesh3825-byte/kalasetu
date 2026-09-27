@@ -3186,12 +3186,18 @@ export default function App() {
               borderRadius: 16,
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 3,
+              gap: 4,
               borderWidth: 1,
               borderColor: '#38BDF8',
             }}
             onPress={() => setChatModalVisible(true)}>
-            <Text style={{ fontSize: 12 }}>💬</Text>
+            <View style={{ width: 16, height: 16, borderRadius: 8, overflow: 'hidden', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+              <Image
+                source={require('./assets/assistant-avatar.png')}
+                style={{ width: 14, height: 14 }}
+                resizeMode="contain"
+              />
+            </View>
             <Text style={{ fontSize: 11, fontWeight: '800', color: '#F8FAFC' }}>AI</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -3282,7 +3288,13 @@ export default function App() {
         <TouchableOpacity 
           style={[styles.tabButton, chatModalVisible && styles.tabButtonActive]}
           onPress={() => setChatModalVisible(true)}>
-          <Text style={styles.tabIcon}>💬</Text>
+          <View style={{ width: 22, height: 22, borderRadius: 11, overflow: 'hidden', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 2 }}>
+            <Image
+              source={require('./assets/assistant-avatar.png')}
+              style={{ width: 20, height: 20 }}
+              resizeMode="contain"
+            />
+          </View>
           <Text style={[styles.tabText, chatModalVisible && styles.tabTextActive]}>{tx('aiChat')}</Text>
         </TouchableOpacity>
 
@@ -3303,9 +3315,9 @@ export default function App() {
           backgroundColor: '#0F172A',
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 7,
-          paddingVertical: 10,
-          paddingHorizontal: 16,
+          gap: 8,
+          paddingVertical: 7,
+          paddingHorizontal: 14,
           borderRadius: 28,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: 4 },
@@ -3318,7 +3330,13 @@ export default function App() {
         }}
         onPress={() => setChatModalVisible(true)}
       >
-        <Text style={{ fontSize: 16 }}>💬</Text>
+        <View style={{ width: 26, height: 26, borderRadius: 13, overflow: 'hidden', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+          <Image
+            source={require('./assets/assistant-avatar.png')}
+            style={{ width: 24, height: 24 }}
+            resizeMode="contain"
+          />
+        </View>
         <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 13 }}>{tx('aiAssistant')}</Text>
       </TouchableOpacity>
 
@@ -3337,8 +3355,12 @@ export default function App() {
             {/* Header */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: '#EA580C', alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 20, color: '#FFFFFF' }}>✨</Text>
+                <View style={{ width: 38, height: 38, borderRadius: 12, overflow: 'hidden', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#EA580C' }}>
+                  <Image
+                    source={require('./assets/assistant-avatar.png')}
+                    style={{ width: 34, height: 34 }}
+                    resizeMode="contain"
+                  />
                 </View>
                 <View>
                   <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A' }}>KalaSetu {tx('aiAssistant')}</Text>
