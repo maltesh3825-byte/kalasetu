@@ -3574,13 +3574,53 @@ function openProductModal(productId) {
   const modal = document.getElementById('productDetailModal');
   if (!modal) return;
 
+  const resolvedImgUrl = resolveImageUrl(product.image_url);
   const modalImg = document.getElementById('modalImage');
   if (modalImg) {
     modalImg.onerror = function() {
       this.onerror = null;
       this.src = 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80';
     };
-    modalImg.src = resolveImageUrl(product.image_url);
+    modalImg.src = resolvedImgUrl;
+  }
+
+  // Populate product picture below name
+  const modalBodyImg = document.getElementById('modalBodyImage');
+  if (modalBodyImg) {
+    modalBodyImg.onerror = function() {
+      this.onerror = null;
+      this.src = 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80';
+    };
+    modalBodyImg.src = resolvedImgUrl;
+  }
+
+  // Populate gallery thumbnails if available
+  const galleryEl = document.getElementById('modalGalleryThumbnails');
+  if (galleryEl) {
+    let galleryUrls = [];
+    try {
+      galleryUrls = typeof product.image_gallery === 'string' ? JSON.parse(product.image_gallery) : (product.image_gallery || []);
+    } catch {
+      galleryUrls = [];
+    }
+    if (!galleryUrls.includes(product.image_url)) {
+      galleryUrls.unshift(product.image_url);
+    }
+    galleryUrls = Array.from(new Set(galleryUrls.filter(Boolean)));
+
+    if (galleryUrls.length > 1) {
+      galleryEl.classList.remove('hidden');
+      galleryEl.innerHTML = galleryUrls.map((url, idx) => `
+        <button type="button" class="w-12 h-12 rounded-xl overflow-hidden border-2 transition-all flex-shrink-0 ${url === product.image_url ? 'border-terracotta-500 shadow-sm' : 'border-slate-200 opacity-70 hover:opacity-100'}"
+                onclick="event.stopPropagation(); switchModalProductImage('${escapeHtml(resolveImageUrl(url))}', this)"
+                title="View photo ${idx + 1}">
+          <img src="${escapeHtml(resolveImageUrl(url))}" alt="Gallery ${idx + 1}" class="w-full h-full object-cover">
+        </button>
+      `).join('');
+    } else {
+      galleryEl.classList.add('hidden');
+      galleryEl.innerHTML = '';
+    }
   }
   document.getElementById('modalTitle').textContent = product.name;
   document.getElementById('modalPrice').textContent = `₹${product.price.toLocaleString('en-IN')}`;
@@ -3689,12 +3729,34 @@ function openProductModal(productId) {
     };
   }
 
-  // 4. Click image to open fullscreen lightbox
+  // 4. Click top image to open fullscreen lightbox
   const modalImgEl = document.getElementById('modalImage');
   if (modalImgEl) {
     modalImgEl.style.cursor = 'zoom-in';
-    modalImgEl.onclick = () => openImageFullscreen(imageUrlForFullscreen, product.name);
+    modalImgEl.onclick = () => {
+      const curSrc = document.getElementById('modalBodyImage')?.src || imageUrlForFullscreen;
+      openImageFullscreen(curSrc, product.name);
+    };
   }
+
+  // 5. Body Picture below name: Fullscreen button & container click
+  const modalBodyFsBtn = document.getElementById('modalBodyFullscreenBtn');
+  if (modalBodyFsBtn) {
+    modalBodyFsBtn.onclick = (e) => {
+      e.stopPropagation();
+      const curSrc = document.getElementById('modalBodyImage')?.src || imageUrlForFullscreen;
+      openImageFullscreen(curSrc, product.name);
+    };
+  }
+
+  const modalBodyImgContainer = document.getElementById('modalBodyImageContainer');
+  if (modalBodyImgContainer) {
+    modalBodyImgContainer.onclick = () => {
+      const curSrc = document.getElementById('modalBodyImage')?.src || imageUrlForFullscreen;
+      openImageFullscreen(curSrc, product.name);
+    };
+  }
+
   modal.classList.remove('hidden');
 }
 
@@ -3937,4 +3999,17 @@ function openImageFullscreen(imageUrl, altText) {
   lb.querySelector('a').onclick = (e) => e.stopPropagation();
   const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
   document.addEventListener('keydown', onKey);
+}
+
+function switchModalProductImage(newUrl, thumbBtn) {
+  const modalImg = document.getElementById('modalImage');
+  const bodyImg = document.getElementById('modalBodyImage');
+  if (modalImg) modalImg.src = newUrl;
+  if (bodyImg) bodyImg.src = newUrl;
+  if (thumbBtn && thumbBtn.parentElement) {
+    thumbBtn.parentElement.querySelectorAll('button').forEach(btn => {
+      btn.className = 'w-12 h-12 rounded-xl overflow-hidden border-2 border-slate-200 opacity-70 hover:opacity-100 transition-all flex-shrink-0';
+    });
+    thumbBtn.className = 'w-12 h-12 rounded-xl overflow-hidden border-2 border-terracotta-500 shadow-sm transition-all flex-shrink-0';
+  }
 }

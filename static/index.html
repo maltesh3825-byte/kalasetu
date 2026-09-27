@@ -1470,6 +1470,31 @@
           </div>
         </div>
 
+        <!-- Product Picture Below Name -->
+        <div id="modalBodyImageContainer" 
+             class="relative w-full rounded-2xl overflow-hidden bg-slate-50 border border-slate-200/90 shadow-sm group cursor-pointer hover:border-terracotta-300 hover:shadow-md transition-all">
+          <div class="relative aspect-video sm:aspect-[16/9] max-h-[360px] w-full flex items-center justify-center bg-slate-100/60 overflow-hidden">
+            <img id="modalBodyImage" src="" alt="Product photo" 
+                 class="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105">
+            
+            <!-- Quick Full Screen Badge Button -->
+            <button id="modalBodyFullscreenBtn" type="button" title="View photo full screen"
+                    class="absolute top-3 right-3 px-3 py-1.5 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg backdrop-blur-md transition-all hover:scale-105 border border-white/20">
+              <span>⛶</span>
+              <span>Full screen</span>
+            </button>
+
+            <!-- Bottom Click Guide Overlay -->
+            <div class="absolute bottom-3 left-1/2 -translate-x-1/2 bg-slate-900/75 text-white px-3.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 shadow-md backdrop-blur-md pointer-events-none transition-all group-hover:bg-slate-900">
+              <span>🔍</span>
+              <span>Click picture to view full screen</span>
+            </div>
+          </div>
+
+          <!-- Thumbnails gallery (if product has image_gallery) -->
+          <div id="modalGalleryThumbnails" class="hidden p-2 bg-white border-t border-slate-100 flex items-center gap-2 overflow-x-auto"></div>
+        </div>
+
         <!-- Description with Audio Playback -->
         <div>
           <div class="flex items-center justify-between mb-2">
