@@ -5,6 +5,7 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { Language } from '../constants/i18n';
 
 // Determine local vs production backend URL:
 // In development, automatically point to local server:
@@ -838,7 +839,8 @@ export interface ChatMessage {
 export async function askKalaSetuChatbot(
   userQuery: string,
   products: CraftProduct[],
-  chatHistory: ChatMessage[] = []
+  chatHistory: ChatMessage[] = [],
+  userLanguage: Language = 'en'
 ): Promise<string> {
   const query = (userQuery || '').trim();
   if (!query) return "Please ask a question about our handicrafts.";
@@ -856,7 +858,22 @@ export async function askKalaSetuChatbot(
     `${idx + 1}. "${p.name}" (Category: ${p.category}, Price: ₹${p.price}, Artisan: ${p.artisan_name || 'Master Artisan'} from ${p.artisan_location || 'India'}). Description: ${p.description_en || ''}.`
   )).join("\n");
 
+  const langNames: Record<Language, string> = {
+    en: 'English',
+    hi: 'Hindi (हिंदी)',
+    kn: 'Kannada (ಕನ್ನಡ)',
+    ta: 'Tamil (தமிழ்)',
+    te: 'Telugu (తెలుగు)',
+    ml: 'Malayalam (മലയാളം)',
+    mr: 'Marathi (मराठी)',
+    bh: 'Bihari / Maithili (मैथिली / बिहारी)',
+    bho: 'Bhojpuri (भोजपुरी)'
+  };
+  const targetLanguageName = langNames[userLanguage] || 'English';
+
   const prompt = `You are KalaSetu Assistant (कलासेतु सहायक), the dedicated AI assistant for KalaSetu — an AI-driven digital marketplace and artisan empowerment platform under the Ministry of Social Justice and Empowerment (MoSJE, SIH26090).
+Target Response Language: ${targetLanguageName}
+CRITICAL REQUIREMENT: You MUST reply fluently, naturally, and completely in ${targetLanguageName}. If the user asks in English or any other language, answer in ${targetLanguageName}.
 
 What KalaSetu is and how users use it:
 1. Artisan Studio (AI Vision Cataloging & Publishing):
@@ -1296,6 +1313,114 @@ export async function syncProductToSupabaseDirect(product: Omit<CraftProduct, 'i
     throw new Error(`Supabase returned ${res.status}: ${txt}`);
   }
   return await res.json();
+}
+
+
+/**
+ * Upload an image from local device URI / base64 to Supabase Storage ('artisan-products' bucket)
+ * with graceful fallback to backend /api/upload-image.
+ * Guarantees a valid https:// public image URL is returned, NEVER a broken local file:/// URI.
+ */
+export async function uploadImageToCloud(
+  localUri: string | null | undefined,
+  base64Data?: string | null
+): Promise<string> {
+  const defaultHandicraftImage = "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80";
+  if (!localUri) {
+    return defaultHandicraftImage;
+  }
+
+  // Already a valid cloud/web URL
+  if (localUri.startsWith('http://') || localUri.startsWith('https://')) {
+    return localUri;
+  }
+
+  const timestamp = Date.now();
+  const rand = Math.random().toString(36).substring(2, 8);
+  const filename = `craft_${timestamp}_${rand}.jpg`;
+
+  // Path 1: Direct Cloud Upload to Supabase Storage 'artisan-products' bucket
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+    try {
+      let body: any = null;
+      let contentType = 'image/jpeg';
+
+      if (base64Data) {
+        const cleanB64 = base64Data.replace(/^data:image\/[a-z]+;base64,/, '');
+        const binaryStr = atob(cleanB64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+        body = bytes;
+      } else {
+        const localResp = await fetch(localUri);
+        const blob = await localResp.blob();
+        contentType = blob.type || 'image/jpeg';
+        body = blob;
+      }
+
+      const uploadRes = await fetch(
+        `${SUPABASE_URL}/storage/v1/object/artisan-products/${filename}`,
+        {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': contentType,
+            'x-upsert': 'true'
+          },
+          body
+        }
+      );
+
+      if (uploadRes.ok) {
+        const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/artisan-products/${filename}`;
+        console.info('[KalaSetu Cloud Storage] Image uploaded successfully:', publicUrl);
+        return publicUrl;
+      } else {
+        const errText = await uploadRes.text();
+        console.warn('[KalaSetu Cloud Storage] Upload non-ok:', uploadRes.status, errText);
+      }
+    } catch (sbErr) {
+      console.warn('[KalaSetu Cloud Storage] Upload exception:', sbErr);
+    }
+  }
+
+  // Path 2: Fallback to Backend Server upload endpoint
+  try {
+    const formData = new FormData();
+    const uriParts = localUri.split('.');
+    const fileExt = uriParts[uriParts.length - 1] || 'jpg';
+
+    // @ts-ignore
+    formData.append('file', {
+      uri: localUri,
+      name: filename,
+      type: `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`
+    });
+
+    const backendRes = await fetch(`${getBackendUrl()}/api/upload-image`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (backendRes.ok) {
+      const data = await backendRes.json();
+      if (data?.image_url) {
+        const fullUrl = data.image_url.startsWith('http')
+          ? data.image_url
+          : `${getBackendUrl()}${data.image_url}`;
+        console.info('[KalaSetu Backend Upload] Image uploaded:', fullUrl);
+        return fullUrl;
+      }
+    }
+  } catch (backendErr) {
+    console.warn('[KalaSetu Backend Upload] Fallback exception:', backendErr);
+  }
+
+  // Safe fallback to prevent broken file:/// URIs in cloud DB
+  return defaultHandicraftImage;
 }
 
 export async function publishProductToApi(product: Omit<CraftProduct, 'id'>): Promise<boolean> {

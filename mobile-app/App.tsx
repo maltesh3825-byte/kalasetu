@@ -85,7 +85,8 @@ import {
   getDevBackendUrl,
   CLOUD_BACKEND_URL,
   askKalaSetuChatbot,
-  ChatMessage
+  ChatMessage,
+  uploadImageToCloud
 } from './services/api';
 
 type BrowserSpeechRecognition = {
@@ -437,6 +438,8 @@ export default function App() {
   // KalaSetu AI Product Assistant Chatbot State
   const [chatModalVisible, setChatModalVisible] = useState(false);
   const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const [isChatListening, setIsChatListening] = useState(false);
+  const [chatLanguagePickerVisible, setChatLanguagePickerVisible] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [isChatSending, setIsChatSending] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -512,6 +515,60 @@ export default function App() {
 
   const t = { ...i18n, ...additionalTranslations }[lang];
   const tx = (key: Parameters<typeof getAppText>[1]) => getAppText(lang, key);
+
+  const getCategoryLabel = (cat: string) => {
+    switch (cat) {
+      case 'All': return tx('catAll');
+      case 'Handloom & Textiles': return tx('catHandloom');
+      case 'Pottery & Terracotta': return tx('catPottery');
+      case 'Brass & Metalcraft': return tx('catBrass');
+      case 'Woodcraft': return tx('catWoodcraft');
+      case 'Cane & Bamboo': return tx('catCane');
+      case 'Folk Art & Painting': return tx('catFolkArt');
+      default: return cat;
+    }
+  };
+
+  const getChatQuickChips = (l: Language): string[] => {
+    if (l === 'kn') {
+      return [
+        'ಬಸ್ತಾರ್ ಧೋಕ್ರಾ ಬಗ್ಗೆ ತಿಳಿಸಿ',
+        'ನ್ಯಾಯಯುತ ಬೆಲೆ ಹೇಗೆ ಲೆಕ್ಕಹಾಕಲಾಗುತ್ತದೆ?',
+        'ಯಾವ ಟೆರಾಕೋಟಾ ಕಲೆಗಳು ಲಭ್ಯವಿದೆ?',
+        'ಯಾವ ಕಲೆಗಳಿಗೆ GI ಟ್ಯಾಗ್ ಇದೆ?'
+      ];
+    }
+    if (l === 'hi') {
+      return [
+        'बस्तर ढोकरा के बारे में बताएं',
+        'उचित मूल्य की गणना कैसे की जाती है?',
+        'कौन से टेराकोटा शिल्प उपलब्ध हैं?',
+        'किन शिल्पों में जीआई टैग है?'
+      ];
+    }
+    if (l === 'ta') {
+      return [
+        'பஸ்தார் தோக்ரா பற்றி சொல்லுங்கள்',
+        'நியாயமான விலை எவ்வாறு கணக்கிடப்படுகிறது?',
+        'என்ன டெரகோட்டா பொருட்கள் உள்ளன?',
+        'எந்த கைவினைப் பொருட்களுக்கு ஜிஐ குறிச்சொல் உள்ளது?'
+      ];
+    }
+    if (l === 'te') {
+      return [
+        'బస్తర్ ధోక్రా గురించి చెప్పండి',
+        'న్యాయమైన ధర ఎలా లెక్కిస్తారు?',
+        'ఏ టెర్రకోట కళలు అందుబాటులో ఉన్నాయి?',
+        'ఏ చేతిపనులకు జీఐ ట్యాగ్ ఉంది?'
+      ];
+    }
+    return [
+      'Tell me about Bastar Dhokra',
+      'How is fair pricing calculated?',
+      'What terracotta crafts are available?',
+      'Which crafts have GI tags?'
+    ];
+  };
   const speechLocale = ({ en: 'en-IN', hi: 'hi-IN', ta: 'ta-IN', kn: 'kn-IN', te: 'te-IN', ml: 'ml-IN', mr: 'mr-IN', bh: 'hi-IN', bho: 'hi-IN' } as const)[lang];
   const statusBarInset = Platform.OS === 'android' ? 24 : 0;
   const topSafeInset = statusBarInset;
@@ -541,8 +598,11 @@ export default function App() {
     if (nativeListeningRef.current) {
       setTimeout(() => {
         if (nativeListeningRef.current) {
+          const activeSpeechLang = chatModalVisible
+            ? (lang === 'kn' ? 'kn-IN' : lang === 'hi' ? 'hi-IN' : lang === 'ta' ? 'ta-IN' : lang === 'te' ? 'te-IN' : lang === 'ml' ? 'ml-IN' : lang === 'mr' ? 'mr-IN' : 'en-IN')
+            : voiceLanguage;
           ExpoSpeechRecognitionModule.start({
-            lang: voiceLanguage,
+            lang: activeSpeechLang,
             interimResults: true,
             continuous: true,
             maxAlternatives: 1,
@@ -551,19 +611,25 @@ export default function App() {
       }, 300);
     } else {
       setIsListening(false);
+      setIsChatListening(false);
     }
   });
 
   useSpeechRecognitionEvent('result', (event) => {
     const transcript = event.results[0]?.transcript?.trim();
     if (transcript) {
-      setArtisanNotes(transcript);
+      if (chatModalVisible) {
+        setChatInput(prev => (prev ? `${prev} ${transcript}` : transcript));
+      } else {
+        setArtisanNotes(transcript);
+      }
     }
   });
 
   useSpeechRecognitionEvent('error', (event) => {
     nativeListeningRef.current = false;
     setIsListening(false);
+    setIsChatListening(false);
     setSpeechError(`Speech recognition error: ${event.message || event.error}`);
   });
 
@@ -1380,6 +1446,107 @@ export default function App() {
     ]);
   };
 
+    const toggleChatVoiceInput = async () => {
+    if (isChatListening) {
+      if (Platform.OS === 'web') {
+        browserListeningRef.current = false;
+        browserRecognitionRef.current?.abort?.();
+        browserRecognitionRef.current?.stop();
+        browserRecognitionRef.current = null;
+      } else {
+        nativeListeningRef.current = false;
+        ExpoSpeechRecognitionModule.stop();
+      }
+      setIsChatListening(false);
+      return;
+    }
+
+    const activeSpeechLang = lang === 'kn' ? 'kn-IN'
+      : lang === 'hi' ? 'hi-IN'
+      : lang === 'ta' ? 'ta-IN'
+      : lang === 'te' ? 'te-IN'
+      : lang === 'ml' ? 'ml-IN'
+      : lang === 'mr' ? 'mr-IN'
+      : 'en-IN';
+
+    try {
+      if (Platform.OS === 'web') {
+        const browserSpeech = globalThis as any;
+        const Recognition = browserSpeech.SpeechRecognition || browserSpeech.webkitSpeechRecognition;
+        if (!Recognition) {
+          Alert.alert("Voice Notice", "Web voice recognition is not supported in this browser.");
+          return;
+        }
+        const recognition = new Recognition();
+        browserRecognitionRef.current = recognition;
+        recognition.lang = activeSpeechLang;
+        recognition.interimResults = true;
+        recognition.continuous = false;
+        recognition.onresult = (event: any) => {
+          let transcript = '';
+          for (let i = event.resultIndex || 0; i < event.results.length; i++) {
+            transcript += event.results[i]?.[0]?.transcript || '';
+          }
+          if (transcript.trim()) {
+            setChatInput(prev => (prev ? `${prev} ${transcript.trim()}` : transcript.trim()));
+          }
+        };
+        recognition.onerror = () => setIsChatListening(false);
+        recognition.onend = () => setIsChatListening(false);
+        browserListeningRef.current = true;
+        recognition.start();
+        setIsChatListening(true);
+        return;
+      }
+
+      const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Microphone Permission", "Microphone access is required for voice search in AI Assistant.");
+        return;
+      }
+
+      nativeListeningRef.current = true;
+      setIsChatListening(true);
+      ExpoSpeechRecognitionModule.start({
+        lang: activeSpeechLang,
+        interimResults: true,
+        continuous: true,
+        maxAlternatives: 1,
+      });
+    } catch (err: any) {
+      setIsChatListening(false);
+      Alert.alert("Voice Input Notice", err?.message || "Could not start voice recognition.");
+    }
+  };
+
+  const switchChatLanguage = async (code: Language) => {
+    await selectLanguage(code);
+    setChatLanguagePickerVisible(false);
+    setChatMenuOpen(false);
+
+    const greetings: Record<Language, string> = {
+      en: "Welcome to KalaSetu AI Assistant! How can I assist your craft queries?",
+      hi: "नमस्ते! कलासेतु AI सहायक में आपका स्वागत है। मैं आपकी क्या सहायता कर सकता हूँ?",
+      kn: "ನಮಸ್ಕಾರ! ಕಲಾಸೇತು AI ಸಹಾಯಕನಿಗೆ ಸುಸ್ವಾಗತ. ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಲಿ?",
+      ta: "வணக்கம்! கலாசேது AI உதவியாளருக்கு வரவேற்கிறோம். நான் உங்களுக்கு எவ்வாறு உதவ முடியும்?",
+      te: "నమస్కారం! కళాసేతు AI అసిస్టెంట్‌కి స్వాగతం. నేను మీకు ఎలా సహాయపడగలను?",
+      ml: "നമസ്കാരം! കലാസേതു AI അസിസ്റ്റന്റിലേക്ക് സ്വാഗതം. എനിക്ക് നിങ്ങളെ എങ്ങനെ സഹായിക്കാനാകും?",
+      mr: "नमस्कार! कलासेतू AI सहाय्यकामध्ये आपले स्वागत आहे. मी आपल्याला कशी मदत करू शकतो?",
+      bh: "प्रणाम! कलासेतु AI सहायक में रउवा सब के स्वागत बा। हम कइसे मदद करीं?",
+      bho: "प्रणाम! कलासेतु AI सहायक में रउवा के स्वागत बा। बताईं हम का मदद करीं?"
+    };
+
+    setChatMessages(prev => [
+      ...prev,
+      {
+        id: `bot-lang-${Date.now()}`,
+        sender: 'bot',
+        text: greetings[code] || greetings.en,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+    ]);
+  };
+
   const handleSendChatMessage = async (textToSend?: string) => {
     const query = (textToSend || chatInput).trim();
     if (!query || isChatSending) return;
@@ -1396,7 +1563,7 @@ export default function App() {
     setIsChatSending(true);
 
     try {
-      const reply = await askKalaSetuChatbot(query, products, chatMessages);
+      const reply = await askKalaSetuChatbot(query, products, chatMessages, lang);
       const botMsg: ChatMessage = {
         id: `bot-${Date.now()}`,
         sender: 'bot',
@@ -1671,7 +1838,15 @@ export default function App() {
     }
 
     setIsPublishing(true);
-    const imageUrl = imageUri || "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=800&q=80";
+    let imageUrl = imageUri || "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80";
+    if (imageUrl.startsWith('file://')) {
+      try {
+        imageUrl = await uploadImageToCloud(imageUrl, imageBase64);
+      } catch (uploadErr) {
+        console.warn('Image upload error during publish:', uploadErr);
+        imageUrl = "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80";
+      }
+    }
     const newProduct: Omit<CraftProduct, 'id'> = {
       name: editTitle,
       artisan_name: currentUser?.name || artisanName || "Artisan Beneficiary",
@@ -1949,7 +2124,7 @@ export default function App() {
                   Alert.alert("Server Switched", `Active backend server is now:\n${next}`);
                 }}
               >
-                <Text style={{ fontSize: 10, fontWeight: '700', color: Colors.primary }}>⚡ Switch Server</Text>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: Colors.primary }}>{tx('switchServer')}</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.card}>
@@ -1959,13 +2134,13 @@ export default function App() {
                 <Text style={styles.presetLabel}>{t.demoSampleTitle}</Text>
                 <View style={styles.presetButtons}>
                   <TouchableOpacity style={styles.presetChip} onPress={() => loadDemoPreset(0)}>
-                    <Text style={styles.presetChipText}>🏺 Terracotta</Text>
+                    <Text style={styles.presetChipText}>{tx('terracotta')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.presetChip} onPress={() => loadDemoPreset(1)}>
-                    <Text style={styles.presetChipText}>🐘 Brass</Text>
+                    <Text style={styles.presetChipText}>{tx('brass')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.presetChip} onPress={() => loadDemoPreset(2)}>
-                    <Text style={styles.presetChipText}>🧵 Handloom</Text>
+                    <Text style={styles.presetChipText}>{tx('handloom')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1988,7 +2163,7 @@ export default function App() {
                       }}
                       activeOpacity={0.8}
                     >
-                      <Text style={styles.removeImageBadgeText}>✕ {lang === 'hi' ? 'हटाएं' : 'Remove'}</Text>
+                      <Text style={styles.removeImageBadgeText}>✕ {tx('remove')}</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
@@ -2019,10 +2194,10 @@ export default function App() {
                 </TouchableOpacity>
               </View>
               <View style={styles.formFields}>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanName}</Text><TextInput style={styles.textInput} value={artisanName} onChangeText={setArtisanName} placeholder="Enter your full name" placeholderTextColor={Colors.placeholder} /></View>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanLocation}</Text><TextInput style={styles.textInput} value={artisanLocation} onChangeText={setArtisanLocation} placeholder="City, State (e.g. Madhubani, Bihar)" placeholderTextColor={Colors.placeholder} /></View>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanPhone}</Text><TextInput style={styles.textInput} value={artisanPhone} onChangeText={setArtisanPhone} keyboardType="phone-pad" placeholder="10-digit mobile number" placeholderTextColor={Colors.placeholder} /></View>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.priceIdea}</Text><TextInput style={styles.textInput} value={priceIdea} onChangeText={setPriceIdea} keyboardType="numeric" placeholder="Expected price (e.g. 500)" placeholderTextColor={Colors.placeholder} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanName}</Text><TextInput style={styles.textInput} value={artisanName} onChangeText={setArtisanName} placeholder={tx('fullNamePlaceholder')} placeholderTextColor={Colors.placeholder} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanLocation}</Text><TextInput style={styles.textInput} value={artisanLocation} onChangeText={setArtisanLocation} placeholder={tx('cityPlaceholder')} placeholderTextColor={Colors.placeholder} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.artisanPhone}</Text><TextInput style={styles.textInput} value={artisanPhone} onChangeText={setArtisanPhone} keyboardType="phone-pad" placeholder={tx('mobilePlaceholder')} placeholderTextColor={Colors.placeholder} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.priceIdea}</Text><TextInput style={styles.textInput} value={priceIdea} onChangeText={setPriceIdea} keyboardType="numeric" placeholder={tx('pricePlaceholder')} placeholderTextColor={Colors.placeholder} /></View>
                 <View style={styles.inputGroup}>
                   <View style={styles.inputLabelRow}>
                     <Text style={styles.inputLabel}>{t.artisanNotes}</Text>
@@ -2065,8 +2240,8 @@ export default function App() {
                     </Text>
                   </View>
                 </View>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.productTitle}</Text><TextInput style={styles.textInput} value={editTitle} onChangeText={setEditTitle} placeholder="Craft Title (e.g. Hand-Carved Sheesham Elephant)" placeholderTextColor={Colors.placeholder} /></View>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.category}</Text><TextInput style={styles.textInput} value={editCategory} onChangeText={setEditCategory} placeholder="Craft Category (e.g. Woodcraft)" placeholderTextColor={Colors.placeholder} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.productTitle}</Text><TextInput style={styles.textInput} value={editTitle} onChangeText={setEditTitle} placeholder={tx('craftTitlePlaceholder')} placeholderTextColor={Colors.placeholder} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{t.category}</Text><TextInput style={styles.textInput} value={editCategory} onChangeText={setEditCategory} placeholder={tx('craftCategoryPlaceholder')} placeholderTextColor={Colors.placeholder} /></View>
                 <View style={styles.pricingBox}>
                   <Text style={styles.pricingTitle}>⚖️ {t.pricingAssistant}</Text>
                   <Text style={styles.pricingRange}>{t.fairRange} <Text style={styles.boldText}>₹{aiResult.pricing.fair_min} - ₹{aiResult.pricing.fair_max}</Text></Text>
@@ -2075,13 +2250,13 @@ export default function App() {
                     <Text style={styles.applyPriceBtnText}>{t.btnApplyPrice} (₹{aiResult.pricing.suggested})</Text>
                   </TouchableOpacity>
                 </View>
-                <View style={styles.inputGroup}><Text style={styles.inputLabel}>Final Selling Price (₹)</Text><TextInput style={[styles.textInput, styles.boldPriceInput]} value={editPrice} onChangeText={setEditPrice} keyboardType="numeric" placeholder="e.g. 650" placeholderTextColor={Colors.placeholder} /></View>
+                <View style={styles.inputGroup}><Text style={styles.inputLabel}>{tx('finalSellingPrice')}</Text><TextInput style={[styles.textInput, styles.boldPriceInput]} value={editPrice} onChangeText={setEditPrice} keyboardType="numeric" placeholder="e.g. 650" placeholderTextColor={Colors.placeholder} /></View>
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>{t.tags}</Text>
                   <View style={styles.tagsContainer}>{tags.map((tag, idx) => (<TouchableOpacity key={idx} style={styles.tagChip} onPress={() => handleRemoveTag(idx)}><Text style={styles.tagText}>#{tag} ×</Text></TouchableOpacity>))}</View>
                   <View style={styles.addTagRow}>
                     <TextInput style={[styles.textInput, styles.addTagInput]} value={newTag} onChangeText={setNewTag} placeholder={tx('addTag')} placeholderTextColor={Colors.placeholder} />
-                    <TouchableOpacity style={styles.addTagBtn} onPress={handleAddTag}><Text style={styles.addTagBtnText}>+ Add</Text></TouchableOpacity>
+                    <TouchableOpacity style={styles.addTagBtn} onPress={handleAddTag}><Text style={styles.addTagBtnText}>{tx('addTag')}</Text></TouchableOpacity>
                   </View>
                 </View>
                 <View style={styles.inputGroup}>
@@ -2089,7 +2264,7 @@ export default function App() {
                     <Text style={styles.inputLabel}>{t.descEn}</Text>
                     <TouchableOpacity style={styles.speakerBtn} onPress={() => toggleSpeech(editDescEn, voiceLanguage)}><Text style={styles.speakerBtnText}>{isSpeaking ? '⏹ Stop' : `🔊 ${t.listenDesc}`}</Text></TouchableOpacity>
                   </View>
-                  <TextInput style={[styles.textInput, styles.textArea]} value={editDescEn} onChangeText={setEditDescEn} multiline placeholder="Describe the craft, material, and heritage technique in English..." placeholderTextColor={Colors.placeholder} />
+                  <TextInput style={[styles.textInput, styles.textArea]} value={editDescEn} onChangeText={setEditDescEn} multiline placeholder={tx('descEnPlaceholder')} placeholderTextColor={Colors.placeholder} />
                 </View>
                 <View style={styles.inputGroup}>
                   <View style={styles.descHeaderRow}>
@@ -2137,14 +2312,14 @@ export default function App() {
                 ['state', 'Enter state (e.g. Madhya Pradesh)'],
                 ['pincode', 'Enter 6-digit pincode (e.g. 462001)']
               ] as const).map(([key, placeholder]) => (
-                <TextInput key={key} style={styles.deliveryInput} placeholder={placeholder} value={deliveryDetails[key]} onChangeText={value => setDeliveryDetails(prev => ({ ...prev, [key]: value }))} keyboardType={key === 'pincode' || key === 'recipientPhone' ? 'phone-pad' : 'default'} placeholderTextColor={Colors.placeholder} />
+                <TextInput key={key} style={styles.deliveryInput} placeholder={key === 'addressLine' ? tx('deliveryAddress') : key === 'city' ? tx('city') : key === 'state' ? tx('state') : key === 'pincode' ? tx('pincode') : key === 'recipientName' ? tx('yourFullName') : key === 'recipientPhone' ? tx('mobilePlaceholder') : placeholder} value={deliveryDetails[key]} onChangeText={value => setDeliveryDetails(prev => ({ ...prev, [key]: value }))} keyboardType={key === 'pincode' || key === 'recipientPhone' ? 'phone-pad' : 'default'} placeholderTextColor={Colors.placeholder} />
               ))}
             </View>
             {!!orderActionMessage && <Text style={styles.orderActionMessage}>{orderActionMessage}</Text>}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesBar}>
               {categoriesList.map((cat, idx) => (
                 <TouchableOpacity key={idx} style={[styles.catChip, selectedCategory === cat && styles.catChipActive]} onPress={() => setSelectedCategory(cat)}>
-                  <Text style={[styles.catChipText, selectedCategory === cat && styles.catChipTextActive]}>{cat}</Text>
+                  <Text style={[styles.catChipText, selectedCategory === cat && styles.catChipTextActive]}>{getCategoryLabel(cat)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -2153,7 +2328,7 @@ export default function App() {
                 <View key={product.id} style={styles.productCard}>
                   <View style={styles.productImageWrapper}>
                     <Image source={{ uri: product.image_url }} style={styles.productImage} />
-                    <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{product.category}</Text></View>
+                    <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{getCategoryLabel(product.category)}</Text></View>
                     <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>★ MoSJE</Text></View>
                     <View style={styles.priceBadge}><Text style={styles.priceBadgeText}>₹{product.price}</Text></View>
                   </View>
@@ -2178,7 +2353,7 @@ export default function App() {
                     {product.image_gallery && product.image_gallery.length > 1 ? (
                       <View style={styles.galleryRow}>{product.image_gallery.slice(0, 3).map((url, idx) => (<Image key={`${url}-${idx}`} source={{ uri: url }} style={styles.galleryThumb} />))}</View>
                     ) : null}
-                    <Text style={styles.quantityLabel}>Quantity for this order ({Math.max(1, Number(product.quantity ?? 10))} available)</Text>
+                    <Text style={styles.quantityLabel}>{tx('quantityForOrder')} ({Math.max(1, Number(product.quantity ?? 10))} {tx('quantityAvailable')})</Text>
                     <View style={styles.quantityOptions}>{Array.from({ length: Math.max(0, Number(product.quantity ?? 10)) }, (_, index) => String(index + 1)).map(option => (
                       <TouchableOpacity key={`${product.id}-${option}`} style={[styles.quantityOption, buyQuantity === option && styles.quantityOptionActive]} onPress={() => setBuyQuantity(option)}>
                         <Text style={[styles.quantityOptionText, buyQuantity === option && styles.quantityOptionTextActive]}>{option}</Text>
@@ -2186,15 +2361,15 @@ export default function App() {
                     ))}</View>
                     <View style={styles.inlineActionRow}>
                       <TouchableOpacity style={styles.inlineActionButton} onPress={() => toggleWishlist(product.id)}><Text style={styles.inlineActionButtonText}>{wishlist.includes(product.id) ? t.removeFromWishlist : t.addToWishlist}</Text></TouchableOpacity>
-                      <TouchableOpacity style={[styles.inlineActionButtonPrimary, isPlacingOrder && styles.disabledButton]} onPress={() => requestOrder(product)} disabled={isPlacingOrder || (Number(product.quantity ?? 10) <= 0)}><Text style={styles.inlineActionButtonText}>{isPlacingOrder ? 'Placing...' : Number(product.quantity ?? 10) <= 0 ? 'Sold Out' : t.buyNow}</Text></TouchableOpacity>
+                      <TouchableOpacity style={[styles.inlineActionButtonPrimary, isPlacingOrder && styles.disabledButton]} onPress={() => requestOrder(product)} disabled={isPlacingOrder || (Number(product.quantity ?? 10) <= 0)}><Text style={styles.inlineActionButtonText}>{isPlacingOrder ? tx('placingOrder') : Number(product.quantity ?? 10) <= 0 ? tx('soldOut') : t.buyNow}</Text></TouchableOpacity>
                     </View>
                     <TouchableOpacity style={styles.whatsAppButton} onPress={() => openWhatsApp(product.artisan_phone || '+919876543210', product.name, product.price)}>
                       <Text style={styles.whatsAppButtonText}>💬 {t.btnWhatsApp}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[styles.whatsAppButton, { backgroundColor: '#F0FDF4', borderColor: '#86EFAC', borderWidth: 1 }]} onPress={() => shareProductToWhatsApp(product)}>
-                      <Text style={[styles.whatsAppButtonText, { color: '#166534' }]}>📲 Share on WhatsApp</Text>
+                      <Text style={[styles.whatsAppButtonText, { color: '#166534' }]}>{tx('shareProductWhatsApp')}</Text>
                     </TouchableOpacity>
-                    {isLoggedIn && currentUser && product.owner_user_id === currentUser.id && (<TouchableOpacity style={styles.deleteProductButton} onPress={() => removeOwnProduct(product)}><Text style={styles.deleteProductButtonText}>Delete my listing</Text></TouchableOpacity>)}
+                    {isLoggedIn && currentUser && product.owner_user_id === currentUser.id && (<TouchableOpacity style={styles.deleteProductButton} onPress={() => removeOwnProduct(product)}><Text style={styles.deleteProductButtonText}>{tx('deleteMyListing')}</Text></TouchableOpacity>)}
                   </View>
                 </View>
               ))}
@@ -2216,10 +2391,10 @@ export default function App() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Text style={{ fontSize: 16 }}>📸</Text>
-                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#92400E' }}>Craft Photo for AI Vision</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#92400E' }}>{tx('craftPhotoAiVision')}</Text>
                   </View>
                   <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#B45309' }}>Gemini Multimodal</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#B45309' }}>{tx('geminiMultimodal')}</Text>
                   </View>
                 </View>
 
@@ -2229,14 +2404,14 @@ export default function App() {
                       <Image source={{ uri: bulkImageUri }} style={{ width: 64, height: 64, borderRadius: 10, backgroundColor: '#F1F5F9' }} resizeMode="cover" />
                       <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>Craft Photo Loaded</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>{tx('craftPhotoLoaded')}</Text>
                           <View style={{ backgroundColor: '#D1FAE5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
-                            <Text style={{ fontSize: 9, fontWeight: '800', color: '#065F46' }}>Ready for Vision</Text>
+                            <Text style={{ fontSize: 9, fontWeight: '800', color: '#065F46' }}>{tx('readyForVision')}</Text>
                           </View>
                         </View>
-                        <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>Tap "Analyze Photo with AI Vision" to suggest description, wholesale price & HSN.</Text>
+                        <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>{tx('tapAnalyzePhotoHint')}</Text>
                         <TouchableOpacity onPress={() => { setBulkImageUri(null); setBulkImageBase64(null); }} style={{ marginTop: 4 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#DC2626' }}>✕ Remove Photo</Text>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#DC2626' }}>{tx('removePhoto')}</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -2244,7 +2419,7 @@ export default function App() {
                 ) : (
                   <View style={{ alignItems: 'center', paddingVertical: 8 }}>
                     <Text style={{ fontSize: 11, fontWeight: '700', color: '#78350F', textAlign: 'center', marginBottom: 10, lineHeight: 16 }}>
-                      Upload or photograph your craft. Gemini AI Vision analyzes craft materials, texture & heritage motifs to auto-generate wholesale procurement details.
+                      {tx('bulkPhotoUploadHint')}
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       <TouchableOpacity
@@ -2252,21 +2427,21 @@ export default function App() {
                         onPress={takeBulkPhoto}
                       >
                         <Text style={{ fontSize: 13 }}>📷</Text>
-                        <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 11 }}>Camera</Text>
+                        <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 11 }}>{tx('btnCameraShort')}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderWidth: 1, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}
                         onPress={pickBulkFromGallery}
                       >
                         <Text style={{ fontSize: 13 }}>📁</Text>
-                        <Text style={{ color: '#334155', fontWeight: '700', fontSize: 11 }}>Choose Photo</Text>
+                        <Text style={{ color: '#334155', fontWeight: '700', fontSize: 11 }}>{tx('btnChoosePhoto')}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderWidth: 1, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 5 }}
                         onPress={() => setCraftPickerModalVisible(true)}
                       >
                         <Text style={{ fontSize: 13 }}>📦</Text>
-                        <Text style={{ color: '#334155', fontWeight: '700', fontSize: 11 }}>My Crafts</Text>
+                        <Text style={{ color: '#334155', fontWeight: '700', fontSize: 11 }}>{tx('btnMyCrafts')}</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -2284,7 +2459,7 @@ export default function App() {
                     <>
                       <Text style={{ fontSize: 14 }}>✨</Text>
                       <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 12 }}>
-                        {bulkImageUri ? 'Analyze Photo with AI Vision' : '✨ Analyze with AI Vision'}
+                        {bulkImageUri ? tx('btnAnalyzePhotoVision') : tx('btnAnalyzeAiVision')}
                       </Text>
                     </>
                   )}
@@ -2302,14 +2477,14 @@ export default function App() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Text style={{ fontSize: 16 }}>🪄</Text>
-                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#0F172A' }}>Text-Based Auto-Fill</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '900', color: '#0F172A' }}>{tx('textBasedAutoFill')}</Text>
                   </View>
                   <View style={{ backgroundColor: '#E0F2FE', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>AI Pitch</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#0369A1' }}>{tx('aiPitch')}</Text>
                   </View>
                 </View>
                 <Text style={{ fontSize: 11, color: '#64748B', lineHeight: 16, marginBottom: 10 }}>
-                  Already have a product name or category? Tap below to auto-complete formal institutional description, packaging, and QA specs without a photo.
+                  {tx('textAutoFillHint')}
                 </Text>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <TouchableOpacity
@@ -2322,17 +2497,17 @@ export default function App() {
                     ) : (
                       <>
                         <Text style={{ fontSize: 13 }}>🪄</Text>
-                        <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>Auto-Fill from Craft Title</Text>
+                        <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>{tx('btnAutoCompleteAi')}</Text>
                       </>
                     )}
                   </TouchableOpacity>
                 </View>
               </View>
 
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 4 }}>PRODUCT / CRAFT TITLE (AUTO-FILLED BY AI)</Text>
-              <TextInput style={styles.textInput} value={bulkProductName} onChangeText={setBulkProductName} placeholder="e.g. Handcrafted Brass Dhokra Table Lamp" placeholderTextColor={Colors.placeholder} />
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 4 }}>{tx('productTitleLabel')}</Text>
+              <TextInput style={styles.textInput} value={bulkProductName} onChangeText={setBulkProductName} placeholder={tx('productTitlePlaceholder')} placeholderTextColor={Colors.placeholder} />
 
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 4 }}>CRAFT CATEGORY & COMPLIANCE</Text>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 4 }}>{tx('craftCategoryCompliance')}</Text>
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                 <TextInput style={[styles.textInput, { flex: 1, marginBottom: 0 }]} value={bulkCategory} onChangeText={setBulkCategory} placeholder={t.category} placeholderTextColor={Colors.placeholder} />
                 <View style={{ backgroundColor: '#F1F5F9', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, justifyContent: 'center', alignItems: 'center' }}>
@@ -2341,27 +2516,27 @@ export default function App() {
                 </View>
               </View>
 
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 4 }}>WORKSHOP PRODUCTION CAPACITY</Text>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 4 }}>{tx('workshopCapacity')}</Text>
               <View style={styles.bulkInputRow}>
-                <TextInput style={[styles.textInput, styles.bulkHalfInput]} value={bulkQuantity} onChangeText={setBulkQuantity} placeholder="Production Units (e.g. 100)" keyboardType="numeric" placeholderTextColor={Colors.placeholder} />
-                <TextInput style={[styles.textInput, styles.bulkHalfInput]} value={bulkUnitPrice} onChangeText={setBulkUnitPrice} placeholder="Wholesale Price ₹" keyboardType="numeric" placeholderTextColor={Colors.placeholder} />
+                <TextInput style={[styles.textInput, styles.bulkHalfInput]} value={bulkQuantity} onChangeText={setBulkQuantity} placeholder={tx('productionUnitsPlaceholder')} keyboardType="numeric" placeholderTextColor={Colors.placeholder} />
+                <TextInput style={[styles.textInput, styles.bulkHalfInput]} value={bulkUnitPrice} onChangeText={setBulkUnitPrice} placeholder={tx('wholesalePricePlaceholder')} keyboardType="numeric" placeholderTextColor={Colors.placeholder} />
               </View>
-              <TextInput style={styles.textInput} value={bulkLeadTime} onChangeText={setBulkLeadTime} placeholder="Production & dispatch lead time (e.g. 12-15 days)" placeholderTextColor={Colors.placeholder} />
+              <TextInput style={styles.textInput} value={bulkLeadTime} onChangeText={setBulkLeadTime} placeholder={tx('leadTimePlaceholder')} placeholderTextColor={Colors.placeholder} />
 
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 4 }}>TARGET BUYER & ARTISAN DETAILS</Text>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 4 }}>{tx('targetBuyerLabel')}</Text>
               <TextInput style={styles.textInput} value={bulkBuyerType} onChangeText={setBulkBuyerType} placeholder={tx('buyerType')} placeholderTextColor={Colors.placeholder} />
               <TextInput style={styles.textInput} value={currentUser?.name || authName} placeholder={t.fullName} editable={!isLoggedIn} placeholderTextColor={Colors.placeholder} />
               <TextInput style={styles.textInput} value={currentUser?.email || authEmail} placeholder={`${t.email} for follow-up`} keyboardType="email-address" editable={!isLoggedIn} placeholderTextColor={Colors.placeholder} />
 
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 4 }}>INSTITUTIONAL PITCH, PACKAGING & SPECS (AI GENERATED)</Text>
-              <TextInput style={[styles.textInput, styles.textArea, { minHeight: 90 }]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder="Packaging, customization, quality certifications..." placeholderTextColor={Colors.placeholder} />
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 4 }}>{tx('institutionalPitchLabel')}</Text>
+              <TextInput style={[styles.textInput, styles.textArea, { minHeight: 90 }]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder={tx('packagingPlaceholder')} placeholderTextColor={Colors.placeholder} />
 
               <TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}><Text style={styles.primaryActionText}>{tx('submitRfq')}</Text></TouchableOpacity>
               <TouchableOpacity style={styles.secondaryButton} onPress={saveBulkDraft}><Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text></TouchableOpacity>
               {bulkDrafts.length > 0 && (<View><Text style={styles.helperText}>{bulkDrafts.length} bulk draft(s) saved on this device.</Text><TouchableOpacity onPress={() => restoreBulkDraft(bulkDrafts[0])}><Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text></TouchableOpacity></View>)}
             </View>
-            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 2</Text><Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text><Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text><View style={styles.bulkPricingCard}><View style={styles.bulkPricingHeader}><Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text><Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text></View><Text style={styles.bulkPricingHint}>Based on {bulkQuantityNumber || 0} units at ₹{bulkUnitPriceNumber.toLocaleString('en-IN')} base price</Text>{bulkPricingTiers.map(tier => (<View key={tier.volume} style={styles.bulkPricingRow}><Text style={styles.bulkPricingVolume}>{tier.volume}</Text><Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text><Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>{bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}</Text></View>))}</View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => { if (!bulkQuantityNumber || !bulkUnitPriceNumber) { Alert.alert('Bulk pricing', 'Enter both quantity and unit price to calculate your live bulk total.'); return; } const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0; const tier = bulkPricingTiers[tierIndex]; const total = Math.round(tier.price) * bulkQuantityNumber; const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber)); Alert.alert('Bulk pricing', `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`); }}><Text style={styles.bulkToolText}>📊 Bulk pricing calculator</Text></TouchableOpacity><TouchableOpacity style={[styles.bulkToolButton, { backgroundColor: '#10B981' }]} onPress={shareRfqPitchToWhatsApp}><Text style={[styles.bulkToolText, { color: '#FFFFFF', fontWeight: '800' }]}>📲 Share RFQ to WhatsApp</Text></TouchableOpacity></View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('gem', { artisanName: artisanName || undefined })}><Text style={styles.bulkToolText}>📦 GeM-ready export</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('ondc', { artisanName: artisanName || undefined })}><Text style={styles.bulkToolText}>⚡ ONDC JSON</Text></TouchableOpacity></View></View>
-            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 3</Text><Text style={styles.profileSectionTitle}>{tx('connectChannels')}</Text><Text style={styles.bulkHelpText}>{tx('connectHelp')}</Text><View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 12 }}><Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E', marginBottom: 3 }}>🤝 Cluster Coordinator Handoff Mode</Text><Text style={{ fontSize: 11, color: '#78350F', lineHeight: 15 }}>Government (GeM) & ONDC platforms require verified entity onboarding (GSTIN, Udyam, DIC). KalaSetu packages compliant catalogs so your local Cluster Facilitator or Cooperative Lead can complete registration with zero data re-entry.</Text></View><View style={styles.bulkChannelRow}><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://gem.gov.in/')}><Text style={styles.bulkToolText}>GeM ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://ondc.org/')}><Text style={styles.bulkToolText}>ONDC ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://trifed.tribal.gov.in/')}><Text style={styles.bulkToolText}>TRIFED ↗</Text></TouchableOpacity></View><TouchableOpacity style={styles.secondaryAction} onPress={() => openBulkChannel('mailto:kalasetu24824.9@gmail.com?subject=KalaSetu%20Bulk%20Buyer%20Support')}><Text style={styles.secondaryActionText}>{tx('emailSupport')}</Text></TouchableOpacity></View>
+            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 2</Text><Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text><Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text><View style={styles.bulkPricingCard}><View style={styles.bulkPricingHeader}><Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text><Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text></View><Text style={styles.bulkPricingHint}>{tx('basedOn')} {bulkQuantityNumber || 0} units @ ₹{bulkUnitPriceNumber.toLocaleString('en-IN')}</Text>{bulkPricingTiers.map(tier => (<View key={tier.volume} style={styles.bulkPricingRow}><Text style={styles.bulkPricingVolume}>{tier.volume}</Text><Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text><Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>{bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}</Text></View>))}</View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => { if (!bulkQuantityNumber || !bulkUnitPriceNumber) { Alert.alert(tx('bulkPricingCalculatorTitle'), 'Enter both quantity and unit price to calculate your live bulk total.'); return; } const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0; const tier = bulkPricingTiers[tierIndex]; const total = Math.round(tier.price) * bulkQuantityNumber; const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber)); Alert.alert(tx('bulkPricingCalculatorTitle'), `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`); }}><Text style={styles.bulkToolText}>{tx('bulkPricingCalculator')}</Text></TouchableOpacity><TouchableOpacity style={[styles.bulkToolButton, { backgroundColor: '#10B981' }]} onPress={shareRfqPitchToWhatsApp}><Text style={[styles.bulkToolText, { color: '#FFFFFF', fontWeight: '800' }]}>{tx('shareRfqWhatsApp')}</Text></TouchableOpacity></View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('gem', { artisanName: artisanName || undefined })}><Text style={styles.bulkToolText}>{tx('gemReadyExport')}</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('ondc', { artisanName: artisanName || undefined })}><Text style={styles.bulkToolText}>{tx('ondcJson')}</Text></TouchableOpacity></View></View>
+            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 3</Text><Text style={styles.profileSectionTitle}>{tx('connectChannels')}</Text><Text style={styles.bulkHelpText}>{tx('connectHelp')}</Text><View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 12 }}><Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E', marginBottom: 3 }}>{tx('clusterModeTitle')}</Text><Text style={{ fontSize: 11, color: '#78350F', lineHeight: 15 }}>{tx('clusterModeDesc')}</Text></View><View style={styles.bulkChannelRow}><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://gem.gov.in/')}><Text style={styles.bulkToolText}>GeM ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://ondc.org/')}><Text style={styles.bulkToolText}>ONDC ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://trifed.tribal.gov.in/')}><Text style={styles.bulkToolText}>TRIFED ↗</Text></TouchableOpacity></View><TouchableOpacity style={styles.secondaryAction} onPress={() => openBulkChannel('mailto:kalasetu24824.9@gmail.com?subject=KalaSetu%20Bulk%20Buyer%20Support')}><Text style={styles.secondaryActionText}>{tx('emailSupport')}</Text></TouchableOpacity></View>
           </View>
         );
 
@@ -2392,7 +2567,7 @@ export default function App() {
                 {/* ── Demo Access Banner ── */}
                 <View style={{ backgroundColor: '#FFF7ED', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 16, borderWidth: 1, borderColor: '#FFEDD5', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Text style={{ fontSize: 14 }}>⚡</Text>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#C2410C' }}>Demo Sign In Mode — Select a 1-click account or enter details below</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#C2410C' }}>{tx('demoSignInMode')}</Text>
                 </View>
 
                 {/* ── Method Tabs: Password | Gmail OTP | Mobile OTP ── */}
@@ -2415,18 +2590,18 @@ export default function App() {
                 {/* ══════════════════════════════════════════ */}
                 {authMethod === 'password' && (
                   <View>
-                    <Text style={styles.authFieldLabel}>Email Address or Mobile Number</Text>
+                    <Text style={styles.authFieldLabel}>{tx('emailOrMobile')}</Text>
                     <TextInput
                       style={styles.authInput}
                       value={authEmail}
                       onChangeText={setAuthEmail}
-                      placeholder="demo@kalakriti.in or 9876543210"
+                      placeholder={tx('emailOrMobilePlaceholder')}
                       keyboardType="email-address"
                       autoCapitalize="none"
                       placeholderTextColor={Colors.placeholder}
                     />
 
-                    <Text style={styles.authFieldLabel}>Password / PIN</Text>
+                    <Text style={styles.authFieldLabel}>{tx('passwordOrPin')}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 14, marginBottom: 12 }}>
                       <TextInput
                         style={{ flex: 1, paddingVertical: 14, fontSize: 15, color: '#0F172A' }}
@@ -2447,13 +2622,13 @@ export default function App() {
                     <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleAuthSubmit} disabled={authLoading}>
                       {authLoading
                         ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Signing In...</Text></View>
-                        : <Text style={styles.primaryActionText}>🔑 Sign In</Text>
+                        : <Text style={styles.primaryActionText}>{tx('signInBtn')}</Text>
                       }
                     </TouchableOpacity>
 
                     {/* 1-Click Demo Pills */}
                     <View style={styles.demoPillsBox}>
-                      <Text style={styles.demoPillsLabel}>⚡ 1-Click Demo Accounts:</Text>
+                      <Text style={styles.demoPillsLabel}>{tx('oneClickDemoAccounts')}</Text>
                       <View style={styles.demoPillsRow}>
                         <TouchableOpacity
                           style={styles.demoPill}
@@ -2463,7 +2638,7 @@ export default function App() {
                             setAuthRole('buyer');
                           }}
                         >
-                          <Text style={styles.demoPillText}>🛍️ Buyer: demo@kalakriti.in</Text>
+                          <Text style={styles.demoPillText}>{tx('buyerDemo')}</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.demoPill}
@@ -2473,7 +2648,7 @@ export default function App() {
                             setAuthRole('artisan');
                           }}
                         >
-                          <Text style={styles.demoPillText}>🎨 Artisan: artisan@kalakriti.in</Text>
+                          <Text style={styles.demoPillText}>{tx('artisanDemo')}</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -2486,53 +2661,53 @@ export default function App() {
                 {authMethod === 'email' && (
                   <View>
                     <View style={styles.authInfoBox}>
-                      <Text style={styles.authInfoText}>📧 <Text style={{ fontWeight: '700' }}>Direct Inbox Delivery:</Text> Verification codes are dispatched directly to your Gmail inbox.</Text>
+                      <Text style={styles.authInfoText}>📧 <Text style={{ fontWeight: '700' }}>{tx('directInboxDelivery')}</Text> {tx('directInboxDesc')}</Text>
                     </View>
 
                     {!showOtpSection ? (
                       <View>
-                        <Text style={styles.authFieldLabel}>Your Full Name</Text>
+                        <Text style={styles.authFieldLabel}>{tx('yourFullName')}</Text>
                         <TextInput
                           style={styles.authInput}
                           value={authName}
                           onChangeText={setAuthName}
-                          placeholder="Enter your name (e.g. Ravi Kumar)"
+                          placeholder={tx('namePlaceholder')}
                           autoCapitalize="words"
                           placeholderTextColor={Colors.placeholder}
                         />
-                        <Text style={styles.authFieldLabel}>Gmail / Email Address</Text>
+                        <Text style={styles.authFieldLabel}>{tx('gmailAddress')}</Text>
                         <TextInput style={styles.authInput} value={authEmail} onChangeText={setAuthEmail} placeholder="yourname@gmail.com" keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.placeholder} />
                         {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
                         <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleSendOtp} disabled={authLoading}>
                           {authLoading
                             ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Generating...</Text></View>
-                            : <Text style={styles.primaryActionText}>📩 Generate OTP</Text>
+                            : <Text style={styles.primaryActionText}>{tx('generateOtp')}</Text>
                           }
                         </TouchableOpacity>
                       </View>
                     ) : (
                       <View>
                         <View style={styles.otpSentBox}>
-                          <Text style={styles.otpSentText}>✅ OTP auto-filled for <Text style={{ fontWeight: '800', color: '#0F172A' }}>{authEmail}</Text></Text>
-                          <Text style={styles.otpSentSub}>Your OTP has been auto-filled below. Just tap Verify to continue.</Text>
+                          <Text style={styles.otpSentText}>✅ {tx('otpAutofilled')} <Text style={{ fontWeight: '800', color: '#0F172A' }}>{authEmail}</Text></Text>
+                          <Text style={styles.otpSentSub}>{tx('otpAutofillHint')}</Text>
                           {devOtpNotice ? (
                             <TouchableOpacity style={styles.demoPill} onPress={() => setAuthOtp(devOtpNotice)}>
                               <Text style={styles.demoPillText}>💡 OTP: {devOtpNotice} (Tap to fill)</Text>
                             </TouchableOpacity>
                           ) : null}
                         </View>
-                        <Text style={styles.authFieldLabel}>6-Digit OTP</Text>
+                        <Text style={styles.authFieldLabel}>{tx('sixDigitOtp')}</Text>
                         <TextInput style={[styles.authInput, { textAlign: 'center', fontSize: 22, fontWeight: '900', letterSpacing: 8 }]} value={authOtp} onChangeText={setAuthOtp} placeholder="123456" keyboardType="number-pad" maxLength={6} placeholderTextColor={Colors.placeholder} />
                         {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
                         <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleVerifyOtp} disabled={authLoading}>
                           {authLoading
                             ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Verifying...</Text></View>
-                            : <Text style={styles.primaryActionText}>✅ Verify & Access KalaSetu</Text>
+                            : <Text style={styles.primaryActionText}>{tx('verifyAndAccess')}</Text>
                           }
                         </TouchableOpacity>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
-                          <TouchableOpacity onPress={() => setShowOtpSection(false)}><Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>← Change Email</Text></TouchableOpacity>
-                          <TouchableOpacity onPress={handleSendOtp}><Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>Resend Code</Text></TouchableOpacity>
+                          <TouchableOpacity onPress={() => setShowOtpSection(false)}><Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>{tx('changeEmail')}</Text></TouchableOpacity>
+                          <TouchableOpacity onPress={handleSendOtp}><Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>{tx('resendCode')}</Text></TouchableOpacity>
                         </View>
                       </View>
                     )}
@@ -2550,16 +2725,16 @@ export default function App() {
 
                     {!showOtpSection ? (
                       <View>
-                        <Text style={styles.authFieldLabel}>Your Full Name</Text>
+                        <Text style={styles.authFieldLabel}>{tx('yourFullName')}</Text>
                         <TextInput
                           style={styles.authInput}
                           value={authName}
                           onChangeText={setAuthName}
-                          placeholder="Enter your name (e.g. Ravi Kumar)"
+                          placeholder={tx('namePlaceholder')}
                           autoCapitalize="words"
                           placeholderTextColor={Colors.placeholder}
                         />
-                        <Text style={styles.authFieldLabel}>10-Digit Mobile Number</Text>
+                        <Text style={styles.authFieldLabel}>{tx('mobileNumberLabel')}</Text>
                         <View style={{ flexDirection: 'row', borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', overflow: 'hidden', marginBottom: 12 }}>
                           <View style={{ paddingHorizontal: 14, paddingVertical: 14, backgroundColor: '#E2E8F0', justifyContent: 'center' }}>
                             <Text style={{ fontWeight: '700', color: '#475569', fontSize: 13 }}>🇮🇳 +91</Text>
@@ -2570,12 +2745,12 @@ export default function App() {
                         <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleSendOtp} disabled={authLoading}>
                           {authLoading
                             ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Generating...</Text></View>
-                            : <Text style={styles.primaryActionText}>📲 Generate OTP</Text>
+                            : <Text style={styles.primaryActionText}>{tx('generateOtpMobile')}</Text>
                           }
                         </TouchableOpacity>
                         {/* Quick Demo Phones */}
                         <View style={styles.demoPillsBox}>
-                          <Text style={styles.demoPillsLabel}>⚡ Quick 1-Click Demo Numbers:</Text>
+                          <Text style={styles.demoPillsLabel}>{tx('quickDemoNumbers')}</Text>
                           <View style={styles.demoPillsRow}>
                             <TouchableOpacity
                               style={styles.demoPill}
@@ -2584,7 +2759,7 @@ export default function App() {
                                 setAuthRole('artisan');
                               }}
                             >
-                              <Text style={styles.demoPillText}>🎨 Demo Artisan (+91 9876543210)</Text>
+                              <Text style={styles.demoPillText}>{tx('demoArtisanNumber')}</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                               style={styles.demoPill}
@@ -2593,7 +2768,7 @@ export default function App() {
                                 setAuthRole('buyer');
                               }}
                             >
-                              <Text style={styles.demoPillText}>🛍️ Demo Buyer (+91 9800112233)</Text>
+                              <Text style={styles.demoPillText}>{tx('demoBuyerNumber')}</Text>
                             </TouchableOpacity>
                           </View>
                         </View>
@@ -2602,25 +2777,25 @@ export default function App() {
                       <View>
                         <View style={styles.otpSentBox}>
                           <Text style={styles.otpSentText}>✅ OTP auto-filled for <Text style={{ fontWeight: '800', color: '#0F172A' }}>{authPhone}</Text></Text>
-                          <Text style={styles.otpSentSub}>Your OTP has been auto-filled below. Just tap Verify to continue.</Text>
+                          <Text style={styles.otpSentSub}>{tx('otpAutofillHint')}</Text>
                           {devOtpNotice ? (
                             <TouchableOpacity style={styles.demoPill} onPress={() => setAuthOtp(devOtpNotice)}>
                               <Text style={styles.demoPillText}>💡 OTP: {devOtpNotice} (Tap to fill)</Text>
                             </TouchableOpacity>
                           ) : null}
                         </View>
-                        <Text style={styles.authFieldLabel}>6-Digit OTP</Text>
+                        <Text style={styles.authFieldLabel}>{tx('sixDigitOtp')}</Text>
                         <TextInput style={[styles.authInput, { textAlign: 'center', fontSize: 22, fontWeight: '900', letterSpacing: 8 }]} value={authOtp} onChangeText={setAuthOtp} placeholder="123456" keyboardType="number-pad" maxLength={6} placeholderTextColor={Colors.placeholder} />
                         {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
                         <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleVerifyOtp} disabled={authLoading}>
                           {authLoading
                             ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Verifying...</Text></View>
-                            : <Text style={styles.primaryActionText}>✅ Verify OTP & Access Workspace</Text>
+                            : <Text style={styles.primaryActionText}>{tx('verifyOtpMobile')}</Text>
                           }
                         </TouchableOpacity>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
-                          <TouchableOpacity onPress={() => setShowOtpSection(false)}><Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>← Change Number</Text></TouchableOpacity>
-                          <TouchableOpacity onPress={handleSendOtp}><Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>Resend OTP</Text></TouchableOpacity>
+                          <TouchableOpacity onPress={() => setShowOtpSection(false)}><Text style={{ fontSize: 11, fontWeight: '700', color: '#64748B' }}>{tx('changeNumber')}</Text></TouchableOpacity>
+                          <TouchableOpacity onPress={handleSendOtp}><Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>{tx('resendOtp')}</Text></TouchableOpacity>
                         </View>
                       </View>
                     )}
@@ -2673,10 +2848,10 @@ export default function App() {
 
                     {orderSubTab === 'incoming' && (
                       <View>
-                        <Text style={styles.profileSectionTitle}>Orders Requested by Others</Text>
-                        <Text style={styles.helperText}>Buyer purchase requests for your published crafts.</Text>
+                        <Text style={styles.profileSectionTitle}>{tx('ordersRequestedByOthers')}</Text>
+                        <Text style={styles.helperText}>{tx('buyerRequestsDesc')}</Text>
                         {incomingOrders.length === 0 ? (
-                          <Text style={styles.emptyStateText}>No incoming orders from buyers yet. When a buyer places an order for your craft, it will appear here for your confirmation.</Text>
+                          <Text style={styles.emptyStateText}>{tx('noIncomingOrders')}</Text>
                         ) : (
                           incomingOrders.map(order => {
                             const isPending = order.status.toLowerCase() === 'confirmed' || order.status.toLowerCase() === 'pending';
@@ -2708,9 +2883,9 @@ export default function App() {
                                   </View>
                                 </View>
                                 <Text style={styles.orderMeta}>💰 ₹{order.price} total • {order.quantity} unit(s)</Text>
-                                <Text style={styles.orderMeta}>👤 Buyer: {order.customerName || 'Verified Buyer'}{order.customerPhone ? ` • 📱 ${order.customerPhone}` : ''}</Text>
+                                <Text style={styles.orderMeta}>{tx('buyerLabel')} {order.customerName || 'Verified Buyer'}{order.customerPhone ? ` • 📱 ${order.customerPhone}` : ''}</Text>
                                 {!!order.deliveryAddress && (
-                                  <Text style={styles.orderMeta}>📦 Deliver to: {order.deliveryAddress}{order.city ? `, ${order.city}` : ''}{order.state ? `, ${order.state}` : ''}{order.pincode ? ` - ${order.pincode}` : ''}</Text>
+                                  <Text style={styles.orderMeta}>{tx('deliverToLabel')} {order.deliveryAddress}{order.city ? `, ${order.city}` : ''}{order.state ? `, ${order.state}` : ''}{order.pincode ? ` - ${order.pincode}` : ''}</Text>
                                 )}
                                 {!!order.cancelReason && (
                                   <Text style={[styles.orderMeta, { color: Colors.error }]}>Note: {order.cancelReason}</Text>
@@ -2723,14 +2898,14 @@ export default function App() {
                                       onPress={() => handleUpdateOrderStatus(order.id, 'Accepted')}
                                       disabled={isBusy}
                                     >
-                                      {isBusy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.acceptOrderBtnText}>✅ Accept Order</Text>}
+                                      {isBusy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.acceptOrderBtnText}>{tx('acceptOrder')}</Text>}
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                       style={[styles.rejectOrderBtn, isBusy && styles.disabledButton]}
                                       onPress={() => handleUpdateOrderStatus(order.id, 'Rejected')}
                                       disabled={isBusy}
                                     >
-                                      <Text style={styles.rejectOrderBtnText}>❌ Reject</Text>
+                                      <Text style={styles.rejectOrderBtnText}>{tx('rejectOrder')}</Text>
                                     </TouchableOpacity>
                                   </View>
                                 )}
@@ -2742,7 +2917,7 @@ export default function App() {
                                       onPress={() => handleUpdateOrderStatus(order.id, 'Dispatched')}
                                       disabled={isBusy}
                                     >
-                                      <Text style={styles.dispatchOrderBtnText}>🚚 Mark as Dispatched</Text>
+                                      <Text style={styles.dispatchOrderBtnText}>{tx('markDispatched')}</Text>
                                     </TouchableOpacity>
                                   </View>
                                 )}
@@ -2786,7 +2961,7 @@ export default function App() {
                                   style={[styles.deleteProductButton, { flex: 1, marginTop: 0, backgroundColor: '#FFF0F0', borderColor: '#FFCDD2' }]}
                                   onPress={() => handleDeleteOrder(order.id)}
                                 >
-                                  <Text style={[styles.deleteProductButtonText, { color: Colors.error }]}>🗑️ Delete</Text>
+                                  <Text style={[styles.deleteProductButtonText, { color: Colors.error }]}>{tx('deleteBtn')}</Text>
                                 </TouchableOpacity>
                               </View>
                             </View>
@@ -2803,14 +2978,14 @@ export default function App() {
                             onPress={() => currentUser && refreshAccountData(currentUser)}
                             style={{ padding: 6 }}
                           >
-                            <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: '600' }}>🔄 Refresh</Text>
+                            <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: '600' }}>{tx('refreshBtn')}</Text>
                           </TouchableOpacity>
                         </View>
                         {publishedProducts.length === 0 ? (
                           <View style={styles.emptyStateCard}>
-                            <Text style={styles.emptyStateText}>No products published yet. Create crafts in Studio tab to see them here.</Text>
+                            <Text style={styles.emptyStateText}>{tx('noProductsPublished')}</Text>
                             <TouchableOpacity style={[styles.primaryAction, { marginTop: 12 }]} onPress={() => setActiveTab('studio')}>
-                              <Text style={styles.primaryActionText}>📸 Go to Studio</Text>
+                              <Text style={styles.primaryActionText}>{tx('goToStudio')}</Text>
                             </TouchableOpacity>
                           </View>
                         ) : (
@@ -2845,7 +3020,7 @@ export default function App() {
                 {accountView === 'requests' && (<View><Text style={styles.profileSectionTitle}>{tx('bulkRequests')}</Text><TextInput style={styles.textInput} value={bulkBuyerType} onChangeText={setBulkBuyerType} placeholder={tx('forBuyers')} placeholderTextColor={Colors.placeholder} /><TextInput style={[styles.textInput, styles.textArea]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder={tx('bulkHelp')} placeholderTextColor={Colors.placeholder} /><TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}><Text style={styles.primaryActionText}>{tx('sendRequest')}</Text></TouchableOpacity></View>)}
                 {accountView === 'wishlist' && (<View><Text style={styles.profileSectionTitle}>{tx('savedCraftsTitle')}</Text>{products.filter(product => wishlist.includes(product.id)).map(product => <View key={product.id} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} · {product.artisan_name}</Text></View>)}{wishlist.length === 0 && <Text style={styles.emptyStateText}>{tx('noSavedCrafts')}</Text>}</View>)}
                 {accountView === 'notifications' && (<View style={styles.notificationCard}><Text style={styles.notificationTitle}>{tx('notifications')}</Text>{orders.length ? orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>{tx('orderUpdate')}: {order.productName} is {order.status}.</Text>) : <Text style={styles.notificationText}>{tx('noNotifications')}</Text>}</View>)}
-                {accountView === 'admin' && (<View><Text style={styles.profileSectionTitle}>{tx('adminReview')}</Text>{!adminToken ? (<View><Text style={styles.bulkHelpText}>{tx('reviewRequests')}</Text><TextInput style={styles.textInput} value={adminEmail} onChangeText={setAdminEmail} placeholder={tx('adminEmail')} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.placeholder} /><TextInput style={styles.textInput} value={adminPassword} onChangeText={setAdminPassword} placeholder={tx('adminPassword')} secureTextEntry placeholderTextColor={Colors.placeholder} />{!!adminStatus && <Text style={styles.orderActionMessage}>{adminStatus}</Text>}<TouchableOpacity style={styles.primaryAction} onPress={handleAdminLogin}><Text style={styles.primaryActionText}>{tx('signInAdmin')}</Text></TouchableOpacity></View>) : (<View><View style={styles.adminHeaderRow}><Text style={styles.bulkHelpText}>{tx('requestQueue')}</Text><TouchableOpacity onPress={handleAdminLogout}><Text style={styles.offlineDraftRemove}>Logout</Text></TouchableOpacity></View>{adminRequests.length === 0 ? <Text style={styles.emptyStateText}>No institutional requests yet.</Text> : adminRequests.map(request => (<View key={request.id} style={styles.orderCard}><Text style={styles.orderTitle}>{request.artisan_name} · {request.product_category || 'Craft request'}</Text><Text style={styles.orderMeta}>{request.email} · Qty {request.quantity || 1} · {request.target_market || 'Bulk'}</Text><Text style={styles.orderMeta}>{request.requirements || 'No requirements'}</Text><View style={styles.adminStatusRow}>{['New', 'In Review', 'Approved', 'Rejected'].map(status => (<TouchableOpacity key={status} style={[styles.adminStatusButton, request.status === status && styles.adminStatusButtonActive]} onPress={() => handleAdminUpdate(request.id, status)}><Text style={[styles.adminStatusText, request.status === status && styles.adminStatusTextActive]}>{status}</Text></TouchableOpacity>))}</View></View>))}</View>)}</View>)}
+                {accountView === 'admin' && (<View><Text style={styles.profileSectionTitle}>{tx('adminReview')}</Text>{!adminToken ? (<View><Text style={styles.bulkHelpText}>{tx('reviewRequests')}</Text><TextInput style={styles.textInput} value={adminEmail} onChangeText={setAdminEmail} placeholder={tx('adminEmail')} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.placeholder} /><TextInput style={styles.textInput} value={adminPassword} onChangeText={setAdminPassword} placeholder={tx('adminPassword')} secureTextEntry placeholderTextColor={Colors.placeholder} />{!!adminStatus && <Text style={styles.orderActionMessage}>{adminStatus}</Text>}<TouchableOpacity style={styles.primaryAction} onPress={handleAdminLogin}><Text style={styles.primaryActionText}>{tx('signInAdmin')}</Text></TouchableOpacity></View>) : (<View><View style={styles.adminHeaderRow}><Text style={styles.bulkHelpText}>{tx('requestQueue')}</Text><TouchableOpacity onPress={handleAdminLogout}><Text style={styles.offlineDraftRemove}>Logout</Text></TouchableOpacity></View>{adminRequests.length === 0 ? <Text style={styles.emptyStateText}>{tx('noInstitutionalRequests')}</Text> : adminRequests.map(request => (<View key={request.id} style={styles.orderCard}><Text style={styles.orderTitle}>{request.artisan_name} · {request.product_category || 'Craft request'}</Text><Text style={styles.orderMeta}>{request.email} · Qty {request.quantity || 1} · {request.target_market || 'Bulk'}</Text><Text style={styles.orderMeta}>{request.requirements || 'No requirements'}</Text><View style={styles.adminStatusRow}>{['New', 'In Review', 'Approved', 'Rejected'].map(status => (<TouchableOpacity key={status} style={[styles.adminStatusButton, request.status === status && styles.adminStatusButtonActive]} onPress={() => handleAdminUpdate(request.id, status)}><Text style={[styles.adminStatusText, request.status === status && styles.adminStatusTextActive]}>{status}</Text></TouchableOpacity>))}</View></View>))}</View>)}</View>)}
               </View>
             )}
           </View>
@@ -2856,7 +3031,7 @@ export default function App() {
           <View style={styles.marketContainer}>
             <Text style={styles.marketHeroTitle}>{t.wishlistTitle}</Text>
             {wishlist.length === 0 ? (
-              <View style={styles.emptyStateCard}><Text style={styles.emptyStateText}>Save products you like to build your shortlist.</Text></View>
+              <View style={styles.emptyStateCard}><Text style={styles.emptyStateText}>{tx('saveProductsShortlist')}</Text></View>
             ) : (
               <View style={styles.productsFeed}>{products.filter(p => wishlist.includes(p.id)).map(product => (
                 <View key={product.id} style={styles.productCard}><View style={styles.productImageWrapper}><Image source={{ uri: product.image_url }} style={styles.productImage} /><View style={styles.priceBadge}><Text style={styles.priceBadgeText}>₹{product.price}</Text></View></View><View style={styles.productCardBody}><Text style={styles.productCardTitle}>{product.name}</Text><TouchableOpacity style={styles.whatsAppButton} onPress={() => requestOrder(product)}><Text style={styles.whatsAppButtonText}>{t.buyNow}</Text></TouchableOpacity></View></View>
@@ -2870,9 +3045,9 @@ export default function App() {
           <View style={styles.marketContainer}>
             <Text style={styles.marketHeroTitle}>{t.ordersTitle}</Text>
             {!isLoggedIn ? (
-              <View style={styles.emptyStateCard}><Text style={styles.emptyStateText}>Sign in to track your purchase requests and delivery updates.</Text></View>
+              <View style={styles.emptyStateCard}><Text style={styles.emptyStateText}>{tx('signInToTrackOrders')}</Text></View>
             ) : orders.length === 0 && publishedProducts.length === 0 ? (
-              <View style={styles.emptyStateCard}><Text style={styles.emptyStateText}>No orders yet. Your recent requests will appear here.</Text></View>
+              <View style={styles.emptyStateCard}><Text style={styles.emptyStateText}>{tx('noOrdersYet')}</Text></View>
             ) : (
               <View style={styles.productsFeed}>
                 {incomingOrders.length > 0 && (
@@ -2908,9 +3083,9 @@ export default function App() {
                             </View>
                           </View>
                           <Text style={styles.orderMeta}>💰 ₹{order.price} total • {order.quantity} unit(s)</Text>
-                          <Text style={styles.orderMeta}>👤 Buyer: {order.customerName || 'Verified Buyer'}{order.customerPhone ? ` • 📱 ${order.customerPhone}` : ''}</Text>
+                          <Text style={styles.orderMeta}>{tx('buyerLabel')} {order.customerName || 'Verified Buyer'}{order.customerPhone ? ` • 📱 ${order.customerPhone}` : ''}</Text>
                           {!!order.deliveryAddress && (
-                            <Text style={styles.orderMeta}>📦 Deliver to: {order.deliveryAddress}{order.city ? `, ${order.city}` : ''}{order.state ? `, ${order.state}` : ''}{order.pincode ? ` - ${order.pincode}` : ''}</Text>
+                            <Text style={styles.orderMeta}>{tx('deliverToLabel')} {order.deliveryAddress}{order.city ? `, ${order.city}` : ''}{order.state ? `, ${order.state}` : ''}{order.pincode ? ` - ${order.pincode}` : ''}</Text>
                           )}
                           {isPending && (
                             <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
@@ -2919,14 +3094,14 @@ export default function App() {
                                 onPress={() => handleUpdateOrderStatus(order.id, 'Accepted')}
                                 disabled={isBusy}
                               >
-                                {isBusy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.acceptOrderBtnText}>✅ Accept Order</Text>}
+                                {isBusy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.acceptOrderBtnText}>{tx('acceptOrder')}</Text>}
                               </TouchableOpacity>
                               <TouchableOpacity
                                 style={[styles.rejectOrderBtn, isBusy && styles.disabledButton]}
                                 onPress={() => handleUpdateOrderStatus(order.id, 'Rejected')}
                                 disabled={isBusy}
                               >
-                                <Text style={styles.rejectOrderBtnText}>❌ Reject</Text>
+                                <Text style={styles.rejectOrderBtnText}>{tx('rejectOrder')}</Text>
                               </TouchableOpacity>
                             </View>
                           )}
@@ -2937,7 +3112,7 @@ export default function App() {
                                 onPress={() => handleUpdateOrderStatus(order.id, 'Dispatched')}
                                 disabled={isBusy}
                               >
-                                <Text style={styles.dispatchOrderBtnText}>🚚 Mark as Dispatched</Text>
+                                <Text style={styles.dispatchOrderBtnText}>{tx('markDispatched')}</Text>
                               </TouchableOpacity>
                             </View>
                           )}
@@ -3016,12 +3191,19 @@ export default function App() {
             }}
             onPress={() => setChatModalVisible(true)}>
             <Text style={{ fontSize: 13 }}>💬</Text>
-            <Text style={{ fontSize: 11, fontWeight: '800', color: '#F8FAFC' }}>AI Assistant</Text>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: '#F8FAFC' }}>{tx('aiAssistant')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.helpBtn} 
-            onPress={() => toggleSpeech(lang === 'hi' ? 'नमस्ते! कलासेतु में आपका स्वागत है। यहां आप अपने हस्तशिल्प की फोटो अपलोड करें। हमारा एआई आपके उत्पाद का नाम, कीमत और विवरण खुद तैयार करेगा।' : 'Welcome to KalaSetu! Take a photo of your craft. Our AI will automatically identify the craft category, suggest fair pricing, and write SEO descriptions.', lang)}>
-            <Text style={styles.helpBtnText}>{isSpeaking ? '⏹ Stop' : `🔊 ${lang === 'hi' ? 'मदद' : 'Help'}`}</Text>
+            onPress={() => toggleSpeech(
+              lang === 'hi' ? 'नमस्ते! कलासेतु में आपका स्वागत है। यहां आप अपने हस्तशिल्प की फोटो अपलोड करें। हमारा एआई आपके उत्पाद का नाम, कीमत और विवरण खुद तैयार करेगा।' :
+              lang === 'kn' ? 'ನಮಸ್ಕಾರ! ಕಲಾಸೇತುಗೆ ಸುಸ್ವಾಗತ. ಇಲ್ಲಿ ನಿಮ್ಮ ಕಲೆಯ ಫೋಟೋ ಅಪ್‌ಲೋಡ್ ಮಾಡಿ. ನಮ್ಮ AI ನಿಮ್ಮ ಉತ್ಪನ್ನದ ಹೆಸರು, ಬೆಲೆ ಮತ್ತು ವಿವರಣೆಯನ್ನು ತಾನೇ ತಯಾರಿಸುತ್ತದೆ.' :
+              lang === 'ta' ? 'வணக்கம்! கலாசேதுவிற்கு வரவேற்கிறோம். உங்கள் கைவினைப் படத்தை பதிவேற்றவும். எங்கள் AI தயாரிப்பு பெயர், விலை மற்றும் விளக்கத்தை உருவாக்கும்.' :
+              lang === 'te' ? 'నమస్కారం! కలాసేతుకు స్వాగతం. మీ కళాకృతి ఫోటోను అప్‌లోడ్ చేయండి. మా AI ఉత్పత్తి పేరు, ధర మరియు వివరణను స్వయంగా సృష్టిస్తుంది.' :
+              'Welcome to KalaSetu! Take a photo of your craft. Our AI will automatically identify the craft category, suggest fair pricing, and write SEO descriptions.',
+              speechLocale
+            )}>
+            <Text style={styles.helpBtnText}>{isSpeaking ? '⏹ Stop' : `🔊 ${tx('help')}`}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -3100,7 +3282,7 @@ export default function App() {
           style={[styles.tabButton, chatModalVisible && styles.tabButtonActive]}
           onPress={() => setChatModalVisible(true)}>
           <Text style={styles.tabIcon}>💬</Text>
-          <Text style={[styles.tabText, chatModalVisible && styles.tabTextActive]}>AI Chat</Text>
+          <Text style={[styles.tabText, chatModalVisible && styles.tabTextActive]}>{tx('aiChat')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -3136,7 +3318,7 @@ export default function App() {
         onPress={() => setChatModalVisible(true)}
       >
         <Text style={{ fontSize: 16 }}>✨💬</Text>
-        <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 13 }}>AI Assistant</Text>
+        <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 13 }}>{tx('aiAssistant')}</Text>
       </TouchableOpacity>
 
       {/* KalaSetu AI Assistant Chatbot Modal */}
@@ -3158,8 +3340,8 @@ export default function App() {
                   <Text style={{ fontSize: 20, color: '#FFFFFF' }}>✨</Text>
                 </View>
                 <View>
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A' }}>KalaSetu AI Assistant</Text>
-                  <Text style={{ fontSize: 11, color: '#64748B' }}>MoSJE Rural Artisan & Product Intelligence</Text>
+                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A' }}>KalaSetu {tx('aiAssistant')}</Text>
+                  <Text style={{ fontSize: 11, color: '#64748B' }}>{tx('botSubheading')}</Text>
                 </View>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, position: 'relative' }}>
@@ -3200,18 +3382,18 @@ export default function App() {
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8 }}
                     >
                       <Text style={{ fontSize: 14 }}>🗑️</Text>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#B91C1C' }}>Clear conversation</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#B91C1C' }}>{tx('clearConversation')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => {
                         setChatMenuOpen(false);
-                        setLang(prev => prev === 'hi' ? 'en' : 'hi');
+                        setChatLanguagePickerVisible(true);
                       }}
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8 }}
                     >
                       <Text style={{ fontSize: 14 }}>🌐</Text>
                       <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155' }}>
-                        {lang === 'hi' ? 'Switch to English' : 'हिंदी में बदलें'}
+                        {t.selectLanguage} ({languageOptions.find(([c]) => c === lang)?.[1]})
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -3219,22 +3401,69 @@ export default function App() {
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8 }}
                     >
                       <Text style={{ fontSize: 14 }}>✕</Text>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>Close chat</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748B' }}>{tx('closeChat')}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
               </View>
             </View>
 
+            {/* In-Modal Language Selection Overlay for all 8 Regional Languages + English */}
+            {chatLanguagePickerVisible && (
+              <View style={{
+                backgroundColor: '#F8FAFC',
+                borderColor: '#CBD5E1',
+                borderWidth: 1.5,
+                borderRadius: 16,
+                padding: 12,
+                marginVertical: 8,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+                elevation: 4
+              }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '900', color: '#0F172A' }}>🌐 {t.selectLanguage} (8 Regional Languages + English)</Text>
+                  <TouchableOpacity onPress={() => setChatLanguagePickerVisible(false)} style={{ padding: 4 }}>
+                    <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#64748B' }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {languageOptions.map(([code, label]) => (
+                    <TouchableOpacity
+                      key={code}
+                      onPress={() => void switchChatLanguage(code)}
+                      style={{
+                        backgroundColor: lang === code ? '#EA580C' : '#FFFFFF',
+                        borderColor: lang === code ? '#EA580C' : '#CBD5E1',
+                        borderWidth: 1,
+                        paddingVertical: 6,
+                        paddingHorizontal: 10,
+                        borderRadius: 14,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4
+                      }}
+                    >
+                      <Text style={{
+                        fontSize: 11,
+                        fontWeight: '700',
+                        color: lang === code ? '#FFFFFF' : '#334155'
+                      }}>
+                        {label}
+                      </Text>
+                      {lang === code && <Text style={{ fontSize: 10, color: '#FFFFFF', fontWeight: '900' }}>✓</Text>}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
             {/* Quick Suggestion Chips */}
             <View style={{ paddingVertical: 8 }}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-                {[
-                  'Tell me about Bastar Dhokra',
-                  'How is fair pricing calculated?',
-                  'What terracotta crafts are available?',
-                  'Which crafts have GI tags?'
-                ].map((chip, idx) => (
+                {getChatQuickChips(lang).map((chip, idx) => (
                   <TouchableOpacity
                     key={idx}
                     style={{ backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 5 }}
@@ -3275,7 +3504,7 @@ export default function App() {
               ))}
               {isChatSending && (
                 <View style={{ alignSelf: 'flex-start', backgroundColor: '#F1F5F9', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 }}>
-                  <Text style={{ fontSize: 12, color: '#64748B', fontStyle: 'italic' }}>KalaSetu AI is analyzing catalog... ✍️</Text>
+                  <Text style={{ fontSize: 12, color: '#64748B', fontStyle: 'italic' }}>{tx('analyzingCatalog')}</Text>
                 </View>
               )}
             </ScrollView>
@@ -3285,22 +3514,40 @@ export default function App() {
               <TextInput
                 style={{
                   flex: 1,
-                  backgroundColor: '#F8FAFC',
-                  borderColor: '#E2E8F0',
-                  borderWidth: 1,
+                  backgroundColor: isChatListening ? '#FEF2F2' : '#F8FAFC',
+                  borderColor: isChatListening ? '#EF4444' : '#E2E8F0',
+                  borderWidth: 1.5,
                   borderRadius: 22,
                   paddingHorizontal: 16,
                   paddingVertical: 10,
                   fontSize: 14,
                   color: '#0F172A'
                 }}
-                placeholder="Ask about crafts, prices, materials..."
-                placeholderTextColor="#94A3B8"
+                placeholder={isChatListening ? `🎙️ Listening (${languageOptions.find(([c]) => c === lang)?.[1] || 'Voice'})...` : tx('askCraftsPlaceholder')}
+                placeholderTextColor={isChatListening ? '#DC2626' : '#94A3B8'}
                 value={chatInput}
                 onChangeText={setChatInput}
                 onSubmitEditing={() => handleSendChatMessage()}
                 returnKeyType="send"
               />
+              {/* Mic Voice Button */}
+              <TouchableOpacity
+                onPress={toggleChatVoiceInput}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: isChatListening ? '#FEE2E2' : '#F1F5F9',
+                  borderWidth: 1.5,
+                  borderColor: isChatListening ? '#DC2626' : '#CBD5E1',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                accessibilityLabel="Voice search"
+              >
+                <Text style={{ fontSize: 18 }}>{isChatListening ? '⏹️' : '🎙️'}</Text>
+              </TouchableOpacity>
+              {/* Send Button */}
               <TouchableOpacity
                 onPress={() => handleSendChatMessage()}
                 disabled={isChatSending || !chatInput.trim()}
@@ -3313,7 +3560,11 @@ export default function App() {
                   justifyContent: 'center'
                 }}
               >
-                <Text style={{ fontSize: 16, color: '#FFFFFF', fontWeight: 'bold' }}>➤</Text>
+                {isChatSending ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={{ fontSize: 16, color: '#FFFFFF', fontWeight: 'bold' }}>➤</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -3331,8 +3582,8 @@ export default function App() {
                   <Text style={{ fontSize: 18, color: '#FFFFFF' }}>📜</Text>
                 </View>
                 <View>
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A' }}>Compliance Artifacts</Text>
-                  <Text style={{ fontSize: 11, color: '#64748B' }}>Government (GeM) & ONDC Schemas</Text>
+                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A' }}>{tx('complianceArtifacts')}</Text>
+                  <Text style={{ fontSize: 11, color: '#64748B' }}>{tx('complianceSubtitle')}</Text>
                 </View>
               </View>
               <TouchableOpacity onPress={() => setComplianceModalVisible(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
@@ -3342,7 +3593,7 @@ export default function App() {
 
             {/* Facilitator Notice */}
             <View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 12, padding: 10, marginBottom: 10 }}>
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400E', marginBottom: 2 }}>🤝 Cluster Coordinator Handoff Mode</Text>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400E', marginBottom: 2 }}>{tx('clusterModeHandoff')}</Text>
               <Text style={{ fontSize: 10, color: '#78350F', lineHeight: 14 }}>
                 Ready for upload by your local District Industries Centre (DIC) or SHG coordinator without manual data re-entry.
               </Text>
@@ -3353,19 +3604,19 @@ export default function App() {
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 12 }}>
                 <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E40AF' }}>🎯 Filtered: Product #{complianceFilter.productId}</Text>
                 <TouchableOpacity onPress={() => openComplianceModal(complianceTab, {})}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>View All Products ↺</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>{tx('viewAllProducts')}</Text>
                 </TouchableOpacity>
               </View>
             ) : complianceFilter.artisanName ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 12 }}>
                 <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E40AF' }}>👤 Filtered: {complianceFilter.artisanName}</Text>
                 <TouchableOpacity onPress={() => openComplianceModal(complianceTab, {})}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>View All Products ↺</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>{tx('viewAllProducts')}</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <View style={{ backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 12 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B' }}>🌐 Scope: Entire Marketplace Catalog (All Artisans)</Text>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B' }}>{tx('scopeAllProducts')}</Text>
               </View>
             )}
 
@@ -3375,13 +3626,13 @@ export default function App() {
                 style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: complianceTab === 'gem' ? '#0F172A' : '#F1F5F9', alignItems: 'center' }}
                 onPress={() => openComplianceModal('gem')}
               >
-                <Text style={{ fontSize: 12, fontWeight: '800', color: complianceTab === 'gem' ? '#FFFFFF' : '#475569' }}>📦 GeM CSV</Text>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: complianceTab === 'gem' ? '#FFFFFF' : '#475569' }}>{tx('gemCsv')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: complianceTab === 'ondc' ? '#0F172A' : '#F1F5F9', alignItems: 'center' }}
                 onPress={() => openComplianceModal('ondc')}
               >
-                <Text style={{ fontSize: 12, fontWeight: '800', color: complianceTab === 'ondc' ? '#FFFFFF' : '#475569' }}>⚡ ONDC Beckn</Text>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: complianceTab === 'ondc' ? '#FFFFFF' : '#475569' }}>{tx('ondcBeckn')}</Text>
               </TouchableOpacity>
             </View>
 
@@ -3410,7 +3661,7 @@ export default function App() {
                   Linking.openURL(`https://wa.me/?text=${encodeURIComponent(msg)}`);
                 }}
               >
-                <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>📲 Send to Coordinator</Text>
+                <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>{tx('sendToCoordinator')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={{ flex: 1, backgroundColor: '#0F172A', paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}
@@ -3422,7 +3673,7 @@ export default function App() {
                   });
                 }}
               >
-                <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>📤 Share / Copy</Text>
+                <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 12 }}>{tx('shareCopy')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -3435,8 +3686,8 @@ export default function App() {
           <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '80%', padding: 20 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <View>
-                <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A' }}>📦 Load from My Crafts</Text>
-                <Text style={{ fontSize: 11, color: '#64748B' }}>Pick any craft to adapt into wholesale & bulk institutional quote</Text>
+                <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A' }}>{tx('loadFromMyCrafts')}</Text>
+                <Text style={{ fontSize: 11, color: '#64748B' }}>{tx('loadFromMyCraftsSub')}</Text>
               </View>
               <TouchableOpacity onPress={() => setCraftPickerModalVisible(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#475569' }}>×</Text>

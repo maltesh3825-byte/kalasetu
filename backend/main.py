@@ -1935,6 +1935,29 @@ async def analyze_product(
         )
 
 
+@app.post("/api/upload-image")
+async def upload_image(file: UploadFile = File(...)):
+    """Upload product image and return static URL."""
+    try:
+        image_bytes = await file.read()
+        if not image_bytes:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+        filename = f"craft_{uuid.uuid4().hex[:10]}.{ext}"
+        saved_path = UPLOAD_DIR / filename
+        with open(saved_path, "wb") as f:
+            f.write(image_bytes)
+        image_url = f"/static/uploads/{filename}"
+        return JSONResponse(content={"image_url": image_url, "filename": filename})
+    except Exception as exc:
+        logger.error(f"Image upload failed: {exc}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to upload image: {str(exc)}"},
+        )
+
+
+
 @app.post("/api/translate-text")
 def translate_text(payload: TranslationRequest):
     text = payload.text.strip()
@@ -2049,8 +2072,15 @@ def create_product(product: ProductCreate, authorization: Optional[str] = Header
             product.artisan_location = user_city
 
         default_image = "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=800&q=80"
-        gallery_json = json.dumps(product.image_gallery or [product.image_url or default_image])
+        if not product.image_url or product.image_url.startswith("file://"):
+            product.image_url = default_image
+        sanitized_gallery = [
+            default_image if (img and img.startswith("file://")) else (img or default_image)
+            for img in (product.image_gallery or [product.image_url])
+        ]
+        gallery_json = json.dumps(sanitized_gallery)
         reviews_json = json.dumps(product.reviews or [])
+
 
         cursor.execute(
             """
