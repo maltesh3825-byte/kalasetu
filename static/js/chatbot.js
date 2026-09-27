@@ -17,20 +17,28 @@
   let chatHistory = [];
   let currentlySpeakingUtterance = null;
 
-  // BCP-47 locale map for speech recognition & TTS
+  // BCP-47 locale map for speech recognition & TTS (8 Regional Languages + English)
   const LANG_LOCALE_MAP = {
     en: 'en-IN',
     hi: 'hi-IN',
     kn: 'kn-IN',
     ta: 'ta-IN',
-    te: 'te-IN'
+    te: 'te-IN',
+    ml: 'ml-IN',
+    mr: 'mr-IN',
+    bho: 'hi-IN',
+    mai: 'hi-IN'
   };
   const LANG_LABEL_MAP = {
     en: '🇬🇧 EN — English',
-    hi: '🇮🇳 HI — Hindi',
-    kn: '🇮🇳 KN — Kannada',
-    ta: '🇮🇳 TA — Tamil',
-    te: '🇮🇳 TE — Telugu'
+    hi: '🇮🇳 HI — Hindi (हिंदी)',
+    kn: '🇮🇳 KN — Kannada (ಕನ್ನಡ)',
+    ta: '🇮🇳 TA — Tamil (தமிழ்)',
+    te: '🇮🇳 TE — Telugu (తెలుగు)',
+    ml: '🇮🇳 ML — Malayalam (മലയാളം)',
+    mr: '🇮🇳 MR — Marathi (मराठी)',
+    bho: '🇮🇳 BHO — Bhojpuri (भोजपुरी)',
+    mai: '🇮🇳 MAI — Maithili (मैथिली)'
   };
 
   const STORAGE_KEY = 'kalasetu_chat_history_orange_v2';
@@ -284,10 +292,11 @@
     const utterance = new SpeechSynthesisUtterance(cleanText);
     // Use correct TTS locale from map
     const locale = LANG_LOCALE_MAP[chatLanguage] || 'en-IN';
-    utterance.lang = /[\u0900-\u097F]/.test(cleanText) ? 'hi-IN'
+    utterance.lang = /[\u0900-\u097F]/.test(cleanText) ? (chatLanguage === 'mr' ? 'mr-IN' : 'hi-IN')
                    : /[\u0C80-\u0CFF]/.test(cleanText) ? 'kn-IN'
                    : /[\u0B80-\u0BFF]/.test(cleanText) ? 'ta-IN'
                    : /[\u0C00-\u0C7F]/.test(cleanText) ? 'te-IN'
+                   : /[\u0D00-\u0D7F]/.test(cleanText) ? 'ml-IN'
                    : locale;
     utterance.rate = 0.95;
     utterance._targetBtn = buttonEl;

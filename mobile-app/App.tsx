@@ -1467,6 +1467,7 @@ export default function App() {
       : lang === 'te' ? 'te-IN'
       : lang === 'ml' ? 'ml-IN'
       : lang === 'mr' ? 'mr-IN'
+      : (lang === 'bh' || lang === 'bho') ? 'hi-IN'
       : 'en-IN';
 
     try {
