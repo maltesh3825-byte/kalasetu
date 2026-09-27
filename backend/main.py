@@ -347,6 +347,7 @@ def get_categories():
 
 
 @app.post("/api/chat")
+@app.post("/api/ai/chat")
 def chat_ai(payload: ChatRequest):
     """
     AI Chatbot endpoint powered by Google Gemini API.

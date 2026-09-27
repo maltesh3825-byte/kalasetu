@@ -1408,7 +1408,7 @@ export default function App() {
       const errorMsg: ChatMessage = {
         id: `bot-err-${Date.now()}`,
         sender: 'bot',
-        text: 'Please ask related queries only about our artisan products, heritage crafts, orders, and pricing.',
+        text: 'KalaSetu Assistant is ready to help! Please rephrase your question or ask about crafts, pricing, and orders.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setChatMessages(prev => [...prev, errorMsg]);

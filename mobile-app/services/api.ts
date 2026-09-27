@@ -844,20 +844,55 @@ export async function askKalaSetuChatbot(
   if (!query) return "Please ask a question about our handicrafts.";
 
   // Build product summary context for grounding
-  const catalogSummary = (products || []).slice(0, 15).map((p, idx) => (
-    `${idx + 1}. "${p.name}" (Category: ${p.category}, Price: ₹${p.price}, Artisan: ${p.artisan_name} from ${p.artisan_location}). Description: ${p.description_en || ''}. Justification: ${p.price_justification || ''}`
+  const catalogList = (products && products.length > 0) ? products : [
+    { name: "Bastar Dhokra Tribal Bell-Metal Figurine", category: "Brass & Bell Metal", price: 2400, artisan_name: "Ramesh Baghel", artisan_location: "Bastar, Chhattisgarh", description_en: "Handcrafted lost-wax brass bell metal horse figurine." },
+    { name: "Natural Indigo Bhagalpur Tussar Silk Saree", category: "Handloom & Silk Sarees", price: 3450, artisan_name: "Manjula Ansari", artisan_location: "Bhagalpur, Bihar", description_en: "Pure handloom wild silk hand-dyed with organic indigo." },
+    { name: "Khurja Hand-Painted Blue Pottery Tea Set", category: "Pottery & Terracotta", price: 1250, artisan_name: "Abdul Qadir", artisan_location: "Khurja, Uttar Pradesh", description_en: "Traditional glazed blue pottery tea set with 4 matching cups." },
+    { name: "Madhubani Hand-Painted Tree of Life Art", category: "Folk Paintings", price: 1800, artisan_name: "Sunita Devi", artisan_location: "Madhubani, Bihar", description_en: "Natural vegetable dyes on handmade paper depicting Mithila folklore." },
+    { name: "Traditional Hand-Carved Sheesham Wood Elephant", category: "Woodcraft", price: 950, artisan_name: "Ramesh Sharma", artisan_location: "Saharanpur, Uttar Pradesh", description_en: "Finely carved single-block seasoned Sheesham wood sculpture." }
+  ];
+
+  const catalogSummary = catalogList.slice(0, 15).map((p: any, idx) => (
+    `${idx + 1}. "${p.name}" (Category: ${p.category}, Price: ₹${p.price}, Artisan: ${p.artisan_name || 'Master Artisan'} from ${p.artisan_location || 'India'}). Description: ${p.description_en || ''}.`
   )).join("\n");
 
-  const prompt = `You are KalaSetu's AI Assistant for Indian handicrafts, master artisans, and buyers under the Ministry of Social Justice and Empowerment (MoSJE).
+  const prompt = `You are KalaSetu Assistant (कलासेतु सहायक), the dedicated AI assistant for KalaSetu — an AI-driven digital marketplace and artisan empowerment platform under the Ministry of Social Justice and Empowerment (MoSJE, SIH26090).
 
-Current Artisan Product Catalog:
+What KalaSetu is and how users use it:
+1. Artisan Studio (AI Vision Cataloging & Publishing):
+   - Artisans take or upload a photo of their handcrafted product.
+   - Click "Analyze with AI" — Google Gemini Vision auto-detects craft category, materials, generates bilingual titles/descriptions (English & Hindi), suggests tags, and calculates a fair pricing recommendation.
+   - Artisans can preview and click "Publish to Marketplace" or "Add Craft to Catalog" to make their craft live on the marketplace.
+2. Buyer Marketplace:
+   - Buyers can explore authentic handcrafted products across categories (Brass & Bell Metal, Pottery & Terracotta, Handloom & Silk Sarees, Woodcraft, Folk Paintings).
+   - Add items to cart, place orders, pay securely, and track delivery with verified artisan provenance and MoSJE certification.
+3. Government & Institutional Linkages:
+   - GeM (Government e-Marketplace): Direct integration allowing government departments, PSUs, and institutions to procure bulk handicrafts from verified rural artisans.
+   - ONDC (Open Network for Digital Commerce): Interoperable e-commerce network enabling artisans to sell nationwide across multiple buyer apps.
+   - PM Vishwakarma & MoSJE Schemes: Collateral-free loans up to ₹3 Lakh at 5% interest, ₹15,000 modern toolkit incentive, skill training with ₹500/day stipend, and Pehchan artisan ID cards.
+   - Fair Pricing: Fair Price = (Raw Materials + [Crafting Hours × Fair Hourly Wage] + Packaging) × 1.20 (20% fair profit margin).
+4. Traditional Heritage Crafts Supported:
+   - Bastar Dhokra (lost-wax bell metal casting from Chhattisgarh)
+   - Madhubani & Warli folk paintings
+   - Terracotta & Khurja blue pottery
+   - Banarasi, Kanjeevaram & Tussar handloom silk sarees
+   - Channapatna & Saharanpur wooden crafts
+   - Kutch embroidery & leather mojaris
+
+Current Artisan Product Catalog Sample:
 ${catalogSummary}
 
-Strict Guidelines:
-1. ONLY answer questions related to our artisan products, handicrafts, materials, artisan stories, pricing, shipping, orders, MoSJE verification, and Indian traditional crafts.
-2. If the user's question is completely unrelated to our products or artisan crafts (e.g., asking about cricket, politics, math, general coding, recipes, jokes, etc.), you MUST reply strictly with:
-"Please ask related queries only about our artisan products, heritage crafts, orders, and pricing."
-3. Refer directly to the catalog details provided above whenever relevant. Be polite, warm, and concise (2-4 sentences max).
+Scope & Guardrail Instructions:
+1. Fully answer questions about:
+   - KalaSetu platform features (how to publish an order/craft, how to buy, how to track orders, how AI Studio works, cart, login).
+   - Any Indian traditional craft, materials, techniques, history, or artisan traditions (e.g., Bastar Dhokra, Madhubani, Terracotta, etc.).
+   - Government schemes, GeM portal, ONDC, MoSJE certification, fair pricing calculations.
+   - Catalog products and pricing recommendations.
+2. STRICT REFUSAL ONLY for completely unrelated topics:
+   If and ONLY IF the user's question is completely unrelated to KalaSetu, crafts, artisan products, marketplace operations, or artisan welfare (e.g., sports/cricket scores, politics, movies/cinema, general programming outside KalaSetu, generic math, celebrity gossip), reply strictly with:
+   "Please ask related queries only about our artisan products, heritage crafts, orders, and pricing."
+
+Be polite, helpful, encouraging, and concise (2-4 sentences or clear bullet points).
 
 User Question: "${query}"`;
 
@@ -867,6 +902,7 @@ User Question: "${query}"`;
     const modelsToTry = [
       "gemini-flash-lite-latest",
       "gemini-3.5-flash-lite",
+      "gemini-2.5-flash",
       "gemini-3.5-flash",
       "gemini-3.6-flash"
     ];
@@ -896,12 +932,20 @@ User Question: "${query}"`;
     }
   }
 
-  // Fallback to backend /api/ai/chat
+  // Fallback to backend /api/chat
   try {
-    const res = await fetch(`${getBackendUrl()}/api/ai/chat`, {
+    const apiMessages = [
+      ...(chatHistory || []).slice(-6).map(m => ({
+        role: m.sender === 'user' ? 'user' : 'model',
+        content: m.text
+      })),
+      { role: 'user', content: query }
+    ];
+
+    const res = await fetch(`${getBackendUrl()}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: query, catalog_context: catalogSummary })
+      body: JSON.stringify({ messages: apiMessages, language: 'en' })
     });
     if (res.ok) {
       const data = await res.json();
@@ -909,15 +953,56 @@ User Question: "${query}"`;
     }
   } catch {}
 
-  // Smart local fallback check
+  // Smart local heuristic fallback
   const lowerQ = query.toLowerCase();
-  const craftKeywords = ['terracotta', 'pot', 'clay', 'dhokra', 'brass', 'metal', 'mirror', 'kutch', 'embroidery', 'wood', 'channapatna', 'toy', 'silk', 'dupatta', 'madhubani', 'saree', 'price', 'artisan', 'shipping', 'order', 'craft', 'handloom', 'leather', 'chappal', 'basket', 'cane', 'bamboo'];
-  const hasCraftKeyword = craftKeywords.some(k => lowerQ.includes(k));
-  if (!hasCraftKeyword && lowerQ.length > 5 && !lowerQ.includes('hello') && !lowerQ.includes('hi')) {
+
+  // Guardrail: reject truly unrelated queries
+  const unrelatedKeywords = [
+    'cricket', 'football', 'ipl', 'world cup', 'match', 'politics', 'election',
+    'movie', 'actor', 'actress', 'cinema', 'weather', 'crypto', 'bitcoin', 'stock market',
+    'president of', 'prime minister of', 'capital of', 'calculate 2', 'solve x',
+    'python code', 'javascript code', 'write a poem about space', 'joke'
+  ];
+  if (unrelatedKeywords.some(k => lowerQ.includes(k))) {
     return "Please ask related queries only about our artisan products, heritage crafts, orders, and pricing.";
   }
 
-  return "Welcome to KalaSetu! We connect traditional Indian master artisans directly with buyers. All our products feature MoSJE verification, fair pricing, and authentic artisan provenance.";
+  // Publishing / ordering / marketplace queries
+  if (lowerQ.includes('publish') || lowerQ.includes('sell') || lowerQ.includes('post') || (lowerQ.includes('how') && lowerQ.includes('order'))) {
+    return "To publish a product or order on KalaSetu Marketplace:\n1. Switch to the **Artisan Studio** tab.\n2. Upload or snap a photo of your handmade craft.\n3. Click **'Analyze with AI'** — Gemini Vision auto-detects craft category, materials, generates bilingual descriptions, and suggests a fair price.\n4. Click **'Publish to Marketplace'** to make your craft live for buyers nationwide!";
+  }
+
+  // GeM / ONDC queries
+  if (lowerQ.includes('gem') || lowerQ.includes('ondc') || lowerQ.includes('procurement')) {
+    return "**GeM (Government e-Marketplace)** is an online procurement portal integrated with KalaSetu that enables government departments, PSUs, and institutions to directly purchase authentic handicrafts in bulk from MoSJE-verified rural artisans. KalaSetu also links with **ONDC** to expand artisan reach across national digital networks.";
+  }
+
+  // Dhokra / Bastar queries
+  if (lowerQ.includes('dhokra') || lowerQ.includes('bastar') || lowerQ.includes('bell metal')) {
+    return "**Bastar Dhokra** is an ancient 4,000-year-old lost-wax bell metal casting craft practiced by tribal master artisans in Bastar, Chhattisgarh. Artisans hand-shape beeswax threads over a clay mold before casting with molten brass, creating exquisite rustic figurines and heritage sculptures.";
+  }
+
+  // Pricing queries
+  if (lowerQ.includes('price') || lowerQ.includes('pricing') || lowerQ.includes('cost') || lowerQ.includes('formula')) {
+    return "**KalaSetu Fair Pricing Formula**:\n`Fair Price = (Raw Materials + [Crafting Hours × Fair Hourly Wage] + Packaging) × 1.20 (20% Fair Profit Margin)`.\nOur AI Studio auto-calculates regional fair prices so artisans are protected from distress selling.";
+  }
+
+  // Government scheme queries
+  if (lowerQ.includes('scheme') || lowerQ.includes('vishwakarma') || lowerQ.includes('loan') || lowerQ.includes('subsidy')) {
+    return "Under the **PM Vishwakarma Scheme** and MoSJE assistance, rural artisans receive:\n• Collateral-free loans up to ₹3,00,000 at 5% interest\n• ₹15,000 modern toolkit incentive\n• Free skill training with ₹500/day stipend & Pehchan artisan card.";
+  }
+
+  // Pottery / Terracotta
+  if (lowerQ.includes('pottery') || lowerQ.includes('terracotta') || lowerQ.includes('clay') || lowerQ.includes('khurja')) {
+    return "KalaSetu features exquisite pottery including **Khurja Hand-Painted Blue Pottery** and traditional **Terracotta Planters** crafted from natural clay and glazed with organic mineral pigments.";
+  }
+
+  // Saree / Handloom
+  if (lowerQ.includes('saree') || lowerQ.includes('silk') || lowerQ.includes('handloom') || lowerQ.includes('tussar')) {
+    return "Our handloom textiles feature authentic **Bhagalpur Tussar Silk Sarees** and **Kanchipuram Silk** woven on traditional wooden pit looms with organic dyes.";
+  }
+
+  return "Welcome to KalaSetu! I am your AI assistant for authentic Indian handicrafts, fair pricing, and artisan empowerment under MoSJE. You can ask me how to publish products, explore craft heritage (like Bastar Dhokra or Blue Pottery), or learn about GeM institutional orders.";
 }
 
 // ── Smart Local Heuristic Fallback ────────────────────────────────────────────
