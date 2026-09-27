@@ -3172,27 +3172,27 @@ export default function App() {
           <TouchableOpacity onPress={openHomeMarket} style={styles.logoBadge}>
             <Text style={styles.logoBadgeText}>क</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={openHomeMarket}>
+          <TouchableOpacity onPress={openHomeMarket} style={{ flexShrink: 1 }}>
             <Text style={styles.appName}>KalaSetu</Text>
-            <Text style={styles.appSub}>{t.appSubtitle}</Text>
+            <Text style={styles.appSub} numberOfLines={1} ellipsizeMode="tail">{t.appSubtitle}</Text>
           </TouchableOpacity>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0 }}>
           <TouchableOpacity
             style={{
               backgroundColor: '#0F172A',
-              paddingHorizontal: 9,
-              paddingVertical: 6,
-              borderRadius: 20,
+              paddingHorizontal: 8,
+              paddingVertical: 5,
+              borderRadius: 16,
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 4,
+              gap: 3,
               borderWidth: 1,
               borderColor: '#38BDF8',
             }}
             onPress={() => setChatModalVisible(true)}>
-            <Text style={{ fontSize: 13 }}>💬</Text>
-            <Text style={{ fontSize: 11, fontWeight: '800', color: '#F8FAFC' }}>{tx('aiAssistant')}</Text>
+            <Text style={{ fontSize: 12 }}>💬</Text>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: '#F8FAFC' }}>AI</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.helpBtn} 
@@ -3768,8 +3768,8 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -3829,35 +3829,45 @@ const styles = StyleSheet.create({
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+    flex: 1,
+    marginRight: 8,
   },
   logoBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 34,
+    height: 34,
+    borderRadius: 9,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   logoBadgeText: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '900',
   },
   appName: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     color: Colors.textPrimary,
+    lineHeight: 19,
   },
   appSub: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: Colors.textSecondary,
+    lineHeight: 12,
   },
   helpBtn: {
     backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
   },
   helpBtnText: {
     color: Colors.primaryDark,
