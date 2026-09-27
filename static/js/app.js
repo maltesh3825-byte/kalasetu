@@ -2253,7 +2253,7 @@ async function updateIncomingOrderStatus(orderId, status, content) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: state.currentUser.id, status, note })
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({ detail: res.statusText || 'Unable to update status' }));
     if (!res.ok) throw new Error(data.detail || 'Could not update order status');
     showToast(status === 'Accepted' ? 'Order accepted!' : 'Order rejected (stock restored to listing)');
     await loadAccountData();

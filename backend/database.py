@@ -53,12 +53,13 @@ class PgCursorWrapper:
             except Exception:
                 self.lastrowid = None
 
-        return res
+        return self
 
     def executemany(self, query, vars_list):
         if isinstance(query, str) and "?" in query:
             query = query.replace("?", "%s")
-        return self._cursor.executemany(query, vars_list)
+        self._cursor.executemany(query, vars_list)
+        return self
 
     def fetchone(self):
         row = self._cursor.fetchone()

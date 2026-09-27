@@ -1578,6 +1578,7 @@ def delete_product(product_id: int, payload: ProductDeleteRequest):
 @app.post("/api/orders/{order_id}/status")
 def update_order_status(order_id: int, payload: OrderStatusUpdate):
     """Allows an artisan to Accept or Reject an incoming order, or mark it Dispatched/Delivered."""
+    import traceback
     valid_statuses = {"Accepted", "Rejected", "Dispatched", "Delivered", "Cancelled"}
     target_status = payload.status.strip().title()
     if target_status not in valid_statuses:
@@ -1586,109 +1587,178 @@ def update_order_status(order_id: int, payload: OrderStatusUpdate):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT o.id, o.user_id, o.product_id, o.product_name, o.quantity, o.status,
-               p.artisan_name, p.artisan_phone
-        FROM orders o
-        JOIN products p ON p.id = o.product_id
-        WHERE o.id = ?
-        """,
-        (order_id,),
-    )
-    order_row = cursor.fetchone()
-    if not order_row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Order not found")
-
-    order = dict(order_row)
-    current_status = str(order["status"]).title()
-
-    user_row = cursor.execute("SELECT id, name, phone, role FROM users WHERE id = ?", (payload.user_id,)).fetchone()
-    if not user_row:
-        conn.close()
-        raise HTTPException(status_code=403, detail="User not recognized")
-
-    user_dict = dict(user_row)
-    p_phone = (order["artisan_phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
-    u_phone = (user_dict.get("phone") or "").replace("+91", "").replace(" ", "").replace("-", "")
-    phone_match = bool(p_phone and u_phone and p_phone == u_phone)
-    name_match = bool(order["artisan_name"] and user_dict["name"] and order["artisan_name"].strip().lower() == user_dict["name"].strip().lower())
-
-    is_artisan = (user_dict.get("role") == "artisan" or name_match or phone_match)
-    is_buyer = (order["user_id"] == payload.user_id)
-    is_admin = (user_dict.get("role") == "admin")
-
-    if not (is_artisan or is_buyer or is_admin):
-        conn.close()
-        raise HTTPException(status_code=403, detail="You are not authorized to update this order")
-
-    # If rejected or cancelled, restore the quantity to the product listing
-    if target_status in ("Rejected", "Cancelled") and current_status not in ("Rejected", "Cancelled"):
+    try:
         cursor.execute(
-            "UPDATE products SET quantity = quantity + ? WHERE id = ?",
-            (int(order["quantity"]), int(order["product_id"])),
+            """
+            SELECT o.id, o.user_id, o.product_id, o.product_name, o.quantity, o.status, o.seller_id,
+                   p.artisan_name, p.artisan_phone, p.owner_user_id
+            FROM orders o
+            LEFT JOIN products p ON p.id = o.product_id
+            WHERE o.id = ?
+            """,
+            (order_id,),
+        )
+        order_row = cursor.fetchone()
+        if not order_row:
+            # Check Supabase if order not found in local table
+            from backend.config import SUPABASE_URL, SUPABASE_KEY
+            if SUPABASE_URL and SUPABASE_KEY:
+                try:
+                    import requests as _req
+                    sb_o_resp = _req.get(
+                        f"{SUPABASE_URL}/rest/v1/orders?id=eq.{order_id}",
+                        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                        timeout=3
+                    )
+                    if sb_o_resp.ok:
+                        sb_items = sb_o_resp.json()
+                        if sb_items:
+                            order_row = {
+                                "id": order_id,
+                                "user_id": sb_items[0].get("user_id"),
+                                "product_id": sb_items[0].get("product_id"),
+                                "product_name": sb_items[0].get("product_name"),
+                                "quantity": sb_items[0].get("quantity", 1),
+                                "status": sb_items[0].get("status", "Requested"),
+                                "seller_id": sb_items[0].get("seller_id"),
+                                "artisan_name": "",
+                                "artisan_phone": "",
+                                "owner_user_id": sb_items[0].get("seller_id")
+                            }
+                except Exception as _sb_e:
+                    logger.warning(f"Supabase order lookup failed in status update: {_sb_e}")
+
+        if not order_row:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        order = dict(order_row)
+        current_status = str(order["status"]).title()
+
+        cursor.execute("SELECT id, name, phone, role FROM users WHERE id = ?", (payload.user_id,))
+        user_row = cursor.fetchone()
+
+        if not user_row:
+            # Check Supabase if user exists in cloud
+            from backend.config import SUPABASE_URL, SUPABASE_KEY
+            if SUPABASE_URL and SUPABASE_KEY:
+                try:
+                    import requests as _req
+                    sb_u_resp = _req.get(
+                        f"{SUPABASE_URL}/rest/v1/users?id=eq.{payload.user_id}&select=id,name,phone,role",
+                        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
+                        timeout=3
+                    )
+                    if sb_u_resp.ok:
+                        sb_u_rows = sb_u_resp.json()
+                        if sb_u_rows:
+                            user_row = sb_u_rows[0]
+                except Exception:
+                    pass
+
+        if not user_row:
+            raise HTTPException(status_code=403, detail="User not recognized")
+
+        user_dict = dict(user_row)
+        p_phone = (order.get("artisan_phone") or "").replace("+91", "").replace(" ", "").replace("-", "")
+        u_phone = (user_dict.get("phone") or "").replace("+91", "").replace(" ", "").replace("-", "")
+        phone_match = bool(p_phone and u_phone and p_phone == u_phone)
+        name_match = bool(order.get("artisan_name") and user_dict.get("name") and order["artisan_name"].strip().lower() == user_dict["name"].strip().lower())
+
+        is_seller = (
+            order.get("seller_id") == payload.user_id
+            or order.get("owner_user_id") == payload.user_id
+            or (user_dict.get("id") == order.get("seller_id"))
+        )
+        is_artisan = (is_seller or user_dict.get("role") == "artisan" or name_match or phone_match)
+        is_buyer = (order.get("user_id") == payload.user_id)
+        is_admin = (user_dict.get("role") == "admin")
+
+        if not (is_artisan or is_buyer or is_admin):
+            raise HTTPException(status_code=403, detail="You are not authorized to update this order")
+
+        # If rejected or cancelled, restore the quantity to the product listing
+        if target_status in ("Rejected", "Cancelled") and current_status not in ("Rejected", "Cancelled"):
+            cursor.execute(
+                "UPDATE products SET quantity = quantity + ? WHERE id = ?",
+                (int(order["quantity"]), int(order["product_id"])),
+            )
+
+        now_str = datetime.now(timezone.utc).isoformat()
+        note = payload.note.strip() if payload.note else ""
+        cursor.execute(
+            """
+            UPDATE orders
+            SET status = ?,
+                cancel_reason = CASE WHEN ? != '' THEN ? ELSE cancel_reason END,
+                cancelled_at = CASE WHEN ? IN ('Rejected', 'Cancelled') THEN ? ELSE cancelled_at END
+            WHERE id = ?
+            """,
+            (target_status, note, note, target_status, now_str, order_id),
         )
 
-    now_str = datetime.now(timezone.utc).isoformat()
-    note = payload.note.strip() if payload.note else ""
-    cursor.execute(
-        """
-        UPDATE orders
-        SET status = ?,
-            cancel_reason = CASE WHEN ? != '' THEN ? ELSE cancel_reason END,
-            cancelled_at = CASE WHEN ? IN ('Rejected', 'Cancelled') THEN ? ELSE cancelled_at END
-        WHERE id = ?
-        """,
-        (target_status, note, note, target_status, now_str, order_id),
-    )
-
-    buyer_id = order["user_id"]
-    if buyer_id:
-        title = f"Order #{order_id} {target_status}"
-        msg = f"Your order for {order['product_name']} ({order['quantity']} unit(s)) has been marked as '{target_status}'."
-        if note:
-            msg += f" Note: {note}"
-        cursor.execute(
-            "INSERT INTO notifications (user_id, kind, title, message, related_id) VALUES (?, ?, ?, ?, ?)",
-            (buyer_id, f"order_{target_status.lower()}", title, msg, order_id),
-        )
-
-    conn.commit()
-    conn.close()
-
-    # Dual-sync status update and inventory restoration to Supabase
-    from backend.config import SUPABASE_URL, SUPABASE_KEY
-    if SUPABASE_URL and SUPABASE_KEY:
-        try:
-            import requests as _req
-            sb_headers = {
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "application/json"
-            }
-            sb_patch = {"status": target_status}
+        buyer_id = order.get("user_id")
+        if buyer_id:
+            title = f"Order #{order_id} {target_status}"
+            msg = f"Your order for {order.get('product_name') or 'craft item'} ({order['quantity']} unit(s)) has been marked as '{target_status}'."
             if note:
-                sb_patch["cancel_reason"] = note
-            _req.patch(f"{SUPABASE_URL}/rest/v1/orders?id=eq.{order_id}", json=sb_patch, headers=sb_headers, timeout=4)
+                msg += f" Note: {note}"
+            try:
+                cursor.execute(
+                    "INSERT INTO notifications (user_id, kind, title, message, related_id) VALUES (?, ?, ?, ?, ?)",
+                    (buyer_id, f"order_{target_status.lower()}", title, msg, order_id),
+                )
+            except Exception:
+                pass
 
-            if target_status in ("Rejected", "Cancelled") and current_status not in ("Rejected", "Cancelled"):
-                p_resp = _req.get(f"{SUPABASE_URL}/rest/v1/products?id=eq.{order['product_id']}&select=quantity", headers=sb_headers, timeout=3)
-                if p_resp.ok:
-                    p_data = p_resp.json()
-                    if p_data:
-                        cur_sb_q = p_data[0].get("quantity")
-                        cur_sb_num = int(cur_sb_q) if cur_sb_q is not None else 10
-                        _req.patch(
-                            f"{SUPABASE_URL}/rest/v1/products?id=eq.{order['product_id']}",
-                            json={"quantity": cur_sb_num + int(order["quantity"])},
-                            headers=sb_headers,
-                            timeout=4
-                        )
-        except Exception as sb_err:
-            logger.warning(f"Dual-sync order status to Supabase failed: {sb_err}")
+        conn.commit()
 
-    return {"status": "success", "order_id": order_id, "new_status": target_status}
+        # Dual-sync status update and inventory restoration to Supabase
+        from backend.config import SUPABASE_URL, SUPABASE_KEY
+        if SUPABASE_URL and SUPABASE_KEY:
+            try:
+                import requests as _req
+                sb_headers = {
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/json"
+                }
+                sb_patch = {"status": target_status}
+                if note:
+                    sb_patch["cancel_reason"] = note
+                _req.patch(f"{SUPABASE_URL}/rest/v1/orders?id=eq.{order_id}", json=sb_patch, headers=sb_headers, timeout=4)
+
+                if target_status in ("Rejected", "Cancelled") and current_status not in ("Rejected", "Cancelled"):
+                    p_resp = _req.get(f"{SUPABASE_URL}/rest/v1/products?id=eq.{order['product_id']}&select=quantity", headers=sb_headers, timeout=3)
+                    if p_resp.ok:
+                        p_data = p_resp.json()
+                        if p_data:
+                            cur_sb_q = p_data[0].get("quantity")
+                            cur_sb_num = int(cur_sb_q) if cur_sb_q is not None else 10
+                            _req.patch(
+                                f"{SUPABASE_URL}/rest/v1/products?id=eq.{order['product_id']}",
+                                json={"quantity": cur_sb_num + int(order["quantity"])},
+                                headers=sb_headers,
+                                timeout=4
+                            )
+            except Exception as sb_err:
+                logger.warning(f"Dual-sync order status to Supabase failed: {sb_err}")
+
+        return {"status": "success", "order_id": order_id, "new_status": target_status}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[ORDER STATUS ERROR] order_id={order_id}: {exc}")
+        traceback.print_exc()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Status update failed: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 @app.post("/api/orders/{order_id}/cancel")
