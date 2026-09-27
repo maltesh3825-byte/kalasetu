@@ -189,9 +189,17 @@ const SAMPLE_PRESETS = [
 ];
 
 function resolveImageUrl(imageUrl) {
-  if (!imageUrl) return '';
+  const fallback = 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80';
+  if (!imageUrl) return fallback;
+  if (/^file:\/\//i.test(imageUrl) || imageUrl.includes('%sauto')) {
+    return fallback;
+  }
   if (/^(https?:|data:|blob:)/i.test(imageUrl)) return imageUrl;
-  return new URL(imageUrl, window.location.origin).href;
+  try {
+    return new URL(imageUrl, window.location.origin).href;
+  } catch (e) {
+    return fallback;
+  }
 }
 
 function escapeHtml(value) {
@@ -3386,8 +3394,9 @@ function renderProducts(products) {
              tabindex="0"
              aria-label="View ${p.name} details"
              onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openProductModal(${p.id}); }">
-          <img src="${resolveImageUrl(p.image_url)}" alt="${p.name}"
-               class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${imageClass}">
+          <img src="${resolveImageUrl(p.image_url)}" alt="${escapeHtml(p.name)}"
+               class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${imageClass}"
+               onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80'">
           
           <!-- Category Pill -->
           <span class="absolute top-3 left-3 bg-white/90 backdrop-blur-md text-xs font-semibold px-2.5 py-1 rounded-full text-slate-800 shadow-sm border border-slate-100">
@@ -3534,7 +3543,14 @@ function openProductModal(productId) {
   const modal = document.getElementById('productDetailModal');
   if (!modal) return;
 
-  document.getElementById('modalImage').src = resolveImageUrl(product.image_url);
+  const modalImg = document.getElementById('modalImage');
+  if (modalImg) {
+    modalImg.onerror = function() {
+      this.onerror = null;
+      this.src = 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80';
+    };
+    modalImg.src = resolveImageUrl(product.image_url);
+  }
   document.getElementById('modalTitle').textContent = product.name;
   document.getElementById('modalPrice').textContent = `₹${product.price.toLocaleString('en-IN')}`;
   document.getElementById('modalCategory').textContent = getCategoryLabel(product.category);

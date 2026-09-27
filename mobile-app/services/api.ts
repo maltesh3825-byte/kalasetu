@@ -1268,9 +1268,45 @@ export async function analyzeProductPhoto(
   }
 }
 
+function base64ToBytes(b64: string): Uint8Array {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const clean = b64.replace(/[^A-Za-z0-9+/]/g, '');
+  const len = clean.length;
+  const bytes = new Uint8Array(Math.floor(len * 0.75));
+  let p = 0;
+  for (let i = 0; i < len; i += 4) {
+    const enc1 = chars.indexOf(clean[i]);
+    const enc2 = chars.indexOf(clean[i + 1]);
+    const enc3 = chars.indexOf(clean[i + 2]);
+    const enc4 = chars.indexOf(clean[i + 3]);
+    const chr1 = (enc1 << 2) | (enc2 >> 4);
+    const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+    const chr3 = ((enc3 & 3) << 6) | enc4;
+    bytes[p++] = chr1;
+    if (enc3 !== 64 && enc3 !== -1) bytes[p++] = chr2;
+    if (enc4 !== 64 && enc4 !== -1) bytes[p++] = chr3;
+  }
+  return bytes.subarray(0, p);
+}
+
 export async function syncProductToSupabaseDirect(product: Omit<CraftProduct, 'id'>): Promise<any> {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return null;
+  }
+
+  const defaultHandicraftImage = "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80";
+  let sanitizedImageUrl = product.image_url;
+  if (!sanitizedImageUrl || (!sanitizedImageUrl.startsWith('http://') && !sanitizedImageUrl.startsWith('https://'))) {
+    sanitizedImageUrl = defaultHandicraftImage;
+  }
+
+  let sanitizedGallery: string[] = [];
+  if (Array.isArray(product.image_gallery) && product.image_gallery.length > 0) {
+    sanitizedGallery = product.image_gallery.map(img =>
+      (img && (img.startsWith('http://') || img.startsWith('https://'))) ? img : sanitizedImageUrl
+    );
+  } else {
+    sanitizedGallery = [sanitizedImageUrl];
   }
 
   const payload = {
@@ -1287,8 +1323,8 @@ export async function syncProductToSupabaseDirect(product: Omit<CraftProduct, 'i
     description_en: product.description_en || product.name,
     description_hi: product.description_hi || "",
     tags: JSON.stringify(product.tags || ["Handmade", "Artisan"]),
-    image_url: product.image_url || "",
-    image_gallery: JSON.stringify(product.image_gallery || [product.image_url || ""]),
+    image_url: sanitizedImageUrl,
+    image_gallery: JSON.stringify(sanitizedGallery),
     rating: Number(product.rating || 4.5),
     reviews: JSON.stringify(product.reviews || []),
     is_enhanced: product.is_enhanced ? 1 : 0,
@@ -1346,13 +1382,7 @@ export async function uploadImageToCloud(
       let contentType = 'image/jpeg';
 
       if (base64Data) {
-        const cleanB64 = base64Data.replace(/^data:image\/[a-z]+;base64,/, '');
-        const binaryStr = atob(cleanB64);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) {
-          bytes[i] = binaryStr.charCodeAt(i);
-        }
-        body = bytes;
+        body = base64ToBytes(base64Data);
       } else {
         const localResp = await fetch(localUri);
         const blob = await localResp.blob();
@@ -1427,10 +1457,26 @@ export async function publishProductToApi(product: Omit<CraftProduct, 'id'>): Pr
   let cloudSuccess = false;
   let lastErrorMsg = '';
 
+  // Ensure image is an https:// URL before publishing anywhere
+  let finalImageUrl = product.image_url;
+  if (!finalImageUrl || (!finalImageUrl.startsWith('http://') && !finalImageUrl.startsWith('https://'))) {
+    try {
+      finalImageUrl = await uploadImageToCloud(finalImageUrl);
+    } catch {
+      finalImageUrl = "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80";
+    }
+  }
+
+  const sanitizedProduct = {
+    ...product,
+    image_url: finalImageUrl,
+    image_gallery: [finalImageUrl]
+  };
+
   // 1. Direct Cloud Upload to Supabase REST (instant, never sleeps)
   if (SUPABASE_URL && SUPABASE_ANON_KEY) {
     try {
-      await syncProductToSupabaseDirect(product);
+      await syncProductToSupabaseDirect(sanitizedProduct);
       cloudSuccess = true;
       console.info("Direct Supabase product upload succeeded!");
     } catch (sbErr: any) {
@@ -1444,7 +1490,7 @@ export async function publishProductToApi(product: Omit<CraftProduct, 'id'>): Pr
     const res = await fetchWithTimeout(`${getBackendUrl()}/api/products`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(product)
+      body: JSON.stringify(sanitizedProduct)
     }, 4000);
     if (res.ok) {
       cloudSuccess = true;

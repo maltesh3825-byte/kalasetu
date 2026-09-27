@@ -1839,7 +1839,7 @@ export default function App() {
 
     setIsPublishing(true);
     let imageUrl = imageUri || "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80";
-    if (imageUrl.startsWith('file://')) {
+    if (imageUrl && !imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
       try {
         imageUrl = await uploadImageToCloud(imageUrl, imageBase64);
       } catch (uploadErr) {
