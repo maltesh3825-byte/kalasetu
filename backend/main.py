@@ -2554,6 +2554,24 @@ def serve_index():
     return response
 
 
+@app.get("/favicon.ico")
+def serve_favicon():
+    """Serves KalaSetu favicon for browser tabs and shortcuts."""
+    favicon_path = STATIC_DIR / "favicon.ico"
+    if favicon_path.exists():
+        return FileResponse(favicon_path, media_type="image/x-icon")
+    return Response(status_code=404)
+
+
+@app.get("/manifest.json")
+def serve_manifest():
+    """Serves web app manifest for Chrome shortcut tiles and PWA."""
+    manifest_path = STATIC_DIR / "manifest.json"
+    if manifest_path.exists():
+        return FileResponse(manifest_path, media_type="application/manifest+json")
+    return Response(status_code=404)
+
+
 if __name__ == "__main__":
     import uvicorn
 
