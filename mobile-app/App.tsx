@@ -1054,15 +1054,23 @@ export default function App() {
         quantity,
         customerName: currentUser.name,
         sellerId: product.owner_user_id,
+        currentQuantity: availableQuantity,
         ...deliveryDetails
       });
 
       setOrders(prev => [order, ...prev]);
-      // Update local product quantity immediately
-      setProducts(prev => prev.map(item => item.id === product.id
-        ? { ...item, quantity: Math.max(0, (Number(item.quantity ?? 10)) - quantity) }
-        : item
-      ));
+
+      const remainingQty = Math.max(0, (Number(product.quantity ?? availableQuantity)) - quantity);
+
+      const matchesProduct = (item: CraftProduct) =>
+        (item.id != null && product.id != null && Number(item.id) === Number(product.id)) ||
+        (Boolean(item.name) && Boolean(product.name) && item.name.trim().toLowerCase() === product.name.trim().toLowerCase());
+
+      // Update local product quantity across all marketplace, published, and detail states immediately
+      setProducts(prev => prev.map(item => matchesProduct(item) ? { ...item, quantity: remainingQty } : item));
+      setPublishedProducts(prev => prev.map(item => matchesProduct(item) ? { ...item, quantity: remainingQty } : item));
+      setSelectedProduct(prev => (prev && matchesProduct(prev)) ? { ...prev, quantity: remainingQty } : prev);
+
       setBuyQuantity('1');
       Alert.alert('Order requested', `Your request for ${product.name} has been sent to the artisan.`);
       setActiveTab('account');
@@ -1324,12 +1332,14 @@ export default function App() {
 
       // Restore product stock in local state immediately
       if (targetOrder) {
-        setProducts(prev => prev.map(p => {
-          if (p.id === targetOrder.productId || p.name === targetOrder.productName) {
-            return { ...p, quantity: (p.quantity ?? 0) + (targetOrder.quantity || 1) };
-          }
-          return p;
-        }));
+        const matchesTarget = (p: CraftProduct) =>
+          (p.id != null && targetOrder.productId != null && Number(p.id) === Number(targetOrder.productId)) ||
+          (Boolean(p.name) && Boolean(targetOrder.productName) && p.name.trim().toLowerCase() === targetOrder.productName.trim().toLowerCase());
+
+        const restoredCount = targetOrder.quantity || 1;
+        setProducts(prev => prev.map(p => matchesTarget(p) ? { ...p, quantity: (p.quantity ?? 0) + restoredCount } : p));
+        setPublishedProducts(prev => prev.map(p => matchesTarget(p) ? { ...p, quantity: (p.quantity ?? 0) + restoredCount } : p));
+        setSelectedProduct(prev => (prev && matchesTarget(prev)) ? { ...prev, quantity: (prev.quantity ?? 0) + restoredCount } : prev);
       }
 
       Alert.alert(
@@ -2043,15 +2053,14 @@ export default function App() {
     });
   };
 
-  // Filtered Products - hide sold-out (quantity <= 0) items
+  // Filtered Products - show all matching products; sold out items are clearly marked
   const filteredProducts = products.filter(p => {
     const matchesCategory = selectedCategory === 'All' || p.category === selectedCategory;
     const matchesSearch = !searchQuery || 
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.artisan_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.category.toLowerCase().includes(searchQuery.toLowerCase());
-    const inStock = Number(p.quantity ?? 1) > 0;
-    return matchesCategory && matchesSearch && inStock;
+    return matchesCategory && matchesSearch;
   });
 
   const categoriesList = ['All', 'Handloom & Textiles', 'Pottery & Terracotta', 'Brass & Metalcraft', 'Woodcraft', 'Cane & Bamboo', 'Folk Art & Painting'];
@@ -3028,7 +3037,7 @@ export default function App() {
                                 <View style={{ flex: 1 }}>
                                   <Text style={styles.orderTitle}>{product.name}</Text>
                                   <Text style={styles.orderMeta}>₹{product.price} · {product.category}</Text>
-                                  <Text style={styles.orderMeta}>📦 {tx('stockLabel')}: {product.quantity || 1} · {product.mosje_verified ? `🏅 ${tx('verified')}` : tx('standard')}</Text>
+                                  <Text style={styles.orderMeta}>📦 {tx('stockLabel')}: {product.quantity !== undefined && product.quantity !== null ? product.quantity : 0} · {product.mosje_verified ? `🏅 ${tx('verified')}` : tx('standard')}</Text>
                                 </View>
                               </View>
                               <TouchableOpacity

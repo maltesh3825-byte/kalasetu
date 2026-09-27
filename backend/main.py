@@ -1348,7 +1348,7 @@ def create_order(payload: OrderCreate):
                 payload.product_id
             ]
 
-        available_quantity = int(product_row[0] or 10)
+        available_quantity = int(product_row[0]) if (product_row and product_row[0] is not None) else 10
         # Update local product quantity if exists
         try:
             cursor.execute(
@@ -1474,24 +1474,33 @@ def create_order(payload: OrderCreate):
             ),
         )
         conn.commit()
-        remaining_quantity = available_quantity - requested_quantity
+        remaining_quantity = max(0, available_quantity - requested_quantity)
 
         # Sync updated product quantity to Supabase so website marketplace also reflects the change
         try:
             import requests as _req
+            import urllib.parse
             from backend.config import SUPABASE_URL, SUPABASE_KEY
             if SUPABASE_URL and SUPABASE_KEY:
+                sb_patch_headers = {
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/json",
+                    "Prefer": "return=minimal"
+                }
                 _req.patch(
                     f"{SUPABASE_URL}/rest/v1/products?id=eq.{payload.product_id}",
                     json={"quantity": remaining_quantity},
-                    headers={
-                        "apikey": SUPABASE_KEY,
-                        "Authorization": f"Bearer {SUPABASE_KEY}",
-                        "Content-Type": "application/json",
-                        "Prefer": "return=minimal"
-                    },
+                    headers=sb_patch_headers,
                     timeout=5
                 )
+                if payload.product_name:
+                    _req.patch(
+                        f"{SUPABASE_URL}/rest/v1/products?name=eq.{urllib.parse.quote(payload.product_name.strip())}",
+                        json={"quantity": remaining_quantity},
+                        headers=sb_patch_headers,
+                        timeout=5
+                    )
         except Exception as sync_err:
             print(f"[ORDER SYNC] Supabase quantity sync failed (non-fatal): {sync_err}")
 

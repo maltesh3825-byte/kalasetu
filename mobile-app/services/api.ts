@@ -2029,6 +2029,7 @@ export async function loginAdmin(email: string, password: string): Promise<strin
     state: string;
     pincode: string;
     sellerId?: number;
+    currentQuantity?: number;
   }): Promise<OrderRecord> {
     const order: OrderRecord = {
       id: Date.now(),
@@ -2046,24 +2047,42 @@ export async function loginAdmin(email: string, password: string): Promise<strin
 
     // Resolve seller ID and current stock from Supabase if available
     let targetSellerId = input.sellerId;
-    let initialQty = 10;
+    let initialQty = input.currentQuantity !== undefined ? input.currentQuantity : 10;
     if (SUPABASE_URL && SUPABASE_ANON_KEY) {
       try {
-        const pFetch = await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${input.productId}&select=quantity,owner_user_id`, {
+        let pFetch = await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${input.productId}&select=quantity,owner_user_id,id`, {
           headers: {
             'apikey': SUPABASE_ANON_KEY,
             'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
           }
         });
-        if (pFetch.ok) {
-          const pRows = await pFetch.json();
-          if (Array.isArray(pRows) && pRows.length > 0) {
-            if (!targetSellerId && pRows[0].owner_user_id) {
-              targetSellerId = pRows[0].owner_user_id;
+        let pRows = pFetch.ok ? await pFetch.json() : [];
+
+        // Fallback by product name if ID search returned empty (e.g. temporary ID vs database ID)
+        if ((!Array.isArray(pRows) || pRows.length === 0) && input.productName) {
+          const nameFetch = await fetch(`${SUPABASE_URL}/rest/v1/products?name=eq.${encodeURIComponent(input.productName.trim())}&select=quantity,owner_user_id,id`, {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
             }
-            if (pRows[0].quantity !== null && pRows[0].quantity !== undefined) {
-              initialQty = Number(pRows[0].quantity);
+          });
+          if (nameFetch.ok) {
+            const nameRows = await nameFetch.json();
+            if (Array.isArray(nameRows) && nameRows.length > 0) {
+              pRows = nameRows;
+              if (nameRows[0].id) {
+                input.productId = nameRows[0].id;
+              }
             }
+          }
+        }
+
+        if (Array.isArray(pRows) && pRows.length > 0) {
+          if (!targetSellerId && pRows[0].owner_user_id) {
+            targetSellerId = pRows[0].owner_user_id;
+          }
+          if (pRows[0].quantity !== null && pRows[0].quantity !== undefined) {
+            initialQty = Number(pRows[0].quantity);
           }
         }
       } catch {}
@@ -2152,6 +2171,17 @@ export async function loginAdmin(email: string, password: string): Promise<strin
           },
           body: JSON.stringify({ quantity: remainingQty })
         });
+        if (input.productName) {
+          await fetch(`${SUPABASE_URL}/rest/v1/products?name=eq.${encodeURIComponent(input.productName.trim())}`, {
+            method: 'PATCH',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ quantity: remainingQty })
+          });
+        }
       } catch (sbErr) {
         console.warn("Supabase direct order creation skipped:", sbErr);
       }
@@ -2330,7 +2360,7 @@ export async function loginAdmin(email: string, password: string): Promise<strin
             status: String(row.status || 'Confirmed'),
             eta: row.eta || '2-4 working days',
             customerName: row.buyer_name || 'Verified Buyer',
-            quantity: Number(row.quantity || 1)
+            quantity: row.quantity !== null && row.quantity !== undefined ? Number(row.quantity) : 1
           }));
           await AsyncStorage.setItem(`@kalasetu_orders_${userId}`, JSON.stringify(serverOrders)).catch(() => {});
           return serverOrders;
@@ -2360,7 +2390,7 @@ export async function loginAdmin(email: string, password: string): Promise<strin
               status: String(r.status || 'Confirmed'),
               eta: r.eta || '2-4 working days',
               customerName: r.recipient_name || 'Verified Buyer',
-              quantity: Number(r.quantity || 1)
+              quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : 1
             }));
             await AsyncStorage.setItem(`@kalasetu_orders_${userId}`, JSON.stringify(sbOrders)).catch(() => {});
             return sbOrders;
@@ -2544,7 +2574,7 @@ export async function loginAdmin(email: string, password: string): Promise<strin
             productId: row.product_id,
             productName: row.product_name,
             price: Number(row.total || row.price || 0),
-            quantity: Number(row.quantity || 1),
+            quantity: row.quantity !== null && row.quantity !== undefined ? Number(row.quantity) : 1,
             status: String(row.status || 'Requested'),
             eta: row.eta || '2-4 working days',
             customerName: row.recipient_name || row.buyer_name || 'Verified Buyer',
@@ -2583,7 +2613,7 @@ export async function loginAdmin(email: string, password: string): Promise<strin
                   productId: r.product_id,
                   productName: r.product_name,
                   price: Number(r.total || r.price || 0),
-                  quantity: Number(r.quantity || 1),
+                  quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : 1,
                   status: String(r.status || 'Requested'),
                   eta: r.eta || '2-4 working days',
                   customerName: r.recipient_name || 'Verified Buyer',
@@ -2623,7 +2653,7 @@ export async function loginAdmin(email: string, password: string): Promise<strin
                     productId: r.product_id,
                     productName: r.product_name,
                     price: Number(r.total || r.price || 0),
-                    quantity: Number(r.quantity || 1),
+                    quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : 1,
                     status: String(r.status || 'Requested'),
                     eta: r.eta || '2-4 working days',
                     customerName: r.recipient_name || 'Verified Buyer',
