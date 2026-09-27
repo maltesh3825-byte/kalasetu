@@ -803,7 +803,7 @@ export default function App() {
       const [userOrders, userListings, incoming] = await Promise.all([
         fetchOrdersForUser(user.id).catch(() => []),
         fetchPublishedProducts(user.id, user.name, user.phone).catch(() => []),
-        fetchIncomingOrders(user.id).catch(() => [])
+        fetchIncomingOrders(user.id, user.name, user.phone).catch(() => [])
       ]);
       setOrders(userOrders);
       if (userListings && userListings.length > 0) {
@@ -1053,6 +1053,7 @@ export default function App() {
         price: product.price,
         quantity,
         customerName: currentUser.name,
+        sellerId: product.owner_user_id,
         ...deliveryDetails
       });
 
@@ -1315,10 +1316,22 @@ export default function App() {
     }
 
     const reason = cancelReason.trim() || 'Cancelled by buyer';
+    const targetOrder = orders.find(o => o.id === orderId);
 
     try {
-      const result = await cancelOrderApi(orderId, reason);
+      const result = await cancelOrderApi(orderId, reason, targetOrder?.productId, targetOrder?.quantity);
       setOrders(prev => prev.map(order => order.id === orderId ? { ...order, status: 'Cancelled' } : order));
+
+      // Restore product stock in local state immediately
+      if (targetOrder) {
+        setProducts(prev => prev.map(p => {
+          if (p.id === targetOrder.productId || p.name === targetOrder.productName) {
+            return { ...p, quantity: (p.quantity ?? 0) + (targetOrder.quantity || 1) };
+          }
+          return p;
+        }));
+      }
+
       Alert.alert(
         'Order cancelled',
         result?.localOnly
@@ -1328,6 +1341,7 @@ export default function App() {
       if (currentUser) {
         refreshAccountData(currentUser);
       }
+      loadProducts().catch(() => {});
     } catch (error) {
       Alert.alert('Order cancellation failed', error instanceof Error ? error.message : 'Please try again.');
     }
@@ -2368,8 +2382,12 @@ export default function App() {
                     {product.image_gallery && product.image_gallery.length > 1 ? (
                       <View style={styles.galleryRow}>{product.image_gallery.slice(0, 3).map((url, idx) => (<Image key={`${url}-${idx}`} source={{ uri: url }} style={styles.galleryThumb} />))}</View>
                     ) : null}
-                    <Text style={styles.quantityLabel}>{tx('quantityForOrder')} ({Math.max(1, Number(product.quantity ?? 10))} {tx('quantityAvailable')})</Text>
-                    <View style={styles.quantityOptions}>{Array.from({ length: Math.max(0, Number(product.quantity ?? 10)) }, (_, index) => String(index + 1)).map(option => (
+                    <Text style={styles.quantityLabel}>
+                      {Number(product.quantity ?? 10) <= 0
+                        ? `(${tx('soldOut')})`
+                        : `${tx('quantityForOrder')} (${Number(product.quantity ?? 10)} ${tx('quantityAvailable')})`}
+                    </Text>
+                    <View style={styles.quantityOptions}>{Array.from({ length: Math.min(10, Math.max(0, Number(product.quantity ?? 10))) }, (_, index) => String(index + 1)).map(option => (
                       <TouchableOpacity key={`${product.id}-${option}`} style={[styles.quantityOption, buyQuantity === option && styles.quantityOptionActive]} onPress={() => setBuyQuantity(option)}>
                         <Text style={[styles.quantityOptionText, buyQuantity === option && styles.quantityOptionTextActive]}>{option}</Text>
                       </TouchableOpacity>
@@ -3719,10 +3737,12 @@ export default function App() {
 
                   {/* Quantity & Buy */}
                   <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '700', marginBottom: 6 }}>
-                    {tx('quantityForOrder')} ({Math.max(1, Number(selectedProduct.quantity ?? 10))} {tx('quantityAvailable')})
+                    {Number(selectedProduct.quantity ?? 10) <= 0
+                      ? `(${tx('soldOut')})`
+                      : `${tx('quantityForOrder')} (${Number(selectedProduct.quantity ?? 10)} ${tx('quantityAvailable')})`}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-                    {Array.from({ length: Math.min(10, Math.max(1, Number(selectedProduct.quantity ?? 10))) }, (_, idx) => String(idx + 1)).map(opt => (
+                    {Array.from({ length: Math.min(10, Math.max(0, Number(selectedProduct.quantity ?? 10))) }, (_, idx) => String(idx + 1)).map(opt => (
                       <TouchableOpacity
                         key={opt}
                         onPress={() => setBuyQuantity(opt)}

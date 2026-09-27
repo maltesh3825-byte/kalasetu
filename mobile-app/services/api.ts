@@ -522,7 +522,7 @@ export async function fetchMarketplaceProducts(): Promise<CraftProduct[]> {
               artisan_location: r.artisan_location,
               category: r.category,
               price: Number(r.price),
-              quantity: Number(r.quantity || 1),
+              quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : 10,
               suggested_price_min: r.suggested_price_min ? Number(r.suggested_price_min) : undefined,
               suggested_price_max: r.suggested_price_max ? Number(r.suggested_price_max) : undefined,
               price_justification: r.price_justification,
@@ -2028,6 +2028,7 @@ export async function loginAdmin(email: string, password: string): Promise<strin
     city: string;
     state: string;
     pincode: string;
+    sellerId?: number;
   }): Promise<OrderRecord> {
     const order: OrderRecord = {
       id: Date.now(),
@@ -2042,6 +2043,31 @@ export async function loginAdmin(email: string, password: string): Promise<strin
 
     let orderCreated = false;
     let createdOrderId = order.id;
+
+    // Resolve seller ID and current stock from Supabase if available
+    let targetSellerId = input.sellerId;
+    let initialQty = 10;
+    if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+      try {
+        const pFetch = await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${input.productId}&select=quantity,owner_user_id`, {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+          }
+        });
+        if (pFetch.ok) {
+          const pRows = await pFetch.json();
+          if (Array.isArray(pRows) && pRows.length > 0) {
+            if (!targetSellerId && pRows[0].owner_user_id) {
+              targetSellerId = pRows[0].owner_user_id;
+            }
+            if (pRows[0].quantity !== null && pRows[0].quantity !== undefined) {
+              initialQty = Number(pRows[0].quantity);
+            }
+          }
+        }
+      } catch {}
+    }
 
     // 1. Try backend API first
     try {
@@ -2061,7 +2087,8 @@ export async function loginAdmin(email: string, password: string): Promise<strin
           address_line: input.addressLine,
           city: input.city,
           state: input.state,
-          pincode: input.pincode
+          pincode: input.pincode,
+          seller_id: targetSellerId
         })
       });
 
@@ -2077,7 +2104,7 @@ export async function loginAdmin(email: string, password: string): Promise<strin
       console.warn("Backend order API unreachable:", err);
     }
 
-    // 2. Direct Supabase REST Sync (guarantees order placement even if backend had 404 or product ID mismatch)
+    // 2. Direct Supabase REST Sync (guarantees order placement and stock deduction)
     if (SUPABASE_URL && SUPABASE_ANON_KEY) {
       try {
         const sbRes = await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
@@ -2101,7 +2128,8 @@ export async function loginAdmin(email: string, password: string): Promise<strin
             address_line: input.addressLine,
             city: input.city,
             state: input.state,
-            pincode: input.pincode
+            pincode: input.pincode,
+            seller_id: targetSellerId
           })
         });
 
@@ -2111,32 +2139,19 @@ export async function loginAdmin(email: string, password: string): Promise<strin
             createdOrderId = Number(sbData[0].id);
           }
           orderCreated = true;
-
-          // Decrement product inventory on Supabase
-          try {
-            const pFetch = await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${input.productId}&select=quantity`, {
-              headers: {
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-              }
-            });
-            if (pFetch.ok) {
-              const pRows = await pFetch.json();
-              if (Array.isArray(pRows) && pRows.length > 0) {
-                const curQty = Number(pRows[0].quantity || 10);
-                await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${input.productId}`, {
-                  method: 'PATCH',
-                  headers: {
-                    'apikey': SUPABASE_ANON_KEY,
-                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({ quantity: Math.max(0, curQty - input.quantity) })
-                });
-              }
-            }
-          } catch {}
         }
+
+        // Decrement product inventory on Supabase
+        const remainingQty = Math.max(0, initialQty - input.quantity);
+        await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${input.productId}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ quantity: remainingQty })
+        });
       } catch (sbErr) {
         console.warn("Supabase direct order creation skipped:", sbErr);
       }
@@ -2229,7 +2244,7 @@ export async function loginAdmin(email: string, password: string): Promise<strin
                     artisan_location: r.artisan_location,
                     category: r.category,
                     price: Number(r.price),
-                    quantity: Number(r.quantity || 1),
+                    quantity: r.quantity !== null && r.quantity !== undefined ? Number(r.quantity) : 10,
                     suggested_price_min: r.suggested_price_min ? Number(r.suggested_price_min) : undefined,
                     suggested_price_max: r.suggested_price_max ? Number(r.suggested_price_max) : undefined,
                     price_justification: r.price_justification,
@@ -2389,8 +2404,16 @@ export async function loginAdmin(email: string, password: string): Promise<strin
     ];
   }
 
-  export async function cancelOrderApi(orderId: number, reason: string): Promise<CancelOrderResponse | null> {
+  export async function cancelOrderApi(
+    orderId: number,
+    reason: string,
+    productId?: number,
+    quantity?: number
+  ): Promise<CancelOrderResponse | null> {
     const cleanReason = reason.trim() || 'Cancelled by buyer';
+    let restoredQuantity = quantity || 1;
+
+    // 1. Try Backend API
     try {
       const res = await fetch(`${getBackendUrl()}/api/orders/${orderId}/cancel`, {
         method: 'POST',
@@ -2398,12 +2421,74 @@ export async function loginAdmin(email: string, password: string): Promise<strin
         body: JSON.stringify({ reason: cleanReason })
       });
       if (res.ok) {
-        return await res.json();
+        const data = await res.json();
+        if (data.restored_quantity) restoredQuantity = data.restored_quantity;
       }
     } catch (err) {
       console.warn("Backend cancel order error:", err);
     }
-    return { status: 'success', order_id: orderId, restored_quantity: 1, reason: cleanReason, localOnly: true };
+
+    // 2. Dual-sync order cancellation and restore stock on Supabase directly
+    if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status: 'Cancelled', cancel_reason: cleanReason })
+        });
+
+        // Determine target product_id and quantity if not passed
+        let targetProdId = productId;
+        if (!targetProdId) {
+          const oRes = await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}&select=product_id,quantity`, {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            }
+          });
+          if (oRes.ok) {
+            const oRows = await oRes.json();
+            if (Array.isArray(oRows) && oRows.length > 0) {
+              targetProdId = oRows[0].product_id;
+              if (oRows[0].quantity) restoredQuantity = Number(oRows[0].quantity);
+            }
+          }
+        }
+
+        // Increment quantity in Supabase products table
+        if (targetProdId) {
+          const pRes = await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${targetProdId}&select=quantity`, {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            }
+          });
+          if (pRes.ok) {
+            const pRows = await pRes.json();
+            if (Array.isArray(pRows) && pRows.length > 0) {
+              const curQ = pRows[0].quantity !== null && pRows[0].quantity !== undefined ? Number(pRows[0].quantity) : 10;
+              await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${targetProdId}`, {
+                method: 'PATCH',
+                headers: {
+                  'apikey': SUPABASE_ANON_KEY,
+                  'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ quantity: curQ + restoredQuantity })
+              });
+            }
+          }
+        }
+      } catch (sbCancelErr) {
+        console.warn("Direct Supabase cancel order error:", sbCancelErr);
+      }
+    }
+
+    return { status: 'success', order_id: orderId, restored_quantity: restoredQuantity, reason: cleanReason };
   }
 
   export async function deleteOrderApi(orderId: number, userId?: number): Promise<boolean> {
@@ -2445,35 +2530,137 @@ export async function loginAdmin(email: string, password: string): Promise<strin
     return true;
   }
 
-  export async function fetchIncomingOrders(userId: number): Promise<OrderRecord[]> {
+  export async function fetchIncomingOrders(userId: number, userName?: string, userPhone?: string): Promise<OrderRecord[]> {
+    const ordersMap = new Map<number, OrderRecord>();
+
+    // 1. Try Backend API
     try {
-      const res = await fetch(`${BACKEND_URL}/api/orders/${userId}/incoming`, { method: 'GET' });
-      if (!res.ok) {
-        throw new Error('Incoming orders unavailable');
+      const res = await fetch(`${getBackendUrl()}/api/orders/${userId}/incoming`, { method: 'GET' });
+      if (res.ok) {
+        const data = await res.json();
+        for (const row of (data.orders || [])) {
+          ordersMap.set(row.id, {
+            id: row.id,
+            productId: row.product_id,
+            productName: row.product_name,
+            price: Number(row.total || row.price || 0),
+            quantity: Number(row.quantity || 1),
+            status: String(row.status || 'Requested'),
+            eta: row.eta || '2-4 working days',
+            customerName: row.recipient_name || row.buyer_name || 'Verified Buyer',
+            customerPhone: row.recipient_phone || row.buyer_phone || '',
+            buyerEmail: row.buyer_email || '',
+            deliveryAddress: row.address_line || '',
+            city: row.city || '',
+            state: row.state || '',
+            pincode: row.pincode || '',
+            cancelReason: row.cancel_reason || '',
+            createdAt: row.created_at || ''
+          });
+        }
       }
-      const data = await res.json();
-      return (data.orders || []).map((row: any) => ({
-        id: row.id,
-        productId: row.product_id,
-        productName: row.product_name,
-        price: Number(row.total || row.price || 0),
-        quantity: Number(row.quantity || 1),
-        status: String(row.status || 'Confirmed'),
-        eta: row.eta || '2-4 working days',
-        customerName: row.recipient_name || row.buyer_name || 'Verified Buyer',
-        customerPhone: row.recipient_phone || row.buyer_phone || '',
-        buyerEmail: row.buyer_email || '',
-        deliveryAddress: row.address_line || '',
-        city: row.city || '',
-        state: row.state || '',
-        pincode: row.pincode || '',
-        cancelReason: row.cancel_reason || '',
-        createdAt: row.created_at || ''
-      }));
     } catch (err) {
-      console.warn('Could not load incoming orders:', err);
-      return [];
+      console.warn('Could not load incoming orders from backend:', err);
     }
+
+    // 2. Dual-query Supabase REST directly (essential for instant mobile & web synchronization)
+    if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+      try {
+        const sbHeaders = {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        };
+
+        // Query 2a: Orders where seller_id matches this user
+        const sRes = await fetch(`${SUPABASE_URL}/rest/v1/orders?seller_id=eq.${userId}&order=id.desc`, { headers: sbHeaders });
+        if (sRes.ok) {
+          const sRows = await sRes.json();
+          if (Array.isArray(sRows)) {
+            for (const r of sRows) {
+              if (!ordersMap.has(r.id)) {
+                ordersMap.set(r.id, {
+                  id: r.id,
+                  productId: r.product_id,
+                  productName: r.product_name,
+                  price: Number(r.total || r.price || 0),
+                  quantity: Number(r.quantity || 1),
+                  status: String(r.status || 'Requested'),
+                  eta: r.eta || '2-4 working days',
+                  customerName: r.recipient_name || 'Verified Buyer',
+                  customerPhone: r.recipient_phone || '',
+                  buyerEmail: '',
+                  deliveryAddress: r.address_line || '',
+                  city: r.city || '',
+                  state: r.state || '',
+                  pincode: r.pincode || '',
+                  cancelReason: r.cancel_reason || '',
+                  createdAt: r.created_at || ''
+                });
+              }
+            }
+          }
+        }
+
+        // Query 2b: Orders for products owned by this user (catches orders where seller_id was null or legacy)
+        const pRes = await fetch(`${SUPABASE_URL}/rest/v1/products?owner_user_id=eq.${userId}&select=id`, { headers: sbHeaders });
+        let pids: number[] = [];
+        if (pRes.ok) {
+          const pRows = await pRes.json();
+          if (Array.isArray(pRows)) {
+            pids = pRows.map(p => p.id).filter(Boolean);
+          }
+        }
+
+        if (pids.length > 0) {
+          const oRes = await fetch(`${SUPABASE_URL}/rest/v1/orders?product_id=in.(${pids.join(',')})&order=id.desc`, { headers: sbHeaders });
+          if (oRes.ok) {
+            const oRows = await oRes.json();
+            if (Array.isArray(oRows)) {
+              for (const r of oRows) {
+                if (!ordersMap.has(r.id)) {
+                  ordersMap.set(r.id, {
+                    id: r.id,
+                    productId: r.product_id,
+                    productName: r.product_name,
+                    price: Number(r.total || r.price || 0),
+                    quantity: Number(r.quantity || 1),
+                    status: String(r.status || 'Requested'),
+                    eta: r.eta || '2-4 working days',
+                    customerName: r.recipient_name || 'Verified Buyer',
+                    customerPhone: r.recipient_phone || '',
+                    buyerEmail: '',
+                    deliveryAddress: r.address_line || '',
+                    city: r.city || '',
+                    state: r.state || '',
+                    pincode: r.pincode || '',
+                    cancelReason: r.cancel_reason || '',
+                    createdAt: r.created_at || ''
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (sbErr) {
+        console.warn('Supabase direct incoming orders fetch error:', sbErr);
+      }
+    }
+
+    const result = Array.from(ordersMap.values()).sort((a, b) => b.id - a.id);
+
+    // Cache locally for instant offline loading
+    if (result.length > 0) {
+      try {
+        await AsyncStorage.setItem(`@kalasetu_incoming_${userId}`, JSON.stringify(result));
+      } catch {}
+    } else {
+      try {
+        const cached = await AsyncStorage.getItem(`@kalasetu_incoming_${userId}`);
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+
+    return result;
   }
 
   export async function updateOrderStatusApi(
