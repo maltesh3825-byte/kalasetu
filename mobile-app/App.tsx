@@ -115,7 +115,7 @@ interface InteractivePopupConfig {
   secondaryAction?: () => void;
 }
 
-function SplashScreenView({ onFinish }: { onFinish: () => void }) {
+function SplashScreenView({ onFinish, lang }: { onFinish: () => void; lang: Language }) {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const scaleLogo = useRef(new Animated.Value(0.72)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
@@ -173,7 +173,7 @@ function SplashScreenView({ onFinish }: { onFinish: () => void }) {
 
       {/* Quick Skip button */}
       <TouchableOpacity style={splashStyles.skipButton} onPress={onFinish} activeOpacity={0.7}>
-        <Text style={splashStyles.skipText}>Skip ›</Text>
+        <Text style={splashStyles.skipText}>{getAppText(lang, 'skip')}</Text>
       </TouchableOpacity>
 
       <View style={splashStyles.centerContent}>
@@ -232,13 +232,13 @@ function SplashScreenView({ onFinish }: { onFinish: () => void }) {
             marginTop: 10,
           }}
         >
-          <Text style={splashStyles.brandSubtitle}>Ai studio and market linkage</Text>
+          <Text style={splashStyles.brandSubtitle}>{getAppText(lang, 'aiStudioAndMarketLinkage')}</Text>
         </Animated.View>
       </View>
 
       {/* Bottom Attribution */}
       <View style={splashStyles.bottomStrip}>
-        <Text style={splashStyles.bottomText}>SIH 2026 • Ministry of Social Justice & Empowerment</Text>
+        <Text style={splashStyles.bottomText}>{({ ...i18n, ...additionalTranslations }[lang]).sihBadge} • {({ ...i18n, ...additionalTranslations }[lang]).mosjeBadge}</Text>
       </View>
     </Animated.View>
   );
@@ -2085,7 +2085,7 @@ export default function App() {
             <View style={styles.offlineDraftBanner}>
               <View style={styles.offlineDraftHeader}>
                 <Text style={styles.offlineDraftTitle}>{tx('saveDraft')}</Text>
-                <Text style={styles.offlineDraftBadge}>{catalogDrafts.length} saved</Text>
+                <Text style={styles.offlineDraftBadge}>{catalogDrafts.length} {tx('savedBadge')}</Text>
               </View>
               <Text style={styles.offlineDraftText}>{tx('bulkHelp')}</Text>
               <TouchableOpacity style={styles.offlineDraftSaveButton} onPress={saveCatalogDraft}>
@@ -2330,7 +2330,7 @@ export default function App() {
                   <View style={styles.productImageWrapper}>
                     <Image source={{ uri: product.image_url }} style={styles.productImage} />
                     <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{getCategoryLabel(product.category)}</Text></View>
-                    <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>★ MoSJE</Text></View>
+                    <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>★ {t.mosjeVerified}</Text></View>
                     <View style={styles.priceBadge}><Text style={styles.priceBadgeText}>₹{product.price}</Text></View>
                   </View>
                   <View style={styles.productCardBody}>
@@ -2534,9 +2534,9 @@ export default function App() {
 
               <TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}><Text style={styles.primaryActionText}>{tx('submitRfq')}</Text></TouchableOpacity>
               <TouchableOpacity style={styles.secondaryButton} onPress={saveBulkDraft}><Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text></TouchableOpacity>
-              {bulkDrafts.length > 0 && (<View><Text style={styles.helperText}>{bulkDrafts.length} bulk draft(s) saved on this device.</Text><TouchableOpacity onPress={() => restoreBulkDraft(bulkDrafts[0])}><Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text></TouchableOpacity></View>)}
+              {bulkDrafts.length > 0 && (<View><Text style={styles.helperText}>{bulkDrafts.length} {tx('bulkDraftsSaved')}</Text><TouchableOpacity onPress={() => restoreBulkDraft(bulkDrafts[0])}><Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text></TouchableOpacity></View>)}
             </View>
-            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 2</Text><Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text><Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text><View style={styles.bulkPricingCard}><View style={styles.bulkPricingHeader}><Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text><Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text></View><Text style={styles.bulkPricingHint}>{tx('basedOn')} {bulkQuantityNumber || 0} units @ ₹{bulkUnitPriceNumber.toLocaleString('en-IN')}</Text>{bulkPricingTiers.map(tier => (<View key={tier.volume} style={styles.bulkPricingRow}><Text style={styles.bulkPricingVolume}>{tier.volume}</Text><Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text><Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>{bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}</Text></View>))}</View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => { if (!bulkQuantityNumber || !bulkUnitPriceNumber) { Alert.alert(tx('bulkPricingCalculatorTitle'), 'Enter both quantity and unit price to calculate your live bulk total.'); return; } const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0; const tier = bulkPricingTiers[tierIndex]; const total = Math.round(tier.price) * bulkQuantityNumber; const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber)); Alert.alert(tx('bulkPricingCalculatorTitle'), `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`); }}><Text style={styles.bulkToolText}>{tx('bulkPricingCalculator')}</Text></TouchableOpacity><TouchableOpacity style={[styles.bulkToolButton, { backgroundColor: '#10B981' }]} onPress={shareRfqPitchToWhatsApp}><Text style={[styles.bulkToolText, { color: '#FFFFFF', fontWeight: '800' }]}>{tx('shareRfqWhatsApp')}</Text></TouchableOpacity></View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('gem', { artisanName: artisanName || undefined })}><Text style={styles.bulkToolText}>{tx('gemReadyExport')}</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('ondc', { artisanName: artisanName || undefined })}><Text style={styles.bulkToolText}>{tx('ondcJson')}</Text></TouchableOpacity></View></View>
+            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 2</Text><Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text><Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text><View style={styles.bulkPricingCard}><View style={styles.bulkPricingHeader}><Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text><Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text></View><Text style={styles.bulkPricingHint}>{tx('basedOn')} {bulkQuantityNumber || 0} {tx('unitsAt')} ₹{bulkUnitPriceNumber.toLocaleString('en-IN')}</Text>{bulkPricingTiers.map(tier => (<View key={tier.volume} style={styles.bulkPricingRow}><Text style={styles.bulkPricingVolume}>{tier.volume}</Text><Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text><Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>{bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}</Text></View>))}</View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => { if (!bulkQuantityNumber || !bulkUnitPriceNumber) { Alert.alert(tx('bulkPricingCalculatorTitle'), 'Enter both quantity and unit price to calculate your live bulk total.'); return; } const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0; const tier = bulkPricingTiers[tierIndex]; const total = Math.round(tier.price) * bulkQuantityNumber; const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber)); Alert.alert(tx('bulkPricingCalculatorTitle'), `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`); }}><Text style={styles.bulkToolText}>{tx('bulkPricingCalculator')}</Text></TouchableOpacity><TouchableOpacity style={[styles.bulkToolButton, { backgroundColor: '#10B981' }]} onPress={shareRfqPitchToWhatsApp}><Text style={[styles.bulkToolText, { color: '#FFFFFF', fontWeight: '800' }]}>{tx('shareRfqWhatsApp')}</Text></TouchableOpacity></View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('gem', { artisanName: artisanName || undefined })}><Text style={styles.bulkToolText}>{tx('gemReadyExport')}</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('ondc', { artisanName: artisanName || undefined })}><Text style={styles.bulkToolText}>{tx('ondcJson')}</Text></TouchableOpacity></View></View>
             <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 3</Text><Text style={styles.profileSectionTitle}>{tx('connectChannels')}</Text><Text style={styles.bulkHelpText}>{tx('connectHelp')}</Text><View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 12 }}><Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E', marginBottom: 3 }}>{tx('clusterModeTitle')}</Text><Text style={{ fontSize: 11, color: '#78350F', lineHeight: 15 }}>{tx('clusterModeDesc')}</Text></View><View style={styles.bulkChannelRow}><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://gem.gov.in/')}><Text style={styles.bulkToolText}>GeM ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://ondc.org/')}><Text style={styles.bulkToolText}>ONDC ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://trifed.tribal.gov.in/')}><Text style={styles.bulkToolText}>TRIFED ↗</Text></TouchableOpacity></View><TouchableOpacity style={styles.secondaryAction} onPress={() => openBulkChannel('mailto:kalasetu24824.9@gmail.com?subject=KalaSetu%20Bulk%20Buyer%20Support')}><Text style={styles.secondaryActionText}>{tx('emailSupport')}</Text></TouchableOpacity></View>
           </View>
         );
@@ -2554,10 +2554,10 @@ export default function App() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 18, fontWeight: '900', color: '#0F172A' }}>
-                      Sign in to KalaSetu
+                      {tx('signInToKalaSetu')}
                     </Text>
                     <Text style={{ fontSize: 11, color: '#64748B' }}>
-                      Access your artisan studio or buyer marketplace
+                      {tx('accessStudioOrMarket')}
                     </Text>
                   </View>
                   <View style={{ backgroundColor: '#FEF9C3', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#FDE047' }}>
@@ -2574,7 +2574,7 @@ export default function App() {
                 {/* ── Method Tabs: Password | Gmail OTP | Mobile OTP ── */}
                 <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#E2E8F0', marginBottom: 18 }}>
                   {(
-                    [['password', '🔑', 'Password / PIN'], ['email', '✉️', 'Gmail OTP'], ['phone', '📱', 'Mobile OTP']] as const
+                    [['password', '🔑', tx('passwordPin')], ['email', '✉️', tx('gmailOtp')], ['phone', '📱', tx('mobileOtp')]] as const
                   ).map(([method, icon, label]) => (
                     <TouchableOpacity
                       key={method}
@@ -2614,7 +2614,7 @@ export default function App() {
                         placeholderTextColor={Colors.placeholder}
                       />
                       <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 4 }}>
-                        <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '700' }}>{showPassword ? '👁️ Hide' : '👁️ Show'}</Text>
+                        <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '700' }}>{showPassword ? `👁️ ${tx('hide')}` : `👁️ ${tx('show')}`}</Text>
                       </TouchableOpacity>
                     </View>
 
@@ -2622,7 +2622,7 @@ export default function App() {
 
                     <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleAuthSubmit} disabled={authLoading}>
                       {authLoading
-                        ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Signing In...</Text></View>
+                        ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>{tx('signingIn')}</Text></View>
                         : <Text style={styles.primaryActionText}>{tx('signInBtn')}</Text>
                       }
                     </TouchableOpacity>
@@ -2681,7 +2681,7 @@ export default function App() {
                         {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
                         <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleSendOtp} disabled={authLoading}>
                           {authLoading
-                            ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Generating...</Text></View>
+                            ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>{tx('generating')}</Text></View>
                             : <Text style={styles.primaryActionText}>{tx('generateOtp')}</Text>
                           }
                         </TouchableOpacity>
@@ -2693,7 +2693,7 @@ export default function App() {
                           <Text style={styles.otpSentSub}>{tx('otpAutofillHint')}</Text>
                           {devOtpNotice ? (
                             <TouchableOpacity style={styles.demoPill} onPress={() => setAuthOtp(devOtpNotice)}>
-                              <Text style={styles.demoPillText}>💡 OTP: {devOtpNotice} (Tap to fill)</Text>
+                              <Text style={styles.demoPillText}>💡 OTP: {devOtpNotice} {tx('tapToFill')}</Text>
                             </TouchableOpacity>
                           ) : null}
                         </View>
@@ -2702,7 +2702,7 @@ export default function App() {
                         {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
                         <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleVerifyOtp} disabled={authLoading}>
                           {authLoading
-                            ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Verifying...</Text></View>
+                            ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>{tx('verifying')}</Text></View>
                             : <Text style={styles.primaryActionText}>{tx('verifyAndAccess')}</Text>
                           }
                         </TouchableOpacity>
@@ -2721,7 +2721,7 @@ export default function App() {
                 {authMethod === 'phone' && (
                   <View>
                     <View style={[styles.authInfoBox, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]}>
-                      <Text style={[styles.authInfoText, { color: '#92400E' }]}>ℹ️ <Text style={{ fontWeight: '700' }}>Telecom SMS Notice:</Text> For guaranteed instant delivery switch to <Text style={{ fontWeight: '700' }}>Gmail OTP</Text> above.</Text>
+                      <Text style={[styles.authInfoText, { color: '#92400E' }]}>ℹ️ <Text style={{ fontWeight: '700' }}>{tx('smsNoticeTitle')}</Text> {tx('smsNoticeText')}</Text>
                     </View>
 
                     {!showOtpSection ? (
@@ -2745,7 +2745,7 @@ export default function App() {
                         {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
                         <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleSendOtp} disabled={authLoading}>
                           {authLoading
-                            ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Generating...</Text></View>
+                            ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>{tx('generating')}</Text></View>
                             : <Text style={styles.primaryActionText}>{tx('generateOtpMobile')}</Text>
                           }
                         </TouchableOpacity>
@@ -2777,11 +2777,11 @@ export default function App() {
                     ) : (
                       <View>
                         <View style={styles.otpSentBox}>
-                          <Text style={styles.otpSentText}>✅ OTP auto-filled for <Text style={{ fontWeight: '800', color: '#0F172A' }}>{authPhone}</Text></Text>
+                          <Text style={styles.otpSentText}>✅ {tx('otpAutofilled')} <Text style={{ fontWeight: '800', color: '#0F172A' }}>{authPhone}</Text></Text>
                           <Text style={styles.otpSentSub}>{tx('otpAutofillHint')}</Text>
                           {devOtpNotice ? (
                             <TouchableOpacity style={styles.demoPill} onPress={() => setAuthOtp(devOtpNotice)}>
-                              <Text style={styles.demoPillText}>💡 OTP: {devOtpNotice} (Tap to fill)</Text>
+                              <Text style={styles.demoPillText}>💡 OTP: {devOtpNotice} {tx('tapToFill')}</Text>
                             </TouchableOpacity>
                           ) : null}
                         </View>
@@ -2790,7 +2790,7 @@ export default function App() {
                         {authErrorNotice ? <View style={styles.authErrorBox}><Text style={styles.authErrorText}>⚠️ {authErrorNotice}</Text></View> : null}
                         <TouchableOpacity style={[styles.primaryAction, authLoading && { opacity: 0.7 }]} onPress={handleVerifyOtp} disabled={authLoading}>
                           {authLoading
-                            ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>Verifying...</Text></View>
+                            ? <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><ActivityIndicator color="#FFF" size="small" /><Text style={styles.primaryActionText}>{tx('verifying')}</Text></View>
                             : <Text style={styles.primaryActionText}>{tx('verifyOtpMobile')}</Text>
                           }
                         </TouchableOpacity>
@@ -2817,7 +2817,7 @@ export default function App() {
                   <TouchableOpacity key={key} style={[styles.accountSubnavButton, accountView === key && styles.accountSubnavButtonActive]} onPress={() => setAccountView(key)}><Text style={[styles.accountSubnavText, accountView === key && styles.accountSubnavTextActive]}>{label}</Text></TouchableOpacity>
                 ))}</ScrollView>
                 {accountView === 'profile' && (<View><Text style={styles.profileSectionTitle}>{tx('profile')}</Text><Text style={styles.notificationText}>{tx('role')}: {roleLabel}</Text><Text style={styles.notificationText}>{tx('publishedListings')}: {publishedProducts.length}</Text><Text style={styles.notificationText}>{tx('savedCrafts')}: {wishlist.length}</Text><TouchableOpacity style={styles.secondaryAction} onPress={handleLogout}><Text style={styles.secondaryActionText}>{tx('logout')}</Text></TouchableOpacity></View>)}
-                {accountView === 'history' && (<View><Text style={styles.profileSectionTitle}>{tx('activityHistory')}</Text><Text style={styles.notificationText}>{orders.length} {tx('purchaseOrders')}</Text><Text style={styles.notificationText}>{publishedProducts.length} {tx('publishedListing')}</Text>{orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>• {order.productName} — {order.status}</Text>)}{publishedProducts.slice(0, 5).map(product => <Text key={`published-${product.id}`} style={styles.notificationText}>• Published: {product.name} — ₹{product.price}</Text>)}</View>)}
+                {accountView === 'history' && (<View><Text style={styles.profileSectionTitle}>{tx('activityHistory')}</Text><Text style={styles.notificationText}>{orders.length} {tx('purchaseOrders')}</Text><Text style={styles.notificationText}>{publishedProducts.length} {tx('publishedListing')}</Text>{orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>• {order.productName} — {order.status}</Text>)}{publishedProducts.slice(0, 5).map(product => <Text key={`published-${product.id}`} style={styles.notificationText}>• {tx('publishedListings')}: {product.name} — ₹{product.price}</Text>)}</View>)}
                 {accountView === 'orders' && (
                   <View>
                     <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
@@ -2826,7 +2826,7 @@ export default function App() {
                         onPress={() => setOrderSubTab('incoming')}
                       >
                         <Text style={[styles.orderSegmentText, orderSubTab === 'incoming' && styles.orderSegmentTextActive]}>
-                          📥 Incoming ({incomingOrders.length})
+                          📥 {tx('incomingTab')} ({incomingOrders.length})
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -2834,7 +2834,7 @@ export default function App() {
                         onPress={() => setOrderSubTab('mine')}
                       >
                         <Text style={[styles.orderSegmentText, orderSubTab === 'mine' && styles.orderSegmentTextActive]}>
-                          🛍️ My Orders ({orders.filter(o => o.status.toLowerCase() !== 'cancelled').length})
+                          🛍️ {tx('myOrdersTab')} ({orders.filter(o => o.status.toLowerCase() !== 'cancelled').length})
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -2842,7 +2842,7 @@ export default function App() {
                         onPress={() => setOrderSubTab('published')}
                       >
                         <Text style={[styles.orderSegmentText, orderSubTab === 'published' && styles.orderSegmentTextActive]}>
-                          🏷️ My Listings ({publishedProducts.length})
+                          🏷️ {tx('myListingsTab')} ({publishedProducts.length})
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -2883,13 +2883,13 @@ export default function App() {
                                     </Text>
                                   </View>
                                 </View>
-                                <Text style={styles.orderMeta}>💰 ₹{order.price} total • {order.quantity} unit(s)</Text>
+                                <Text style={styles.orderMeta}>💰 ₹{order.price} {tx('total')} • {order.quantity} {tx('units')}</Text>
                                 <Text style={styles.orderMeta}>{tx('buyerLabel')} {order.customerName || 'Verified Buyer'}{order.customerPhone ? ` • 📱 ${order.customerPhone}` : ''}</Text>
                                 {!!order.deliveryAddress && (
                                   <Text style={styles.orderMeta}>{tx('deliverToLabel')} {order.deliveryAddress}{order.city ? `, ${order.city}` : ''}{order.state ? `, ${order.state}` : ''}{order.pincode ? ` - ${order.pincode}` : ''}</Text>
                                 )}
                                 {!!order.cancelReason && (
-                                  <Text style={[styles.orderMeta, { color: Colors.error }]}>Note: {order.cancelReason}</Text>
+                                  <Text style={[styles.orderMeta, { color: Colors.error }]}>{tx('noteLabel')}: {order.cancelReason}</Text>
                                 )}
 
                                 {isPending && (
@@ -2951,7 +2951,7 @@ export default function App() {
                                   </Text>
                                 </View>
                               </View>
-                              <Text style={styles.orderMeta}>₹{order.price} · {order.quantity || 1} unit(s) · ETA: {order.eta || '2-4 days'}</Text>
+                              <Text style={styles.orderMeta}>₹{order.price} · {order.quantity || 1} {tx('units')} · {t.deliveryEta}: {order.eta || '2-4 days'}</Text>
                               <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
                                 {order.status.toLowerCase() !== 'cancelled' && (
                                   <TouchableOpacity style={[styles.secondaryAction, { flex: 1, marginTop: 0 }]} onPress={() => handleCancelOrder(order.id)}>
@@ -2999,7 +2999,7 @@ export default function App() {
                                 <View style={{ flex: 1 }}>
                                   <Text style={styles.orderTitle}>{product.name}</Text>
                                   <Text style={styles.orderMeta}>₹{product.price} · {product.category}</Text>
-                                  <Text style={styles.orderMeta}>📦 Stock: {product.quantity || 1} · {product.mosje_verified ? '🏅 Verified' : 'Standard'}</Text>
+                                  <Text style={styles.orderMeta}>📦 {tx('stockLabel')}: {product.quantity || 1} · {product.mosje_verified ? `🏅 ${tx('verified')}` : tx('standard')}</Text>
                                 </View>
                               </View>
                               <TouchableOpacity
@@ -3008,7 +3008,7 @@ export default function App() {
                                 disabled={deletingProductId === product.id}
                               >
                                 <Text style={styles.deleteProductButtonText}>
-                                  {deletingProductId === product.id ? 'Removing...' : `🗑️ ${tx('removePublished')}`}
+                                  {deletingProductId === product.id ? tx('removing') : `🗑️ ${tx('removePublished')}`}
                                 </Text>
                               </TouchableOpacity>
                             </View>
@@ -3021,7 +3021,7 @@ export default function App() {
                 {accountView === 'requests' && (<View><Text style={styles.profileSectionTitle}>{tx('bulkRequests')}</Text><TextInput style={styles.textInput} value={bulkBuyerType} onChangeText={setBulkBuyerType} placeholder={tx('forBuyers')} placeholderTextColor={Colors.placeholder} /><TextInput style={[styles.textInput, styles.textArea]} value={bulkNeed} onChangeText={setBulkNeed} multiline placeholder={tx('bulkHelp')} placeholderTextColor={Colors.placeholder} /><TouchableOpacity style={styles.primaryAction} onPress={handleBulkSupport}><Text style={styles.primaryActionText}>{tx('sendRequest')}</Text></TouchableOpacity></View>)}
                 {accountView === 'wishlist' && (<View><Text style={styles.profileSectionTitle}>{tx('savedCraftsTitle')}</Text>{products.filter(product => wishlist.includes(product.id)).map(product => <View key={product.id} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} · {product.artisan_name}</Text></View>)}{wishlist.length === 0 && <Text style={styles.emptyStateText}>{tx('noSavedCrafts')}</Text>}</View>)}
                 {accountView === 'notifications' && (<View style={styles.notificationCard}><Text style={styles.notificationTitle}>{tx('notifications')}</Text>{orders.length ? orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>{tx('orderUpdate')}: {order.productName} is {order.status}.</Text>) : <Text style={styles.notificationText}>{tx('noNotifications')}</Text>}</View>)}
-                {accountView === 'admin' && (<View><Text style={styles.profileSectionTitle}>{tx('adminReview')}</Text>{!adminToken ? (<View><Text style={styles.bulkHelpText}>{tx('reviewRequests')}</Text><TextInput style={styles.textInput} value={adminEmail} onChangeText={setAdminEmail} placeholder={tx('adminEmail')} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.placeholder} /><TextInput style={styles.textInput} value={adminPassword} onChangeText={setAdminPassword} placeholder={tx('adminPassword')} secureTextEntry placeholderTextColor={Colors.placeholder} />{!!adminStatus && <Text style={styles.orderActionMessage}>{adminStatus}</Text>}<TouchableOpacity style={styles.primaryAction} onPress={handleAdminLogin}><Text style={styles.primaryActionText}>{tx('signInAdmin')}</Text></TouchableOpacity></View>) : (<View><View style={styles.adminHeaderRow}><Text style={styles.bulkHelpText}>{tx('requestQueue')}</Text><TouchableOpacity onPress={handleAdminLogout}><Text style={styles.offlineDraftRemove}>Logout</Text></TouchableOpacity></View>{adminRequests.length === 0 ? <Text style={styles.emptyStateText}>{tx('noInstitutionalRequests')}</Text> : adminRequests.map(request => (<View key={request.id} style={styles.orderCard}><Text style={styles.orderTitle}>{request.artisan_name} · {request.product_category || 'Craft request'}</Text><Text style={styles.orderMeta}>{request.email} · Qty {request.quantity || 1} · {request.target_market || 'Bulk'}</Text><Text style={styles.orderMeta}>{request.requirements || 'No requirements'}</Text><View style={styles.adminStatusRow}>{['New', 'In Review', 'Approved', 'Rejected'].map(status => (<TouchableOpacity key={status} style={[styles.adminStatusButton, request.status === status && styles.adminStatusButtonActive]} onPress={() => handleAdminUpdate(request.id, status)}><Text style={[styles.adminStatusText, request.status === status && styles.adminStatusTextActive]}>{status}</Text></TouchableOpacity>))}</View></View>))}</View>)}</View>)}
+                {accountView === 'admin' && (<View><Text style={styles.profileSectionTitle}>{tx('adminReview')}</Text>{!adminToken ? (<View><Text style={styles.bulkHelpText}>{tx('reviewRequests')}</Text><TextInput style={styles.textInput} value={adminEmail} onChangeText={setAdminEmail} placeholder={tx('adminEmail')} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={Colors.placeholder} /><TextInput style={styles.textInput} value={adminPassword} onChangeText={setAdminPassword} placeholder={tx('adminPassword')} secureTextEntry placeholderTextColor={Colors.placeholder} />{!!adminStatus && <Text style={styles.orderActionMessage}>{adminStatus}</Text>}<TouchableOpacity style={styles.primaryAction} onPress={handleAdminLogin}><Text style={styles.primaryActionText}>{tx('signInAdmin')}</Text></TouchableOpacity></View>) : (<View><View style={styles.adminHeaderRow}><Text style={styles.bulkHelpText}>{tx('requestQueue')}</Text><TouchableOpacity onPress={handleAdminLogout}><Text style={styles.offlineDraftRemove}>{tx('logout')}</Text></TouchableOpacity></View>{adminRequests.length === 0 ? <Text style={styles.emptyStateText}>{tx('noInstitutionalRequests')}</Text> : adminRequests.map(request => (<View key={request.id} style={styles.orderCard}><Text style={styles.orderTitle}>{request.artisan_name} · {request.product_category || 'Craft request'}</Text><Text style={styles.orderMeta}>{request.email} · {tx('qtyLabel')} {request.quantity || 1} · {request.target_market || tx('bulkTab')}</Text><Text style={styles.orderMeta}>{request.requirements || 'No requirements'}</Text><View style={styles.adminStatusRow}>{['New', 'In Review', 'Approved', 'Rejected'].map(status => (<TouchableOpacity key={status} style={[styles.adminStatusButton, request.status === status && styles.adminStatusButtonActive]} onPress={() => handleAdminUpdate(request.id, status)}><Text style={[styles.adminStatusText, request.status === status && styles.adminStatusTextActive]}>{status}</Text></TouchableOpacity>))}</View></View>))}</View>)}</View>)}
               </View>
             )}
           </View>
@@ -3053,7 +3053,7 @@ export default function App() {
               <View style={styles.productsFeed}>
                 {incomingOrders.length > 0 && (
                   <View style={{ marginBottom: 16 }}>
-                    <Text style={styles.orderTitle}>📥 Orders Requested by Others ({incomingOrders.length})</Text>
+                    <Text style={styles.orderTitle}>📥 {tx('ordersRequestedByOthers')} ({incomingOrders.length})</Text>
                     {incomingOrders.map(order => {
                       const isPending = order.status.toLowerCase() === 'confirmed' || order.status.toLowerCase() === 'pending';
                       const isAccepted = order.status.toLowerCase() === 'accepted';
@@ -3083,7 +3083,7 @@ export default function App() {
                               </Text>
                             </View>
                           </View>
-                          <Text style={styles.orderMeta}>💰 ₹{order.price} total • {order.quantity} unit(s)</Text>
+                          <Text style={styles.orderMeta}>💰 ₹{order.price} {tx('total')} • {order.quantity} {tx('units')}</Text>
                           <Text style={styles.orderMeta}>{tx('buyerLabel')} {order.customerName || 'Verified Buyer'}{order.customerPhone ? ` • 📱 ${order.customerPhone}` : ''}</Text>
                           {!!order.deliveryAddress && (
                             <Text style={styles.orderMeta}>{tx('deliverToLabel')} {order.deliveryAddress}{order.city ? `, ${order.city}` : ''}{order.state ? `, ${order.state}` : ''}{order.pincode ? ` - ${order.pincode}` : ''}</Text>
@@ -3128,7 +3128,7 @@ export default function App() {
                 ))}
                 <Text style={styles.orderTitle}>{tx('ordersPublishedByMe')}</Text>
                 {publishedProducts.length === 0 ? <Text style={styles.emptyStateText}>{tx('noPublishedProducts')}</Text> : publishedProducts.map(product => (
-                  <View key={`published-${product.id}`} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} • {product.category} • Qty {product.quantity || 0}</Text><TouchableOpacity style={styles.deleteProductButton} onPress={() => removeOwnProduct(product)}><Text style={styles.deleteProductButtonText}>{tx('removePublished')}</Text></TouchableOpacity></View>
+                  <View key={`published-${product.id}`} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} • {product.category} • {tx('qtyLabel')}: {product.quantity || 0}</Text><TouchableOpacity style={styles.deleteProductButton} onPress={() => removeOwnProduct(product)}><Text style={styles.deleteProductButtonText}>{tx('removePublished')}</Text></TouchableOpacity></View>
                 ))}
               </View>
             )}
@@ -3141,7 +3141,7 @@ export default function App() {
   };
 
   if (showSplash) {
-    return <SplashScreenView onFinish={() => setShowSplash(false)} />;
+    return <SplashScreenView onFinish={() => setShowSplash(false)} lang={lang} />;
   }
 
   return (
@@ -3425,7 +3425,7 @@ export default function App() {
                 elevation: 4
               }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '900', color: '#0F172A' }}>🌐 {t.selectLanguage} (8 Regional Languages + English)</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '900', color: '#0F172A' }}>🌐 {t.selectLanguage}</Text>
                   <TouchableOpacity onPress={() => setChatLanguagePickerVisible(false)} style={{ padding: 4 }}>
                     <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#64748B' }}>✕</Text>
                   </TouchableOpacity>
@@ -3596,21 +3596,21 @@ export default function App() {
             <View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 12, padding: 10, marginBottom: 10 }}>
               <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400E', marginBottom: 2 }}>{tx('clusterModeHandoff')}</Text>
               <Text style={{ fontSize: 10, color: '#78350F', lineHeight: 14 }}>
-                Ready for upload by your local District Industries Centre (DIC) or SHG coordinator without manual data re-entry.
+                {tx('clusterModeHandoffDesc')}
               </Text>
             </View>
 
             {/* Scope Filter Indicator */}
             {complianceFilter.productId ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E40AF' }}>🎯 Filtered: Product #{complianceFilter.productId}</Text>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E40AF' }}>🎯 {tx('filtered')}: {tx('product')} #{complianceFilter.productId}</Text>
                 <TouchableOpacity onPress={() => openComplianceModal(complianceTab, {})}>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>{tx('viewAllProducts')}</Text>
                 </TouchableOpacity>
               </View>
             ) : complianceFilter.artisanName ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E40AF' }}>👤 Filtered: {complianceFilter.artisanName}</Text>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E40AF' }}>👤 {tx('filtered')}: {complianceFilter.artisanName}</Text>
                 <TouchableOpacity onPress={() => openComplianceModal(complianceTab, {})}>
                   <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>{tx('viewAllProducts')}</Text>
                 </TouchableOpacity>
@@ -3704,10 +3704,10 @@ export default function App() {
                   <Image source={{ uri: craft.image_url || 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=200&q=80' }} style={{ width: 48, height: 48, borderRadius: 10 }} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>{craft.name}</Text>
-                    <Text style={{ fontSize: 11, color: '#64748B' }}>{craft.category} · Retail ₹{craft.price}</Text>
+                    <Text style={{ fontSize: 11, color: '#64748B' }}>{craft.category} · ₹{craft.price}</Text>
                   </View>
                   <View style={{ backgroundColor: '#EA580C', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
-                    <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>Select ↗</Text>
+                    <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>{tx('selectCraft')}</Text>
                   </View>
                 </TouchableOpacity>
               ))}
