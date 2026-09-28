@@ -3435,7 +3435,7 @@ export default function App() {
         >
           <View
             style={{
-              backgroundColor: '#FFFFFF',
+              backgroundColor: '#FFFDF9',
               borderTopLeftRadius: 24,
               borderTopRightRadius: 24,
               height: keyboardHeight > 0
@@ -3444,56 +3444,71 @@ export default function App() {
               maxHeight: keyboardHeight > 0
                 ? Math.max(260, Math.min(Dimensions.get('window').height * 0.86, Dimensions.get('window').height - keyboardHeight - 24))
                 : '86%',
-              padding: 16,
+              overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column'
             }}
           >
-            {/* Header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', zIndex: 100, elevation: 10 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={{ width: 38, height: 38, borderRadius: 12, overflow: 'hidden', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#EA580C' }}>
+            {/* Header with KalaSetu Orange Heritage Gradient */}
+            <LinearGradient
+              colors={['#EA580C', '#C2410C']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderTopLeftRadius: 24,
+                borderTopRightRadius: 24,
+                zIndex: 100
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, marginRight: 8 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, overflow: 'hidden', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FED7AA' }}>
                   <Image
                     source={require('./assets/assistant-avatar.png')}
-                    style={{ width: 34, height: 34 }}
+                    style={{ width: 30, height: 30 }}
                     resizeMode="contain"
                   />
                 </View>
-                <View>
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A' }}>KalaSetu {tx('aiAssistant')}</Text>
-                  <Text style={{ fontSize: 11, color: '#64748B' }}>{tx('botSubheading')}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.2 }}>KalaSetu {tx('aiAssistant')}</Text>
+                  <Text style={{ fontSize: 11, color: '#FFEDD5', fontWeight: '500' }} numberOfLines={1}>{tx('botSubheading')}</Text>
                 </View>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, position: 'relative', zIndex: 100 }}>
                 <TouchableOpacity
                   onPress={() => setChatMenuOpen(!chatMenuOpen)}
-                  style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0' }}
+                  style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' }}
                   accessibilityLabel="Chat options"
                 >
-                  <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#334155' }}>⋮</Text>
+                  <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#FFFFFF' }}>⋮</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => { setChatMenuOpen(false); setChatModalVisible(false); }}
-                  style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+                  style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' }}
+                  accessibilityLabel="Close chat"
                 >
-                  <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#475569' }}>×</Text>
+                  <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#FFFFFF' }}>✕</Text>
                 </TouchableOpacity>
 
                 {chatMenuOpen && (
                   <View style={{
                     position: 'absolute',
-                    top: 42,
+                    top: 44,
                     right: 0,
                     backgroundColor: '#FFFFFF',
                     borderRadius: 14,
                     padding: 6,
-                    minWidth: 175,
+                    minWidth: 185,
                     shadowColor: '#000',
                     shadowOffset: { width: 0, height: 4 },
                     shadowOpacity: 0.18,
                     shadowRadius: 10,
                     elevation: 12,
-                    borderWidth: 1,
+                    borderWidth: 1.5,
                     borderColor: '#FED7AA',
                     zIndex: 9999
                   }}>
@@ -3512,7 +3527,7 @@ export default function App() {
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8 }}
                     >
                       <Text style={{ fontSize: 14 }}>🌐</Text>
-                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#9A3412' }}>
                         {t.selectLanguage} ({languageOptions.find(([c]) => c === lang)?.[1]})
                       </Text>
                     </TouchableOpacity>
@@ -3526,27 +3541,28 @@ export default function App() {
                   </View>
                 )}
               </View>
-            </View>
+            </LinearGradient>
 
             {/* In-Modal Language Selection Overlay for all 8 Regional Languages + English */}
             {chatLanguagePickerVisible && (
               <View style={{
-                backgroundColor: '#F8FAFC',
-                borderColor: '#CBD5E1',
+                backgroundColor: '#FFF7ED',
+                borderColor: '#FED7AA',
                 borderWidth: 1.5,
                 borderRadius: 16,
                 padding: 12,
-                marginVertical: 8,
-                shadowColor: '#000',
+                marginHorizontal: 14,
+                marginTop: 8,
+                shadowColor: '#EA580C',
                 shadowOffset: { width: 0, height: 2 },
                 shadowOpacity: 0.1,
                 shadowRadius: 4,
-                elevation: 4
+                elevation: 3
               }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '900', color: '#0F172A' }}>🌐 {t.selectLanguage}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '900', color: '#9A3412' }}>🌐 {t.selectLanguage}</Text>
                   <TouchableOpacity onPress={() => setChatLanguagePickerVisible(false)} style={{ padding: 4 }}>
-                    <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#64748B' }}>✕</Text>
+                    <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#EA580C' }}>✕</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -3556,7 +3572,7 @@ export default function App() {
                       onPress={() => void switchChatLanguage(code)}
                       style={{
                         backgroundColor: lang === code ? '#EA580C' : '#FFFFFF',
-                        borderColor: lang === code ? '#EA580C' : '#CBD5E1',
+                        borderColor: lang === code ? '#EA580C' : '#FDBA74',
                         borderWidth: 1,
                         paddingVertical: 6,
                         paddingHorizontal: 10,
@@ -3569,7 +3585,7 @@ export default function App() {
                       <Text style={{
                         fontSize: 11,
                         fontWeight: '700',
-                        color: lang === code ? '#FFFFFF' : '#334155'
+                        color: lang === code ? '#FFFFFF' : '#9A3412'
                       }}>
                         {label}
                       </Text>
@@ -3581,15 +3597,27 @@ export default function App() {
             )}
 
             {/* Quick Suggestion Chips */}
-            <View style={{ paddingVertical: 8 }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+            <View style={{ paddingVertical: 10, paddingHorizontal: 14 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                 {getChatQuickChips(lang).map((chip, idx) => (
                   <TouchableOpacity
                     key={idx}
-                    style={{ backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 5 }}
+                    style={{
+                      backgroundColor: '#FFF7ED',
+                      borderColor: '#FED7AA',
+                      borderWidth: 1.5,
+                      borderRadius: 18,
+                      paddingHorizontal: 13,
+                      paddingVertical: 6,
+                      shadowColor: '#EA580C',
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: 0.08,
+                      shadowRadius: 2,
+                      elevation: 1
+                    }}
                     onPress={() => handleSendChatMessage(chip)}
                   >
-                    <Text style={{ fontSize: 11, color: '#334155', fontWeight: '600' }}>{chip}</Text>
+                    <Text style={{ fontSize: 11.5, color: '#C2410C', fontWeight: '700' }}>{chip}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -3598,8 +3626,8 @@ export default function App() {
             {/* Chat Messages */}
             <ScrollView
               ref={chatScrollRef}
-              style={{ flex: 1, marginVertical: 8 }}
-              contentContainerStyle={{ gap: 10, paddingBottom: 10 }}
+              style={{ flex: 1, paddingHorizontal: 14 }}
+              contentContainerStyle={{ gap: 12, paddingBottom: 12 }}
               keyboardShouldPersistTaps="handled"
               onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
             >
@@ -3609,36 +3637,70 @@ export default function App() {
                   style={{
                     alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
                     maxWidth: '85%',
-                    backgroundColor: msg.sender === 'user' ? '#EA580C' : '#F1F5F9',
-                    borderRadius: 16,
+                    backgroundColor: msg.sender === 'user' ? '#EA580C' : '#FFFFFF',
+                    borderRadius: 18,
                     paddingHorizontal: 14,
                     paddingVertical: 10,
-                    borderBottomRightRadius: msg.sender === 'user' ? 4 : 16,
-                    borderBottomLeftRadius: msg.sender === 'bot' ? 4 : 16,
+                    borderBottomRightRadius: msg.sender === 'user' ? 4 : 18,
+                    borderBottomLeftRadius: msg.sender === 'bot' ? 4 : 18,
+                    borderWidth: msg.sender === 'bot' ? 1.5 : 0,
+                    borderColor: msg.sender === 'bot' ? '#FED7AA' : 'transparent',
+                    shadowColor: msg.sender === 'user' ? '#EA580C' : '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: msg.sender === 'user' ? 0.2 : 0.06,
+                    shadowRadius: 4,
+                    elevation: 2
                   }}
                 >
-                  <Text style={{ fontSize: 13, lineHeight: 18, color: msg.sender === 'user' ? '#FFFFFF' : '#0F172A', fontWeight: msg.sender === 'user' ? '600' : '400' }}>
+                  {msg.sender === 'bot' && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#EA580C' }}>✨ KalaSetu AI</Text>
+                    </View>
+                  )}
+                  <Text style={{ fontSize: 13, lineHeight: 19, color: msg.sender === 'user' ? '#FFFFFF' : '#0F172A', fontWeight: msg.sender === 'user' ? '600' : '400' }}>
                     {msg.text}
                   </Text>
-                  <Text style={{ fontSize: 9, marginTop: 4, alignSelf: 'flex-end', color: msg.sender === 'user' ? '#FED7AA' : '#94A3B8' }}>
+                  <Text style={{ fontSize: 9.5, marginTop: 4, alignSelf: 'flex-end', color: msg.sender === 'user' ? '#FFEDD5' : '#94A3B8', fontWeight: '500' }}>
                     {msg.timestamp}
                   </Text>
                 </View>
               ))}
               {isChatSending && (
-                <View style={{ alignSelf: 'flex-start', backgroundColor: '#F1F5F9', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 }}>
-                  <Text style={{ fontSize: 12, color: '#64748B', fontStyle: 'italic' }}>{tx('analyzingCatalog')}</Text>
+                <View style={{
+                  alignSelf: 'flex-start',
+                  backgroundColor: '#FFF7ED',
+                  borderColor: '#FED7AA',
+                  borderWidth: 1.5,
+                  borderRadius: 18,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8
+                }}>
+                  <ActivityIndicator size="small" color="#EA580C" />
+                  <Text style={{ fontSize: 12, color: '#C2410C', fontWeight: '600', fontStyle: 'italic' }}>{tx('analyzingCatalog')}</Text>
                 </View>
               )}
             </ScrollView>
 
             {/* Input Bar */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingHorizontal: 14,
+              paddingTop: 10,
+              paddingBottom: 14,
+              borderTopWidth: 1,
+              borderTopColor: '#FED7AA',
+              backgroundColor: '#FFFFFF'
+            }}>
               <TextInput
                 style={{
                   flex: 1,
-                  backgroundColor: isChatListening ? '#FEF2F2' : '#F8FAFC',
-                  borderColor: isChatListening ? '#EF4444' : '#E2E8F0',
+                  backgroundColor: isChatListening ? '#FEF2F2' : '#FFFDF9',
+                  borderColor: isChatListening ? '#EF4444' : '#FDBA74',
                   borderWidth: 1.5,
                   borderRadius: 22,
                   paddingHorizontal: 16,
@@ -3660,9 +3722,9 @@ export default function App() {
                   width: 44,
                   height: 44,
                   borderRadius: 22,
-                  backgroundColor: isChatListening ? '#FEE2E2' : '#F1F5F9',
+                  backgroundColor: isChatListening ? '#FEE2E2' : '#FFF7ED',
                   borderWidth: 1.5,
-                  borderColor: isChatListening ? '#DC2626' : '#CBD5E1',
+                  borderColor: isChatListening ? '#DC2626' : '#FDBA74',
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}
@@ -3678,9 +3740,14 @@ export default function App() {
                   width: 44,
                   height: 44,
                   borderRadius: 22,
-                  backgroundColor: (!chatInput.trim() || isChatSending) ? '#CBD5E1' : '#EA580C',
+                  backgroundColor: (!chatInput.trim() || isChatSending) ? '#FED7AA' : '#EA580C',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  shadowColor: '#EA580C',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: (!chatInput.trim() || isChatSending) ? 0 : 0.3,
+                  shadowRadius: 3,
+                  elevation: (!chatInput.trim() || isChatSending) ? 0 : 3
                 }}
               >
                 {isChatSending ? (
