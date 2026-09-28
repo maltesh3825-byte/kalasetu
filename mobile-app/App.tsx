@@ -2183,25 +2183,90 @@ export default function App() {
           <View style={styles.studioContainer}>
             <View style={styles.offlineDraftBanner}>
               <View style={styles.offlineDraftHeader}>
-                <Text style={styles.offlineDraftTitle}>{tx('saveDraft')}</Text>
+                <Text style={styles.offlineDraftTitle}>📁 {lang === 'hi' ? 'ऑफलाइन क्राफ्ट ड्राफ्ट' : 'Offline Craft Drafts'}</Text>
                 <Text style={styles.offlineDraftBadge}>{catalogDrafts.length} {tx('savedBadge')}</Text>
               </View>
-              <Text style={styles.offlineDraftText}>{tx('bulkHelp')}</Text>
+              <Text style={styles.offlineDraftText}>
+                {lang === 'hi'
+                  ? 'इंटरनेट के बिना भी अपने हस्तशिल्प का विवरण सहेजें। कभी भी जारी रखें।'
+                  : 'Save your craft catalog details offline without internet. Resume anytime.'}
+              </Text>
               <TouchableOpacity style={styles.offlineDraftSaveButton} onPress={saveCatalogDraft}>
-                <Text style={styles.offlineDraftSaveText}>{tx('saveDraft')}</Text>
+                <Text style={styles.offlineDraftSaveText}>💾 {lang === 'hi' ? 'मौजूदा ड्राफ्ट सहेजें' : 'Save Current Craft as Draft'}</Text>
               </TouchableOpacity>
               {catalogDrafts.map(draft => (
-                <View key={draft.id} style={styles.offlineDraftRow}>
-                  <View style={styles.offlineDraftInfo}>
-                    <Text style={styles.offlineDraftName}>{draft.title}</Text>
-                    <Text style={styles.offlineDraftDate}>{new Date(draft.savedAt).toLocaleString()}</Text>
+                <View
+                  key={draft.id}
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: 14,
+                    padding: 12,
+                    marginTop: 10,
+                    borderWidth: 1,
+                    borderColor: '#A7F3D0',
+                    shadowColor: '#065F46',
+                    shadowOffset: { width: 0, height: 1 },
+                    shadowOpacity: 0.08,
+                    shadowRadius: 3,
+                    elevation: 2
+                  }}
+                >
+                  {/* Top row: Draft Icon, Name & Timestamp */}
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                    <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: '#D1FAE5', alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 16 }}>📦</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', lineHeight: 18 }}>
+                        {draft.title || 'Untitled Craft Draft'}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                        <Text style={{ fontSize: 10, color: '#64748B' }}>🕒 {new Date(draft.savedAt).toLocaleString()}</Text>
+                      </View>
+                    </View>
                   </View>
-                  <View style={styles.offlineDraftActions}>
-                    <TouchableOpacity onPress={() => restoreCatalogDraft(draft)}>
-                      <Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text>
+
+                  {/* Bottom row: Action Buttons */}
+                  <View style={{ flexDirection: 'row', gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#ECFDF5' }}>
+                    <TouchableOpacity
+                      onPress={() => restoreCatalogDraft(draft)}
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#047857',
+                        paddingVertical: 8,
+                        paddingHorizontal: 12,
+                        borderRadius: 8,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6
+                      }}
+                    >
+                      <Text style={{ fontSize: 12 }}>↺</Text>
+                      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>
+                        {lang === 'hi' ? 'ड्राफ्ट लोड करें' : 'Restore Draft'}
+                      </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => removeCatalogDraft(draft.id)}>
-                      <Text style={styles.offlineDraftRemove}>{tx('removePublished')}</Text>
+
+                    <TouchableOpacity
+                      onPress={() => removeCatalogDraft(draft.id)}
+                      style={{
+                        backgroundColor: '#FEF2F2',
+                        borderColor: '#FECACA',
+                        borderWidth: 1,
+                        paddingVertical: 8,
+                        paddingHorizontal: 12,
+                        borderRadius: 8,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 4
+                      }}
+                    >
+                      <Text style={{ fontSize: 12 }}>🗑️</Text>
+                      <Text style={{ color: '#DC2626', fontSize: 11, fontWeight: '700' }}>
+                        {lang === 'hi' ? 'हटाएं' : 'Delete'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
