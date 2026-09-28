@@ -865,10 +865,44 @@ export default function App() {
     setBulkDrafts(bulkValue ? JSON.parse(bulkValue) : []);
   };
 
+  const getCraftDraftTitle = (draft: { title?: string; data?: Record<string, unknown> }) => {
+    const raw = (draft?.title || '').trim();
+    const genericPlaceholders = [
+      'untitled catalog draft',
+      'untitled craft draft',
+      'शीर्षकहीन हस्तशिल्प ड्राफ्ट',
+      'ಶೀರ್ಷಿಕೆಯಿಲ್ಲದ ಕರಡು',
+      'draft',
+      'untitled'
+    ];
+    if (raw && !genericPlaceholders.includes(raw.toLowerCase())) {
+      return raw;
+    }
+    const data = (draft?.data || {}) as Record<string, any>;
+    if (typeof data.editTitle === 'string' && data.editTitle.trim()) {
+      return data.editTitle.trim();
+    }
+    if (typeof data.artisanNotes === 'string' && data.artisanNotes.trim()) {
+      const notes = data.artisanNotes.trim();
+      return notes.length > 36 ? `${notes.slice(0, 36)}...` : notes;
+    }
+    if (typeof data.editCategory === 'string' && data.editCategory.trim()) {
+      return `${data.editCategory.trim()} (${tx('untitledCraftDraft')})`;
+    }
+    if (typeof data.artisanName === 'string' && data.artisanName.trim()) {
+      return `${data.artisanName.trim()} (${tx('untitledCraftDraft')})`;
+    }
+    return tx('untitledCraftDraft');
+  };
+
   const saveCatalogDraft = async () => {
+    const draftTitle = editTitle?.trim()
+      || (artisanNotes?.trim() ? (artisanNotes.trim().length > 36 ? `${artisanNotes.trim().slice(0, 36)}...` : artisanNotes.trim()) : '')
+      || (editCategory?.trim() ? `${editCategory.trim()} (${tx('untitledCraftDraft')})` : tx('untitledCraftDraft'));
+
     const draft = {
       id: String(Date.now()),
-      title: editTitle || 'Untitled catalog draft',
+      title: draftTitle,
       savedAt: new Date().toISOString(),
       data: {
         imageUri, artisanName, artisanLocation, artisanPhone, artisanNotes, priceIdea,
@@ -879,7 +913,7 @@ export default function App() {
     const nextDrafts = [draft, ...catalogDrafts];
     await AsyncStorage.setItem(catalogDraftKey, JSON.stringify(nextDrafts));
     setCatalogDrafts(nextDrafts);
-    Alert.alert('Draft saved offline', 'Your catalog is saved on this device and can be restored without internet.');
+    Alert.alert(tx('offlineCraftDraftsTitle'), tx('offlineCraftDraftsDesc'));
   };
 
   const restoreCatalogDraft = (draft: typeof catalogDrafts[number]) => {
@@ -2602,94 +2636,109 @@ export default function App() {
           <View style={styles.studioContainer}>
             <View style={styles.offlineDraftBanner}>
               <View style={styles.offlineDraftHeader}>
-                <Text style={styles.offlineDraftTitle}>📁 {lang === 'hi' ? 'ऑफलाइन क्राफ्ट ड्राफ्ट' : 'Offline Craft Drafts'}</Text>
+                <Text style={styles.offlineDraftTitle}>📁 {tx('offlineCraftDraftsTitle')}</Text>
                 <Text style={styles.offlineDraftBadge}>{catalogDrafts.length} {tx('savedBadge')}</Text>
               </View>
               <Text style={styles.offlineDraftText}>
-                {lang === 'hi'
-                  ? 'इंटरनेट के बिना भी अपने हस्तशिल्प का विवरण सहेजें। कभी भी जारी रखें।'
-                  : 'Save your craft catalog details offline without internet. Resume anytime.'}
+                {tx('offlineCraftDraftsDesc')}
               </Text>
               <TouchableOpacity style={styles.offlineDraftSaveButton} onPress={saveCatalogDraft}>
-                <Text style={styles.offlineDraftSaveText}>💾 {lang === 'hi' ? 'मौजूदा ड्राफ्ट सहेजें' : 'Save Current Craft as Draft'}</Text>
+                <Text style={styles.offlineDraftSaveText}>💾 {tx('saveCurrentCraftDraft')}</Text>
               </TouchableOpacity>
-              {catalogDrafts.map(draft => (
-                <View
-                  key={draft.id}
-                  style={{
-                    backgroundColor: '#FFFFFF',
-                    borderRadius: 14,
-                    padding: 12,
-                    marginTop: 10,
-                    borderWidth: 1,
-                    borderColor: '#A7F3D0',
-                    shadowColor: '#065F46',
-                    shadowOffset: { width: 0, height: 1 },
-                    shadowOpacity: 0.08,
-                    shadowRadius: 3,
-                    elevation: 2
-                  }}
-                >
-                  {/* Top row: Draft Icon, Name & Timestamp */}
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
-                    <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: '#D1FAE5', alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ fontSize: 16 }}>📦</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', lineHeight: 18 }}>
-                        {draft.title || 'Untitled Craft Draft'}
-                      </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
-                        <Text style={{ fontSize: 10, color: '#64748B' }}>🕒 {new Date(draft.savedAt).toLocaleString()}</Text>
+              {catalogDrafts.map(draft => {
+                const displayTitle = getCraftDraftTitle(draft);
+                const draftData = (draft.data || {}) as Record<string, any>;
+                const category = typeof draftData.editCategory === 'string' ? draftData.editCategory : '';
+                const price = typeof draftData.editPrice === 'string' && draftData.editPrice ? draftData.editPrice : (typeof draftData.priceIdea === 'string' ? draftData.priceIdea : '');
+
+                return (
+                  <View
+                    key={draft.id}
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      borderRadius: 14,
+                      padding: 12,
+                      marginTop: 10,
+                      borderWidth: 1,
+                      borderColor: '#A7F3D0',
+                      shadowColor: '#065F46',
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: 0.08,
+                      shadowRadius: 3,
+                      elevation: 2
+                    }}
+                  >
+                    {/* Top row: Draft Icon, Name & Timestamp */}
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                      <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: '#D1FAE5', alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 16 }}>📦</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', lineHeight: 18 }}>
+                          {displayTitle}
+                        </Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                          {category ? (
+                            <View style={{ backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                              <Text style={{ fontSize: 10, color: '#475569', fontWeight: '600' }}>{category}</Text>
+                            </View>
+                          ) : null}
+                          {price ? (
+                            <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                              <Text style={{ fontSize: 10, color: '#166534', fontWeight: '700' }}>₹{price}</Text>
+                            </View>
+                          ) : null}
+                          <Text style={{ fontSize: 10, color: '#64748B' }}>🕒 {new Date(draft.savedAt).toLocaleDateString()}</Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
 
-                  {/* Bottom row: Action Buttons */}
-                  <View style={{ flexDirection: 'row', gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#ECFDF5' }}>
-                    <TouchableOpacity
-                      onPress={() => restoreCatalogDraft(draft)}
-                      style={{
-                        flex: 1,
-                        backgroundColor: '#047857',
-                        paddingVertical: 8,
-                        paddingHorizontal: 12,
-                        borderRadius: 8,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 6
-                      }}
-                    >
-                      <Text style={{ fontSize: 12 }}>↺</Text>
-                      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>
-                        {lang === 'hi' ? 'ड्राफ्ट लोड करें' : 'Restore Draft'}
-                      </Text>
-                    </TouchableOpacity>
+                    {/* Bottom row: Action Buttons */}
+                    <View style={{ flexDirection: 'row', gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#ECFDF5' }}>
+                      <TouchableOpacity
+                        onPress={() => restoreCatalogDraft(draft)}
+                        style={{
+                          flex: 1,
+                          backgroundColor: '#047857',
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          borderRadius: 8,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6
+                        }}
+                      >
+                        <Text style={{ fontSize: 12 }}>↺</Text>
+                        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>
+                          {tx('loadCraftDraft')}
+                        </Text>
+                      </TouchableOpacity>
 
-                    <TouchableOpacity
-                      onPress={() => removeCatalogDraft(draft.id)}
-                      style={{
-                        backgroundColor: '#FEF2F2',
-                        borderColor: '#FECACA',
-                        borderWidth: 1,
-                        paddingVertical: 8,
-                        paddingHorizontal: 12,
-                        borderRadius: 8,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 4
-                      }}
-                    >
-                      <Text style={{ fontSize: 12 }}>🗑️</Text>
-                      <Text style={{ color: '#DC2626', fontSize: 11, fontWeight: '700' }}>
-                        {lang === 'hi' ? 'हटाएं' : 'Delete'}
-                      </Text>
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => removeCatalogDraft(draft.id)}
+                        style={{
+                          backgroundColor: '#FEF2F2',
+                          borderColor: '#FECACA',
+                          borderWidth: 1,
+                          paddingVertical: 8,
+                          paddingHorizontal: 12,
+                          borderRadius: 8,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 4
+                        }}
+                      >
+                        <Text style={{ fontSize: 12 }}>🗑️</Text>
+                        <Text style={{ color: '#DC2626', fontSize: 11, fontWeight: '700' }}>
+                          {tx('deleteCraftDraft')}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
             <View style={{ backgroundColor: '#F8FAFC', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
@@ -2858,7 +2907,7 @@ export default function App() {
                   <TextInput style={[styles.textInput, styles.textArea]} value={editDescHi} onChangeText={setEditDescHi} multiline placeholder="शिल्प, सामग्री और पारंपरिक तकनीक का हिंदी में विवरण..." placeholderTextColor={Colors.placeholder} />
                 </View>
                 <TouchableOpacity style={[styles.publishButton, isPublishing && styles.disabledButton]} onPress={handlePublish} disabled={isPublishing}>{isPublishing ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.publishButtonText}>{t.btnPublish}</Text>}</TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryButton} onPress={saveCatalogDraft}><Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.secondaryButton} onPress={saveCatalogDraft}><Text style={styles.secondaryButtonText}>{tx('saveCurrentCraftDraft')}</Text></TouchableOpacity>
               </View>
             )}
           </View>

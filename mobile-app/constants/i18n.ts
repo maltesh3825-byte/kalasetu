@@ -515,8 +515,8 @@ export type AppTextKey =
   | 'askCraftsPlaceholder' | 'signInToKalaSetu' | 'accessStudioOrMarket' | 'passwordPin' | 'gmailOtp' | 'mobileOtp'
   | 'hide' | 'show' | 'signingIn' | 'incomingTab' | 'myOrdersTab' | 'myListingsTab'
   | 'bulkDraftsSaved' | 'skip' | 'aiStudioAndMarketLinkage' | 'units' | 'total' | 'noteLabel'
-  | 'stockLabel' | 'verified' | 'standard' | 'removing' | 'qtyLabel' | 'savedBadge'
-  | 'unitsAt' | 'filtered' | 'product' | 'tapToFill';
+  | 'unitsAt' | 'filtered' | 'product' | 'tapToFill' | 'stockLabel' | 'verified' | 'standard' | 'removing' | 'qtyLabel' | 'savedBadge'
+  | 'offlineCraftDraftsTitle' | 'offlineCraftDraftsDesc' | 'saveCurrentCraftDraft' | 'loadCraftDraft' | 'deleteCraftDraft' | 'untitledCraftDraft';
 
 const englishAppText: Record<AppTextKey, string> = {
   homeTitle: 'Empowering Rural Artisans with Market Linkage',
@@ -769,6 +769,12 @@ const englishAppText: Record<AppTextKey, string> = {
   filtered: 'Filtered',
   product: 'Product',
   tapToFill: '(Tap to fill)',
+  offlineCraftDraftsTitle: 'Offline Craft Drafts',
+  offlineCraftDraftsDesc: 'Save your craft catalog details offline without internet. Resume anytime.',
+  saveCurrentCraftDraft: 'Save Current Craft as Draft',
+  loadCraftDraft: 'Restore Draft',
+  deleteCraftDraft: 'Delete',
+  untitledCraftDraft: 'Untitled Craft Draft',
 };
 
 const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string>> = {
@@ -1023,6 +1029,12 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     filtered: 'फ़िल्टर किया गया',
     product: 'उत्पाद',
     tapToFill: '(भरने के लिए टैप करें)',
+    offlineCraftDraftsTitle: 'ऑफलाइन क्राफ्ट ड्राफ्ट',
+    offlineCraftDraftsDesc: 'इंटरनेट के बिना भी अपने हस्तशिल्प का विवरण सहेजें। कभी भी जारी रखें।',
+    saveCurrentCraftDraft: 'मौजूदा ड्राफ्ट सहेजें',
+    loadCraftDraft: 'ड्राफ्ट लोड करें',
+    deleteCraftDraft: 'हटाएं',
+    untitledCraftDraft: 'हस्तशिल्प ड्राफ्ट (शीर्षकहीन)',
   },
   kn: {
     homeTitle: 'AI ಮೂಲಕ ಗ್ರಾಮೀಣ ಕಲಾವಿದರನ್ನು ಮಾರುಕಟ್ಟೆಗೆ ಸಂಪರ್ಕಿಸುವುದು',
@@ -1275,6 +1287,12 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     filtered: 'ಫಿಲ್ಟರ್ ಮಾಡಲಾಗಿದೆ',
     product: 'ಉತ್ಪನ್ನ',
     tapToFill: '(ಭರ್ತಿ ಮಾಡಲು ಟ್ಯಾಪ್ ಮಾಡಿ)',
+    offlineCraftDraftsTitle: 'ಆಫ್‌ಲೈನ್ ಕಲಾಕೃತಿ ಕರಡುಗಳು',
+    offlineCraftDraftsDesc: 'ಇಂಟರ್ನೆಟ್ ಇಲ್ಲದಿದ್ದರೂ ನಿಮ್ಮ ಕಲಾಕೃತಿಯ ವಿವರಗಳನ್ನು ಆಫ್‌ಲೈನ್‌ನಲ್ಲಿ ಉಳಿಸಿ. ಯಾವುದೇ ಸಮಯದಲ್ಲಿ ಮುಂದುವರಿಸಿ.',
+    saveCurrentCraftDraft: 'ಪ್ರಸ್ತುತ ಕರಡನ್ನು ಉಳಿಸಿ',
+    loadCraftDraft: 'ಕರಡು ಲೋಡ್ ಮಾಡಿ',
+    deleteCraftDraft: 'ಕರಡು ಅಳಿಸಿ',
+    untitledCraftDraft: 'ಕರಡು ಕಲಾಕೃತಿ (ಹೆಸರಿಲ್ಲದ್ದು)',
   },
   ta: {
     homeTitle: 'AI மூலம் கிராமப்புற கைவினைஞர்களை சந்தையுடன் இணைத்தல்',
@@ -1527,6 +1545,12 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     filtered: 'வடிகட்டப்பட்டது',
     product: 'தயாரிப்பு',
     tapToFill: '(நிரப்ப தட்டவும்)',
+    offlineCraftDraftsTitle: 'ஆஃப்லைன் கைவினை வரைவுகள்',
+    offlineCraftDraftsDesc: 'இணையம் இல்லாமல் உங்கள் கைவினை விவரங்களைச் சேமிக்கவும். எப்போது வேண்டுமானாலும் தொடரவும்.',
+    saveCurrentCraftDraft: 'தற்போதைய வரைவைச் சேமிக்கவும்',
+    loadCraftDraft: 'வரைவை ஏற்று',
+    deleteCraftDraft: 'வரைவை நீக்கு',
+    untitledCraftDraft: 'தலைப்பிடப்படாத கைவினை வரைவு',
   },
   te: {
     homeTitle: 'AIతో గ్రామీణ కళాకారులను మార్కెట్‌కు అనుసంధానం చేయడం',
@@ -1779,6 +1803,12 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     filtered: 'ఫిల్టర్ చేయబడింది',
     product: 'ఉత్పత్తి',
     tapToFill: '(పూరించడానికి నొక్కండి)',
+    offlineCraftDraftsTitle: 'ఆఫ్‌లైన్ క్రాఫ్ట్ డ్రాఫ్ట్‌లు',
+    offlineCraftDraftsDesc: 'ఇంటర్నెట్ లేకుండా మీ కళా వివరాలను ఆఫ్‌లైన్‌లో సేవ్ చేయండి. ఎప్పుడైనా కొనసాగించండి.',
+    saveCurrentCraftDraft: 'ప్రస్తుత డ్రాఫ్ట్‌ను సేవ్ చేయండి',
+    loadCraftDraft: 'డ్రాఫ్ట్ లోడ్ చేయండి',
+    deleteCraftDraft: 'డ్రాఫ్ట్ తొలగించండి',
+    untitledCraftDraft: 'శీర్షిక లేని క్రాఫ్ట్ డ్రాఫ్ట్',
   },
   ml: {
     homeTitle: 'AI ഉപയോഗിച്ച് ഗ്രാമീണ കലാകാരന്മാരെ വിപണിയുമായി ബന്ധിപ്പിക്കുന്നു',
@@ -2031,6 +2061,12 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     filtered: 'ഫിൽട്ടർ ചെയ്തു',
     product: 'ഉൽപ്പന്നം',
     tapToFill: '(പൂരിപ്പിക്കാൻ ടാപ്പ് ചെയ്യുക)',
+    offlineCraftDraftsTitle: 'ഓഫ്‌ലൈൻ ക്രാഫ്റ്റ് ഡ്രാഫ്റ്റുകൾ',
+    offlineCraftDraftsDesc: 'ഇന്റർനെറ്റ് ഇല്ലാതെയും നിങ്ങളുടെ ക്രാഫ്റ്റ് വിശദാംശങ്ങൾ സൂക്ഷിക്കുക. എപ്പോൾ വേണമെങ്കിലും തുടരുക.',
+    saveCurrentCraftDraft: 'നിലവിലെ ഡ്രാഫ്റ്റ് സൂക്ഷിക്കുക',
+    loadCraftDraft: 'ഡ്രാഫ്റ്റ് ലോഡ് ചെയ്യുക',
+    deleteCraftDraft: 'ഡ്രാഫ്റ്റ് നീക്കം ചെയ്യുക',
+    untitledCraftDraft: 'പേരില്ലാത്ത ക്രാഫ്റ്റ് ഡ്രാഫ്റ്റ്',
   },
   mr: {
     homeTitle: 'AI द्वारे ग्रामीण कारागिरांना बाजारपेठेशी जोडणे',
@@ -2283,6 +2319,12 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     filtered: 'फिल्टर केले',
     product: 'उत्पादन',
     tapToFill: '(भरण्यासाठी टॅप करा)',
+    offlineCraftDraftsTitle: 'ऑफलाइन हस्तकला मसुदा',
+    offlineCraftDraftsDesc: 'इंटरनेटशिवाय आपल्या हस्तकलेचा तपशील ऑफलाइन सेव्ह करा. कधीही सुरू ठेवा.',
+    saveCurrentCraftDraft: 'सध्याचा मसुदा सेव्ह करा',
+    loadCraftDraft: 'मसुदा लोड करा',
+    deleteCraftDraft: 'मसुदा हटवा',
+    untitledCraftDraft: 'शीर्षकहीन हस्तकला मसुदा',
   },
   bh: {
     homeTitle: 'AI से गाँव के कारीगरन के बाजार से जोड़े के काम',
@@ -2535,6 +2577,12 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     filtered: 'फ़िल्टर कइल',
     product: 'उत्पाद',
     tapToFill: '(भरे खातिर टैप करीं)',
+    offlineCraftDraftsTitle: 'ऑफलाइन क्राफ्ट ड्राफ्ट',
+    offlineCraftDraftsDesc: 'बिना इंटरनेट के भी अपना हस्तशिल्प ड्राफ्ट सहेजें। कभी भी जारी रखीं।',
+    saveCurrentCraftDraft: 'वर्तमान ड्राफ्ट सहेजीं',
+    loadCraftDraft: 'ड्राफ्ट लोड करीं',
+    deleteCraftDraft: 'ड्राफ्ट हटाईं',
+    untitledCraftDraft: 'शीर्षकहीन क्राफ्ट ड्राफ्ट',
   },
   bho: {
     homeTitle: 'AI से गाँव के कारीगरन के बाजार से जोड़े के काम',
@@ -2787,6 +2835,12 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     filtered: 'फ़िल्टर कइल',
     product: 'उत्पाद',
     tapToFill: '(भरे खातिर टैप करीं)',
+    offlineCraftDraftsTitle: 'ऑफलाइन क्राफ्ट ड्राफ्ट',
+    offlineCraftDraftsDesc: 'बिना इंटरनेट के भी अपना क्राफ्ट ड्राफ्ट सहेजीं। कबो भी जारी राखीं।',
+    saveCurrentCraftDraft: 'हाल के ड्राफ्ट सहेजीं',
+    loadCraftDraft: 'ड्राफ्ट लोड करीं',
+    deleteCraftDraft: 'ड्राफ्ट हटाईं',
+    untitledCraftDraft: 'बिना नाम के क्राफ्ट ड्राफ्ट',
   }
 };
 
