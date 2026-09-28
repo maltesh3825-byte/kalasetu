@@ -107,6 +107,52 @@ type BrowserSpeechRecognition = {
 
 type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
 
+/**
+ * Deduplicate speech recognition transcripts and eliminate repeated consecutive words or phrases.
+ * Supports Indic scripts (Kannada, Hindi, Tamil, Telugu, etc.) as well as English.
+ */
+function deduplicateTranscript(text: string): string {
+  if (!text) return '';
+  const clean = text.trim();
+  if (!clean) return '';
+
+  // 1. Remove consecutive identical words (e.g. "word word" -> "word")
+  const words = clean.split(/\s+/);
+  const dedupedWords: string[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    if (
+      dedupedWords.length > 0 &&
+      dedupedWords[dedupedWords.length - 1].toLowerCase() === word.toLowerCase()
+    ) {
+      continue;
+    }
+    dedupedWords.push(word);
+  }
+  let result = dedupedWords.join(' ');
+
+  // 2. Remove consecutive repeated phrases (e.g. "phrase A phrase A" -> "phrase A")
+  const tokens = result.split(' ');
+  for (let len = Math.floor(tokens.length / 2); len >= 2; len--) {
+    let changed = false;
+    for (let i = 0; i <= tokens.length - 2 * len; i++) {
+      const phrase1 = tokens.slice(i, i + len).join(' ');
+      const phrase2 = tokens.slice(i + len, i + 2 * len).join(' ');
+      if (phrase1.toLowerCase() === phrase2.toLowerCase()) {
+        tokens.splice(i + len, len);
+        changed = true;
+        break;
+      }
+    }
+    if (changed) {
+      result = tokens.join(' ');
+      break;
+    }
+  }
+
+  return result.trim();
+}
+
 interface InteractivePopupConfig {
   visible: boolean;
   type?: 'network' | 'welcome' | 'success' | 'alert' | 'error';
@@ -481,6 +527,8 @@ export default function App() {
   const browserListeningRef = useRef(false);
   const browserTranscriptRef = useRef('');
   const nativeListeningRef = useRef(false);
+  const chatBaseTextRef = useRef('');
+  const chatUtteranceRef = useRef('');
   const mainScrollRef = useRef<ScrollView>(null);
   const chatScrollRef = useRef<ScrollView>(null);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -514,6 +562,23 @@ export default function App() {
       }, 100);
     }
   }, [isKeyboardVisible, chatModalVisible]);
+
+  useEffect(() => {
+    if (!chatModalVisible && isChatListening) {
+      if (Platform.OS === 'web') {
+        browserListeningRef.current = false;
+        browserRecognitionRef.current?.abort?.();
+        browserRecognitionRef.current?.stop();
+        browserRecognitionRef.current = null;
+      } else {
+        nativeListeningRef.current = false;
+        ExpoSpeechRecognitionModule.stop();
+      }
+      setIsChatListening(false);
+      chatBaseTextRef.current = '';
+      chatUtteranceRef.current = '';
+    }
+  }, [chatModalVisible, isChatListening]);
 
   useEffect(() => {
     if (currentUser) {
@@ -674,6 +739,11 @@ export default function App() {
 
   useSpeechRecognitionEvent('end', () => {
     if (nativeListeningRef.current) {
+      if (chatModalVisible && chatUtteranceRef.current) {
+        const base = chatBaseTextRef.current;
+        chatBaseTextRef.current = deduplicateTranscript(base ? `${base} ${chatUtteranceRef.current}` : chatUtteranceRef.current);
+        chatUtteranceRef.current = '';
+      }
       setTimeout(() => {
         if (nativeListeningRef.current) {
           const activeSpeechLang = chatModalVisible
@@ -690,16 +760,22 @@ export default function App() {
     } else {
       setIsListening(false);
       setIsChatListening(false);
+      chatBaseTextRef.current = '';
+      chatUtteranceRef.current = '';
     }
   });
 
   useSpeechRecognitionEvent('result', (event) => {
-    const transcript = event.results[0]?.transcript?.trim();
-    if (transcript) {
+    const rawTranscript = event.results[0]?.transcript?.trim();
+    if (rawTranscript) {
+      const clean = deduplicateTranscript(rawTranscript);
       if (chatModalVisible) {
-        setChatInput(prev => (prev ? `${prev} ${transcript}` : transcript));
+        chatUtteranceRef.current = clean;
+        const base = chatBaseTextRef.current;
+        const combined = base ? `${base} ${clean}` : clean;
+        setChatInput(deduplicateTranscript(combined));
       } else {
-        setArtisanNotes(transcript);
+        setArtisanNotes(clean);
       }
     }
   });
@@ -708,6 +784,8 @@ export default function App() {
     nativeListeningRef.current = false;
     setIsListening(false);
     setIsChatListening(false);
+    chatBaseTextRef.current = '';
+    chatUtteranceRef.current = '';
     setSpeechError(`Speech recognition error: ${event.message || event.error}`);
   });
 
@@ -1597,8 +1675,14 @@ export default function App() {
         ExpoSpeechRecognitionModule.stop();
       }
       setIsChatListening(false);
+      chatBaseTextRef.current = '';
+      chatUtteranceRef.current = '';
       return;
     }
+
+    // Set base text to whatever user already typed
+    chatBaseTextRef.current = chatInput.trim();
+    chatUtteranceRef.current = '';
 
     const activeSpeechLang = lang === 'kn' ? 'kn-IN'
       : lang === 'hi' ? 'hi-IN'
@@ -1623,16 +1707,28 @@ export default function App() {
         recognition.interimResults = true;
         recognition.continuous = false;
         recognition.onresult = (event: any) => {
-          let transcript = '';
-          for (let i = event.resultIndex || 0; i < event.results.length; i++) {
-            transcript += event.results[i]?.[0]?.transcript || '';
+          let rawTranscript = '';
+          for (let i = 0; i < event.results.length; i++) {
+            rawTranscript += event.results[i]?.[0]?.transcript || '';
           }
-          if (transcript.trim()) {
-            setChatInput(prev => (prev ? `${prev} ${transcript.trim()}` : transcript.trim()));
+          const clean = deduplicateTranscript(rawTranscript);
+          if (clean) {
+            chatUtteranceRef.current = clean;
+            const base = chatBaseTextRef.current;
+            const combined = base ? `${base} ${clean}` : clean;
+            setChatInput(deduplicateTranscript(combined));
           }
         };
-        recognition.onerror = () => setIsChatListening(false);
-        recognition.onend = () => setIsChatListening(false);
+        recognition.onerror = () => {
+          setIsChatListening(false);
+          chatBaseTextRef.current = '';
+          chatUtteranceRef.current = '';
+        };
+        recognition.onend = () => {
+          setIsChatListening(false);
+          chatBaseTextRef.current = '';
+          chatUtteranceRef.current = '';
+        };
         browserListeningRef.current = true;
         recognition.start();
         setIsChatListening(true);
@@ -1655,6 +1751,8 @@ export default function App() {
       });
     } catch (err: any) {
       setIsChatListening(false);
+      chatBaseTextRef.current = '';
+      chatUtteranceRef.current = '';
       Alert.alert("Voice Input Notice", err?.message || "Could not start voice recognition.");
     }
   };
@@ -1700,6 +1798,8 @@ export default function App() {
 
     setChatMessages(prev => [...prev, userMsg]);
     setChatInput('');
+    chatBaseTextRef.current = '';
+    chatUtteranceRef.current = '';
     setIsChatSending(true);
 
     try {
