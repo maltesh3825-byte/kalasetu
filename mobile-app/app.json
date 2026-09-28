@@ -38,7 +38,8 @@
           "microphonePermission": "KalaSetu uses your microphone to capture artisan product descriptions.",
           "speechRecognitionPermission": "KalaSetu uses speech recognition to turn artisan voice notes into product descriptions."
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "updates": {
       "enabled": false
