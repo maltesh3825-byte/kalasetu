@@ -4214,7 +4214,6 @@ export default function App() {
       <View style={styles.topStrip}>
         <View style={styles.topStripLeft}>
           <Text style={styles.sihTag}>SIH 2026</Text>
-          <Text style={styles.topStripText}>{t.sihBadge}</Text>
         </View>
         <TouchableOpacity style={styles.langBtn} onPress={() => setIsLanguageMenuOpen(true)}>
           <Text style={styles.langBtnText}>🌐 {languageOptions.find(([code]) => code === lang)?.[1]} ▾</Text>
