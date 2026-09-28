@@ -65,8 +65,8 @@ export const i18n = {
     orderStatus: 'Order status',
     deliveryEta: 'Delivery ETA',
     buyNow: 'Buy now',
-    addToWishlist: 'Save',
-    removeFromWishlist: 'Saved'
+    addToWishlist: 'Wishlist',
+    removeFromWishlist: 'Wishlisted'
   },
   hi: {
     appTitle: 'कलाकृति',
@@ -129,8 +129,8 @@ export const i18n = {
     orderStatus: 'ऑर्डर स्थिति',
     deliveryEta: 'डिलीवरी ETA',
     buyNow: 'अभी खरीदें',
-    addToWishlist: 'सेव करें',
-    removeFromWishlist: 'सेव किया'
+    addToWishlist: 'विशलिस्ट',
+    removeFromWishlist: 'विशलिस्ट में'
   },
   ta: {
     appTitle: 'கலாகிருதி',
@@ -193,8 +193,8 @@ export const i18n = {
     orderStatus: 'ஆர்டர் நிலை',
     deliveryEta: 'டெலிவரி ETA',
     buyNow: 'இப்போது வாங்கு',
-    addToWishlist: 'சேர்',
-    removeFromWishlist: 'சேமிக்கப்பட்டது'
+    addToWishlist: 'விருப்பப்பட்டியல்',
+    removeFromWishlist: 'விருப்பப்பட்டியலில்'
   },
   kn: {
     appTitle: 'ಕಲಾಕೃತಿ',
@@ -257,8 +257,8 @@ export const i18n = {
     orderStatus: 'ಆರ್ಡರ್ ಸ್ಥಿತಿ',
     deliveryEta: 'ಡೆಲಿವರಿ ETA',
     buyNow: 'ಈಗ ಖರೀದಿಸಿ',
-    addToWishlist: 'ಸೇವಿಸಿ',
-    removeFromWishlist: 'ಸೇವಿಸಲಾಗಿದೆ'
+    addToWishlist: 'ವಿಶ್‌ಲಿಸ್ಟ್',
+    removeFromWishlist: 'ವಿಶ್‌ಲಿಸ್ಟ್‌ನಲ್ಲಿದೆ'
   }
 };
 
@@ -305,8 +305,8 @@ export const additionalTranslations: Record<Exclude<Language, keyof typeof i18n>
     fullName: 'పూర్తి పేరు',
     selectLanguage: 'భాష ఎంచుకోండి',
     buyNow: 'ఇప్పుడే కొనండి',
-    addToWishlist: 'సేవ్ చేయండి',
-    removeFromWishlist: 'సేవ్ చేయబడింది'
+    addToWishlist: 'విష్‌లిస్ట్',
+    removeFromWishlist: 'విష్‌లిస్ట్‌లో ఉంది'
   },
   ml: {
     ...i18n.en,
@@ -346,8 +346,8 @@ export const additionalTranslations: Record<Exclude<Language, keyof typeof i18n>
     fullName: 'പൂർണ്ണ പേര്',
     selectLanguage: 'ഭാഷ തിരഞ്ഞെടുക്കുക',
     buyNow: 'ഇപ്പോൾ വാങ്ങുക',
-    addToWishlist: 'സംരക്ഷിക്കുക',
-    removeFromWishlist: 'സംരക്ഷിച്ചു'
+    addToWishlist: 'വിഷ്‌ലിസ്റ്റ്',
+    removeFromWishlist: 'വിഷ്‌ലിസ്റ്റിൽ'
   },
   mr: {
     ...i18n.en,
@@ -387,8 +387,8 @@ export const additionalTranslations: Record<Exclude<Language, keyof typeof i18n>
     fullName: 'पूर्ण नाव',
     selectLanguage: 'भाषा निवडा',
     buyNow: 'आता खरेदी करा',
-    addToWishlist: 'जतन करा',
-    removeFromWishlist: 'जतन केले'
+    addToWishlist: 'विशलिस्ट',
+    removeFromWishlist: 'विशलिस्टमध्ये'
   },
   bh: {
     ...i18n.en,
@@ -428,8 +428,8 @@ export const additionalTranslations: Record<Exclude<Language, keyof typeof i18n>
     fullName: 'पूरा नाम',
     selectLanguage: 'भाषा चुनीं',
     buyNow: 'अबहीं खरीदीं',
-    addToWishlist: 'सहेजीं',
-    removeFromWishlist: 'सहेजल बा'
+    addToWishlist: 'विशलिस्ट',
+    removeFromWishlist: 'विशलिस्ट में'
   },
   bho: {
     ...i18n.en,
@@ -469,8 +469,8 @@ export const additionalTranslations: Record<Exclude<Language, keyof typeof i18n>
     fullName: 'पूरा नाम',
     selectLanguage: 'भाषा चुनीं',
     buyNow: 'अबहीं खरीदीं',
-    addToWishlist: 'सहेजीं',
-    removeFromWishlist: 'सहेजल बा'
+    addToWishlist: 'विशलिस्ट',
+    removeFromWishlist: 'विशलिस्ट में'
   }
 };
 

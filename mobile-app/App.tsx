@@ -1231,7 +1231,7 @@ export default function App() {
 
   const toggleWishlist = (productId: number) => {
     if (!isLoggedIn) {
-      Alert.alert('Sign in required', 'Please sign in to save products to your wishlist.');
+      Alert.alert('Sign in required', 'Please sign in to add products to your wishlist.');
       setActiveTab('account');
       return;
     }
@@ -3005,7 +3005,14 @@ export default function App() {
                       </TouchableOpacity>
                     ))}</View>
                     <View style={styles.inlineActionRow}>
-                      <TouchableOpacity style={styles.inlineActionButton} onPress={() => toggleWishlist(product.id)}><Text style={styles.inlineActionButtonText}>{wishlist.includes(product.id) ? t.removeFromWishlist : t.addToWishlist}</Text></TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.inlineActionButton, wishlist.includes(product.id) && { backgroundColor: '#FFF1F2', borderColor: '#FECDD3' }]}
+                        onPress={() => toggleWishlist(product.id)}
+                      >
+                        <Text style={[styles.inlineActionButtonText, wishlist.includes(product.id) && { color: '#E11D48' }]}>
+                          {wishlist.includes(product.id) ? `♥ ${t.removeFromWishlist}` : `♡ ${t.addToWishlist}`}
+                        </Text>
+                      </TouchableOpacity>
                       <TouchableOpacity style={[styles.inlineActionButtonPrimary, isPlacingOrder && styles.disabledButton]} onPress={() => requestOrder(product)} disabled={isPlacingOrder || (Number(product.quantity ?? 10) <= 0)}><Text style={styles.inlineActionButtonText}>{isPlacingOrder ? tx('placingOrder') : Number(product.quantity ?? 10) <= 0 ? tx('soldOut') : t.buyNow}</Text></TouchableOpacity>
                     </View>
                     <TouchableOpacity style={styles.whatsAppButton} onPress={() => openWhatsApp(product.artisan_phone || '+919876543210', product.name, product.price)}>
@@ -3660,7 +3667,7 @@ export default function App() {
                     >
                       <Text style={{ fontSize: 12 }}>💖</Text>
                       <Text style={{ fontSize: 11, color: '#CBD5E1', fontWeight: '700' }}>
-                        {wishlist.length} Saved
+                        {wishlist.length} {t.tabWishlist}
                       </Text>
                     </TouchableOpacity>
 
@@ -4895,11 +4902,11 @@ export default function App() {
                   {/* Action buttons */}
                   <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
                     <TouchableOpacity
-                      style={{ flex: 1, backgroundColor: '#F1F5F9', paddingVertical: 12, borderRadius: 14, alignItems: 'center', borderWidth: 1, borderColor: '#CBD5E1' }}
+                      style={[{ flex: 1, backgroundColor: '#F1F5F9', paddingVertical: 12, borderRadius: 14, alignItems: 'center', borderWidth: 1, borderColor: '#CBD5E1' }, wishlist.includes(selectedProduct.id) && { backgroundColor: '#FFF1F2', borderColor: '#FECDD3' }]}
                       onPress={() => toggleWishlist(selectedProduct.id)}
                     >
-                      <Text style={{ fontWeight: '800', color: '#334155', fontSize: 13 }}>
-                        {wishlist.includes(selectedProduct.id) ? t.removeFromWishlist : t.addToWishlist}
+                      <Text style={[{ fontWeight: '800', color: '#334155', fontSize: 13 }, wishlist.includes(selectedProduct.id) && { color: '#E11D48' }]}>
+                        {wishlist.includes(selectedProduct.id) ? `♥ ${t.removeFromWishlist}` : `♡ ${t.addToWishlist}`}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
