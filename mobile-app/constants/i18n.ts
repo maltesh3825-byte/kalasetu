@@ -516,7 +516,8 @@ export type AppTextKey =
   | 'hide' | 'show' | 'signingIn' | 'incomingTab' | 'myOrdersTab' | 'myListingsTab'
   | 'bulkDraftsSaved' | 'skip' | 'aiStudioAndMarketLinkage' | 'units' | 'total' | 'noteLabel'
   | 'unitsAt' | 'filtered' | 'product' | 'tapToFill' | 'stockLabel' | 'verified' | 'standard' | 'removing' | 'qtyLabel' | 'savedBadge'
-  | 'offlineCraftDraftsTitle' | 'offlineCraftDraftsDesc' | 'saveCurrentCraftDraft' | 'loadCraftDraft' | 'deleteCraftDraft' | 'untitledCraftDraft';
+  | 'offlineCraftDraftsTitle' | 'offlineCraftDraftsDesc' | 'saveCurrentCraftDraft' | 'loadCraftDraft' | 'deleteCraftDraft' | 'untitledCraftDraft'
+  | 'editMyListing' | 'editProductTitle' | 'saveChanges' | 'updatingProduct';
 
 const englishAppText: Record<AppTextKey, string> = {
   homeTitle: 'Empowering Rural Artisans with Market Linkage',
@@ -775,6 +776,10 @@ const englishAppText: Record<AppTextKey, string> = {
   loadCraftDraft: 'Restore Draft',
   deleteCraftDraft: 'Delete',
   untitledCraftDraft: 'Untitled Craft Draft',
+  editMyListing: 'Edit my listing',
+  editProductTitle: 'Edit Craft Listing',
+  saveChanges: 'Save Changes',
+  updatingProduct: 'Updating product...',
 };
 
 const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string>> = {
@@ -1035,6 +1040,10 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     loadCraftDraft: 'ड्राफ्ट लोड करें',
     deleteCraftDraft: 'हटाएं',
     untitledCraftDraft: 'हस्तशिल्प ड्राफ्ट (शीर्षकहीन)',
+    editMyListing: 'मेरी लिस्टिंग संपादित करें',
+    editProductTitle: 'हस्तशिल्प लिस्टिंग संपादित करें',
+    saveChanges: 'बदलाव सहेजें',
+    updatingProduct: 'उत्पाद अपडेट हो रहा है...',
   },
   kn: {
     homeTitle: 'AI ಮೂಲಕ ಗ್ರಾಮೀಣ ಕಲಾವಿದರನ್ನು ಮಾರುಕಟ್ಟೆಗೆ ಸಂಪರ್ಕಿಸುವುದು',
@@ -1293,6 +1302,10 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     loadCraftDraft: 'ಕರಡು ಲೋಡ್ ಮಾಡಿ',
     deleteCraftDraft: 'ಕರಡು ಅಳಿಸಿ',
     untitledCraftDraft: 'ಕರಡು ಕಲಾಕೃತಿ (ಹೆಸರಿಲ್ಲದ್ದು)',
+    editMyListing: 'ನನ್ನ ಲಿಸ್ಟಿಂಗ್ ತಿದ್ದುಪಡಿ ಮಾಡಿ',
+    editProductTitle: 'ಕಲಾಕೃತಿ ಲಿಸ್ಟಿಂಗ್ ತಿದ್ದುಪಡಿ',
+    saveChanges: 'ಬದಲಾವಣೆಗಳನ್ನು ಉಳಿಸಿ',
+    updatingProduct: 'ಉತ್ಪನ್ನ ಅಪ್ಡೇಟ್ ಆಗುತ್ತಿದೆ...',
   },
   ta: {
     homeTitle: 'AI மூலம் கிராமப்புற கைவினைஞர்களை சந்தையுடன் இணைத்தல்',
@@ -1551,6 +1564,10 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     loadCraftDraft: 'வரைவை ஏற்று',
     deleteCraftDraft: 'வரைவை நீக்கு',
     untitledCraftDraft: 'தலைப்பிடப்படாத கைவினை வரைவு',
+    editMyListing: 'என் பட்டியலைத் திருத்து',
+    editProductTitle: 'கைவினைப் பட்டியலைத் திருத்து',
+    saveChanges: 'மாற்றங்களைச் சேமி',
+    updatingProduct: 'தயாரிப்பு புதுப்பிக்கப்படுகிறது...',
   },
   te: {
     homeTitle: 'AIతో గ్రామీణ కళాకారులను మార్కెట్‌కు అనుసంధానం చేయడం',
@@ -1809,6 +1826,10 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     loadCraftDraft: 'డ్రాఫ్ట్ లోడ్ చేయండి',
     deleteCraftDraft: 'డ్రాఫ్ట్ తొలగించండి',
     untitledCraftDraft: 'శీర్షిక లేని క్రాఫ్ట్ డ్రాఫ్ట్',
+    editMyListing: 'నా జాబితాను సవరించండి',
+    editProductTitle: 'క్రాఫ్ట్ జాబితాను సవరించండి',
+    saveChanges: 'మార్పులను సేవ్ చేయండి',
+    updatingProduct: 'ఉత్పత్తి అప్‌డేట్ అవుతోంది...',
   },
   ml: {
     homeTitle: 'AI ഉപയോഗിച്ച് ഗ്രാമീണ കലാകാരന്മാരെ വിപണിയുമായി ബന്ധിപ്പിക്കുന്നു',
@@ -2067,6 +2088,10 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     loadCraftDraft: 'ഡ്രാഫ്റ്റ് ലോഡ് ചെയ്യുക',
     deleteCraftDraft: 'ഡ്രാഫ്റ്റ് നീക്കം ചെയ്യുക',
     untitledCraftDraft: 'പേരില്ലാത്ത ക്രാഫ്റ്റ് ഡ്രാഫ്റ്റ്',
+    editMyListing: 'എന്റെ ലിസ്റ്റിംഗ് എഡിറ്റ് ചെയ്യുക',
+    editProductTitle: 'കരകൗശല ലിസ്റ്റിംഗ് എഡിറ്റ് ചെയ്യുക',
+    saveChanges: 'മാറ്റങ്ങൾ സംരക്ഷിക്കുക',
+    updatingProduct: 'ഉൽപ്പന്നം അപ്‌ഡേറ്റ് ചെയ്യുന്നു...',
   },
   mr: {
     homeTitle: 'AI द्वारे ग्रामीण कारागिरांना बाजारपेठेशी जोडणे',
@@ -2325,6 +2350,10 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     loadCraftDraft: 'मसुदा लोड करा',
     deleteCraftDraft: 'मसुदा हटवा',
     untitledCraftDraft: 'शीर्षकहीन हस्तकला मसुदा',
+    editMyListing: 'माझी यादी संपादित करा',
+    editProductTitle: 'हस्तकला यादी संपादित करा',
+    saveChanges: 'बदल जतन करा',
+    updatingProduct: 'उत्पादन अपडेट होत आहे...',
   },
   bh: {
     homeTitle: 'AI से गाँव के कारीगरन के बाजार से जोड़े के काम',
@@ -2583,6 +2612,10 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     loadCraftDraft: 'ड्राफ्ट लोड करीं',
     deleteCraftDraft: 'ड्राफ्ट हटाईं',
     untitledCraftDraft: 'शीर्षकहीन क्राफ्ट ड्राफ्ट',
+    editMyListing: 'हमार लिस्टिंग संपादित करीं',
+    editProductTitle: 'शिल्प लिस्टिंग संपादित करीं',
+    saveChanges: 'बदलाव सहेजीं',
+    updatingProduct: 'उत्पाद अपडेट हो रहल बा...',
   },
   bho: {
     homeTitle: 'AI से गाँव के कारीगरन के बाजार से जोड़े के काम',
@@ -2841,6 +2874,10 @@ const regionalAppText: Record<Exclude<Language, 'en'>, Record<AppTextKey, string
     loadCraftDraft: 'ड्राफ्ट लोड करीं',
     deleteCraftDraft: 'ड्राफ्ट हटाईं',
     untitledCraftDraft: 'बिना नाम के क्राफ्ट ड्राफ्ट',
+    editMyListing: 'हमार लिस्टिंग संपादित करीं',
+    editProductTitle: 'कारीगरी लिस्टिंग संपादित करीं',
+    saveChanges: 'बदलाव सहेजीं',
+    updatingProduct: 'उत्पाद अपडेट हो रहल बा...',
   }
 };
 

@@ -2255,6 +2255,73 @@ export async function loginAdmin(email: string, password: string): Promise<strin
     }
   }
 
+  export async function updateProduct(
+    productId: number,
+    userId: number,
+    updates: {
+      name?: string;
+      price?: number;
+      category?: string;
+      artisan_name?: string;
+      artisan_phone?: string;
+      artisan_location?: string;
+      description_en?: string;
+      description_hi?: string;
+      tags?: string[];
+      quantity?: number;
+      image_url?: string;
+    }
+  ): Promise<CraftProduct | null> {
+    // 1. Update Supabase REST directly (so other app users immediately see changes)
+    if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+      try {
+        const sbPayload: Record<string, any> = {};
+        if (updates.name !== undefined) sbPayload.name = updates.name;
+        if (updates.price !== undefined) sbPayload.price = updates.price;
+        if (updates.category !== undefined) sbPayload.category = updates.category;
+        if (updates.artisan_name !== undefined) sbPayload.artisan_name = updates.artisan_name;
+        if (updates.artisan_phone !== undefined) sbPayload.artisan_phone = updates.artisan_phone;
+        if (updates.artisan_location !== undefined) sbPayload.artisan_location = updates.artisan_location;
+        if (updates.description_en !== undefined) sbPayload.description_en = updates.description_en;
+        if (updates.description_hi !== undefined) sbPayload.description_hi = updates.description_hi;
+        if (updates.tags !== undefined) sbPayload.tags = JSON.stringify(updates.tags);
+        if (updates.quantity !== undefined) sbPayload.quantity = updates.quantity;
+        if (updates.image_url !== undefined) sbPayload.image_url = updates.image_url;
+
+        await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${productId}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(sbPayload)
+        });
+        console.info(`Product ${productId} updated directly in Supabase`);
+      } catch (sbErr) {
+        console.warn("Supabase direct product update error:", sbErr);
+      }
+    }
+
+    // 2. Dual Update in Backend API (PostgreSQL / SQLite)
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/products/${productId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, ...updates })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        console.info(`Product ${productId} updated in backend API`);
+        return data.product || null;
+      }
+    } catch (backendErr) {
+      console.warn("Backend product update error:", backendErr);
+    }
+    return null;
+  }
+
   export async function fetchPublishedProducts(userId: number, userName?: string, userPhone?: string): Promise<CraftProduct[]> {
     const publishedList: CraftProduct[] = [];
     const seenIds = new Set<number>();

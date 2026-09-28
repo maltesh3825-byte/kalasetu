@@ -75,6 +75,7 @@ import {
   cancelOrderApi,
   addProductReview,
   deleteProduct,
+  updateProduct,
   deleteOrderApi,
   fetchPublishedProducts,
   fetchIncomingOrders,
@@ -623,6 +624,21 @@ export default function App() {
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState<number | null>(null);
+
+  // Edit Product Listing State
+  const [editProductModalVisible, setEditProductModalVisible] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<CraftProduct | null>(null);
+  const [editListingName, setEditListingName] = useState('');
+  const [editListingPrice, setEditListingPrice] = useState('');
+  const [editListingCategory, setEditListingCategory] = useState('Handloom & Textiles');
+  const [editListingPhone, setEditListingPhone] = useState('');
+  const [editListingLocation, setEditListingLocation] = useState('');
+  const [editListingQuantity, setEditListingQuantity] = useState('1');
+  const [editListingDescEn, setEditListingDescEn] = useState('');
+  const [editListingDescHi, setEditListingDescHi] = useState('');
+  const [editListingTags, setEditListingTags] = useState<string[]>([]);
+  const [editListingNewTag, setEditListingNewTag] = useState('');
+  const [isUpdatingProduct, setIsUpdatingProduct] = useState(false);
   const [buyQuantity, setBuyQuantity] = useState('1');
   const [orderActionMessage, setOrderActionMessage] = useState('');
   const [deliveryDetails, setDeliveryDetails] = useState({
@@ -1352,6 +1368,90 @@ export default function App() {
     } finally {
       setDeletingProductId(null);
     }
+  };
+
+  const openEditProductModal = (product: CraftProduct) => {
+    setEditingProduct(product);
+    setEditListingName(product.name || '');
+    setEditListingPrice(String(product.price || ''));
+    setEditListingCategory(product.category || 'Handloom & Textiles');
+    setEditListingPhone(product.artisan_phone || currentUser?.phone || '');
+    setEditListingLocation(product.artisan_location || currentUser?.city || '');
+    setEditListingQuantity(String(product.quantity ?? 1));
+    setEditListingDescEn(product.description_en || (product as any).description || '');
+    setEditListingDescHi(product.description_hi || '');
+    setEditListingTags(Array.isArray(product.tags) ? [...product.tags] : []);
+    setEditListingNewTag('');
+    setEditProductModalVisible(true);
+  };
+
+  const handleSaveProductEdit = async () => {
+    if (!editingProduct || !currentUser) return;
+    if (!editListingName.trim()) {
+      Alert.alert('Required', 'Product name cannot be empty.');
+      return;
+    }
+    const numPrice = parseFloat(editListingPrice);
+    if (isNaN(numPrice) || numPrice <= 0) {
+      Alert.alert('Required', 'Please enter a valid price.');
+      return;
+    }
+    const numQty = parseInt(editListingQuantity, 10);
+    const validQty = isNaN(numQty) || numQty < 0 ? 0 : numQty;
+
+    setIsUpdatingProduct(true);
+    try {
+      const updates = {
+        name: editListingName.trim(),
+        price: numPrice,
+        category: editListingCategory,
+        artisan_phone: editListingPhone.trim(),
+        artisan_location: editListingLocation.trim(),
+        quantity: validQty,
+        description_en: editListingDescEn.trim(),
+        description_hi: editListingDescHi.trim(),
+        tags: editListingTags,
+      };
+
+      await updateProduct(editingProduct.id, currentUser.id, updates);
+
+      // Immediately update local state in products and publishedProducts
+      setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...updates } : p));
+      setPublishedProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...updates } : p));
+
+      // Update AsyncStorage cache if present
+      if (currentUser?.id) {
+        try {
+          const stored = await AsyncStorage.getItem(`@kalasetu_my_published_${currentUser.id}`);
+          if (stored) {
+            const currentList: CraftProduct[] = JSON.parse(stored);
+            const updated = currentList.map(item => item.id === editingProduct.id ? { ...item, ...updates } : item);
+            await AsyncStorage.setItem(`@kalasetu_my_published_${currentUser.id}`, JSON.stringify(updated));
+          }
+        } catch {}
+      }
+
+      setEditProductModalVisible(false);
+      setEditingProduct(null);
+      Alert.alert('Success', 'Your product listing was successfully updated!');
+    } catch (error: any) {
+      console.error('Update product error:', error);
+      Alert.alert('Update Failed', error?.message || 'Failed to update product listing.');
+    } finally {
+      setIsUpdatingProduct(false);
+    }
+  };
+
+  const addEditTag = () => {
+    const trimmed = editListingNewTag.trim();
+    if (trimmed && !editListingTags.includes(trimmed)) {
+      setEditListingTags(prev => [...prev, trimmed]);
+      setEditListingNewTag('');
+    }
+  };
+
+  const removeEditTag = (tagToRemove: string) => {
+    setEditListingTags(prev => prev.filter(t => t !== tagToRemove));
   };
 
   const submitReview = async (product: CraftProduct) => {
@@ -3021,7 +3121,31 @@ export default function App() {
                     <TouchableOpacity style={[styles.whatsAppButton, { backgroundColor: '#F0FDF4', borderColor: '#86EFAC', borderWidth: 1 }]} onPress={() => shareProductToWhatsApp(product)}>
                       <Text style={[styles.whatsAppButtonText, { color: '#166534' }]}>{tx('shareProductWhatsApp')}</Text>
                     </TouchableOpacity>
-                    {isLoggedIn && currentUser && product.owner_user_id === currentUser.id && (<TouchableOpacity style={styles.deleteProductButton} onPress={() => removeOwnProduct(product)}><Text style={styles.deleteProductButtonText}>{tx('deleteMyListing')}</Text></TouchableOpacity>)}
+                    {isLoggedIn && currentUser && product.owner_user_id === currentUser.id && (
+                      <View style={{ gap: 8, marginTop: 10 }}>
+                        <TouchableOpacity
+                          style={{
+                            backgroundColor: '#EFF6FF',
+                            borderColor: '#93C5FD',
+                            borderWidth: 1.5,
+                            paddingVertical: 10,
+                            paddingHorizontal: 14,
+                            borderRadius: 12,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6
+                          }}
+                          onPress={() => openEditProductModal(product)}
+                        >
+                          <Text style={{ fontSize: 13 }}>✏️</Text>
+                          <Text style={{ color: '#1D4ED8', fontSize: 12, fontWeight: '800' }}>{tx('editMyListing')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.deleteProductButton, { marginTop: 0 }]} onPress={() => removeOwnProduct(product)}>
+                          <Text style={styles.deleteProductButtonText}>{tx('deleteMyListing')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
                 </View>
               ))}
@@ -4064,15 +4188,36 @@ export default function App() {
                                   <Text style={styles.orderMeta}>📦 {tx('stockLabel')}: {product.quantity !== undefined && product.quantity !== null ? product.quantity : 0} · {product.mosje_verified ? `🏅 ${tx('verified')}` : tx('standard')}</Text>
                                 </View>
                               </View>
-                              <TouchableOpacity
-                                style={[styles.deleteProductButton, { marginTop: 10 }, deletingProductId === product.id && styles.disabledButton]}
-                                onPress={() => removeOwnProduct(product)}
-                                disabled={deletingProductId === product.id}
-                              >
-                                <Text style={styles.deleteProductButtonText}>
-                                  {deletingProductId === product.id ? tx('removing') : `🗑️ ${tx('removePublished')}`}
-                                </Text>
-                              </TouchableOpacity>
+                              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                                <TouchableOpacity
+                                  style={{
+                                    flex: 1,
+                                    backgroundColor: '#EFF6FF',
+                                    borderColor: '#93C5FD',
+                                    borderWidth: 1.5,
+                                    paddingVertical: 8,
+                                    paddingHorizontal: 10,
+                                    borderRadius: 10,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 5
+                                  }}
+                                  onPress={() => openEditProductModal(product)}
+                                >
+                                  <Text style={{ fontSize: 12 }}>✏️</Text>
+                                  <Text style={{ color: '#1D4ED8', fontSize: 11, fontWeight: '800' }}>{tx('editMyListing')}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={[styles.deleteProductButton, { flex: 1, marginTop: 0 }, deletingProductId === product.id && styles.disabledButton]}
+                                  onPress={() => removeOwnProduct(product)}
+                                  disabled={deletingProductId === product.id}
+                                >
+                                  <Text style={styles.deleteProductButtonText}>
+                                    {deletingProductId === product.id ? tx('removing') : `🗑️ ${tx('removePublished')}`}
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
                             </View>
                           ))
                         )}
@@ -4190,7 +4335,30 @@ export default function App() {
                 ))}
                 <Text style={styles.orderTitle}>{tx('ordersPublishedByMe')}</Text>
                 {publishedProducts.length === 0 ? <Text style={styles.emptyStateText}>{tx('noPublishedProducts')}</Text> : publishedProducts.map(product => (
-                  <View key={`published-${product.id}`} style={styles.orderCard}><Text style={styles.orderTitle}>{product.name}</Text><Text style={styles.orderMeta}>₹{product.price} • {product.category} • {tx('qtyLabel')}: {product.quantity || 0}</Text><TouchableOpacity style={styles.deleteProductButton} onPress={() => removeOwnProduct(product)}><Text style={styles.deleteProductButtonText}>{tx('removePublished')}</Text></TouchableOpacity></View>
+                  <View key={`published-${product.id}`} style={styles.orderCard}>
+                    <Text style={styles.orderTitle}>{product.name}</Text>
+                    <Text style={styles.orderMeta}>₹{product.price} • {product.category} • {tx('qtyLabel')}: {product.quantity || 0}</Text>
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                      <TouchableOpacity
+                        style={{
+                          flex: 1,
+                          backgroundColor: '#EFF6FF',
+                          borderColor: '#93C5FD',
+                          borderWidth: 1.5,
+                          paddingVertical: 8,
+                          borderRadius: 10,
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                        onPress={() => openEditProductModal(product)}
+                      >
+                        <Text style={{ color: '#1D4ED8', fontSize: 12, fontWeight: '700' }}>✏️ {tx('editMyListing')}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.deleteProductButton, { flex: 1, marginTop: 0 }]} onPress={() => removeOwnProduct(product)}>
+                        <Text style={styles.deleteProductButtonText}>{tx('removePublished')}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 ))}
               </View>
             )}
@@ -5399,6 +5567,226 @@ export default function App() {
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      {/* Edit Product Listing Modal */}
+      <Modal
+        visible={editProductModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => !isUpdatingProduct && setEditProductModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.7)', justifyContent: 'flex-end' }}
+        >
+          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%', padding: 20 }}>
+            {/* Modal Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 20 }}>✏️</Text>
+                <View>
+                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A' }}>{tx('editProductTitle')}</Text>
+                  <Text style={{ fontSize: 11, color: '#64748B' }}>{editingProduct?.name}</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => !isUpdatingProduct && setEditProductModalVisible(false)}
+                disabled={isUpdatingProduct}
+                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#475569' }}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Product Title */}
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155', marginBottom: 4 }}>Product Title *</Text>
+              <TextInput
+                style={{ backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#0F172A', marginBottom: 12 }}
+                value={editListingName}
+                onChangeText={setEditListingName}
+                placeholder="Product Name"
+                placeholderTextColor="#94A3B8"
+              />
+
+              {/* Price & Quantity Row */}
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155', marginBottom: 4 }}>Price (₹) *</Text>
+                  <TextInput
+                    style={{ backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#0F172A' }}
+                    value={editListingPrice}
+                    onChangeText={setEditListingPrice}
+                    keyboardType="numeric"
+                    placeholder="e.g. 1200"
+                    placeholderTextColor="#94A3B8"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155', marginBottom: 4 }}>Stock Qty *</Text>
+                  <TextInput
+                    style={{ backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#0F172A' }}
+                    value={editListingQuantity}
+                    onChangeText={setEditListingQuantity}
+                    keyboardType="numeric"
+                    placeholder="e.g. 10"
+                    placeholderTextColor="#94A3B8"
+                  />
+                </View>
+              </View>
+
+              {/* Category Picker Chips */}
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155', marginBottom: 6 }}>Category</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                {[
+                  'Handloom & Textiles',
+                  'Pottery & Terracotta',
+                  'Brass & Metalcraft',
+                  'Woodcraft',
+                  'Cane & Bamboo',
+                  'Folk Art & Painting'
+                ].map(cat => {
+                  const isSelected = editListingCategory === cat;
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      onPress={() => setEditListingCategory(cat)}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 8,
+                        backgroundColor: isSelected ? '#EA580C' : '#F1F5F9',
+                        borderColor: isSelected ? '#EA580C' : '#E2E8F0',
+                        borderWidth: 1
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#FFFFFF' : '#475569' }}>
+                        {getCategoryLabel(cat)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Phone & Workshop Location */}
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155', marginBottom: 4 }}>Contact Phone</Text>
+                  <TextInput
+                    style={{ backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#0F172A' }}
+                    value={editListingPhone}
+                    onChangeText={setEditListingPhone}
+                    keyboardType="phone-pad"
+                    placeholder="+91..."
+                    placeholderTextColor="#94A3B8"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155', marginBottom: 4 }}>Location</Text>
+                  <TextInput
+                    style={{ backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#0F172A' }}
+                    value={editListingLocation}
+                    onChangeText={setEditListingLocation}
+                    placeholder="City, State"
+                    placeholderTextColor="#94A3B8"
+                  />
+                </View>
+              </View>
+
+              {/* English Description */}
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155', marginBottom: 4 }}>Description (English)</Text>
+              <TextInput
+                style={{ backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: '#0F172A', minHeight: 64, textAlignVertical: 'top', marginBottom: 12 }}
+                value={editListingDescEn}
+                onChangeText={setEditListingDescEn}
+                multiline
+                numberOfLines={3}
+                placeholder="Product description in English..."
+                placeholderTextColor="#94A3B8"
+              />
+
+              {/* Hindi / Regional Description */}
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155', marginBottom: 4 }}>Description (Hindi / Regional)</Text>
+              <TextInput
+                style={{ backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: '#0F172A', minHeight: 64, textAlignVertical: 'top', marginBottom: 12 }}
+                value={editListingDescHi}
+                onChangeText={setEditListingDescHi}
+                multiline
+                numberOfLines={3}
+                placeholder="उत्पाद विवरण हिंदी / क्षेत्रीय भाषा में..."
+                placeholderTextColor="#94A3B8"
+              />
+
+              {/* Tags Management */}
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155', marginBottom: 4 }}>Tags</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {editListingTags.map(tag => (
+                  <View
+                    key={tag}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      backgroundColor: '#FEF3C7',
+                      borderColor: '#FDE68A',
+                      borderWidth: 1,
+                      paddingHorizontal: 8,
+                      paddingVertical: 4,
+                      borderRadius: 14
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#92400E' }}>#{tag}</Text>
+                    <TouchableOpacity onPress={() => removeEditTag(tag)}>
+                      <Text style={{ fontSize: 13, fontWeight: '900', color: '#B45309', marginLeft: 2 }}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 18 }}>
+                <TextInput
+                  style={{ flex: 1, backgroundColor: '#F8FAFC', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: '#0F172A' }}
+                  value={editListingNewTag}
+                  onChangeText={setEditListingNewTag}
+                  placeholder="New tag (e.g. handmade)"
+                  placeholderTextColor="#94A3B8"
+                  onSubmitEditing={addEditTag}
+                />
+                <TouchableOpacity
+                  onPress={addEditTag}
+                  style={{ backgroundColor: '#F1F5F9', borderColor: '#CBD5E1', borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, justifyContent: 'center' }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#475569' }}>+ Add</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+                <TouchableOpacity
+                  onPress={() => !isUpdatingProduct && setEditProductModalVisible(false)}
+                  disabled={isUpdatingProduct}
+                  style={{ flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#CBD5E1' }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#64748B' }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveProductEdit}
+                  disabled={isUpdatingProduct}
+                  style={{ flex: 2, paddingVertical: 13, borderRadius: 12, backgroundColor: '#EA580C', alignItems: 'center', justifyContent: 'center', opacity: isUpdatingProduct ? 0.7 : 1 }}
+                >
+                  {isUpdatingProduct ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>{tx('updatingProduct')}</Text>
+                    </View>
+                  ) : (
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>💾 {tx('saveChanges')}</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </SafeAreaView>

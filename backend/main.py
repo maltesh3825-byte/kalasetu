@@ -175,6 +175,21 @@ class ProductDeleteRequest(BaseModel):
     user_id: int
 
 
+class ProductUpdateRequest(BaseModel):
+    user_id: int
+    name: Optional[str] = None
+    price: Optional[int] = None
+    category: Optional[str] = None
+    artisan_name: Optional[str] = None
+    artisan_phone: Optional[str] = None
+    artisan_location: Optional[str] = None
+    description_en: Optional[str] = None
+    description_hi: Optional[str] = None
+    tags: Optional[List[str]] = None
+    quantity: Optional[int] = None
+    image_url: Optional[str] = None
+
+
 class TranslationRequest(BaseModel):
     text: str
     source_language: str = "Kannada"
@@ -1577,6 +1592,133 @@ def delete_product(product_id: int, payload: ProductDeleteRequest):
         except Exception:
             pass
         raise HTTPException(status_code=500, detail=f"Delete failed: {exc}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+@app.put("/api/products/{product_id}")
+def update_product(product_id: int, payload: ProductUpdateRequest):
+    """Allows an artisan to edit their own product listing (name, price, category, descriptions, phone, tags, quantity)."""
+    import traceback
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT p.artisan_name, p.artisan_phone, p.owner_user_id, u.name, u.phone, u.email
+            FROM products p
+            JOIN users u ON u.id = ?
+            WHERE p.id = ?
+            """,
+            (payload.user_id, product_id),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Product or user not found")
+
+        # Ownership check
+        owner_id = row["owner_user_id"]
+        if owner_id is not None:
+            is_owner = (owner_id == payload.user_id)
+        else:
+            artisan_name_norm = (row["artisan_name"] or "").strip().lower()
+            user_name_norm = (row["name"] or "").strip().lower()
+            name_match = artisan_name_norm == user_name_norm
+            partial_match = bool(artisan_name_norm and user_name_norm and (
+                user_name_norm in artisan_name_norm or artisan_name_norm in user_name_norm
+            ))
+            p_phone = (row["artisan_phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
+            u_phone = (row["phone"] or "").replace("+91", "").replace(" ", "").replace("-", "")
+            phone_match = bool(p_phone and u_phone and p_phone == u_phone)
+            is_owner = name_match or phone_match or partial_match
+
+        if not is_owner:
+            raise HTTPException(
+                status_code=403,
+                detail="Only the seller who posted this product can edit it"
+            )
+
+        update_fields = []
+        update_values = []
+
+        if payload.name is not None and payload.name.strip():
+            update_fields.append("name = ?")
+            update_values.append(payload.name.strip())
+
+        if payload.price is not None:
+            update_fields.append("price = ?")
+            update_values.append(int(payload.price))
+
+        if payload.category is not None and payload.category.strip():
+            update_fields.append("category = ?")
+            update_values.append(payload.category.strip())
+
+        if payload.artisan_name is not None and payload.artisan_name.strip():
+            update_fields.append("artisan_name = ?")
+            update_values.append(payload.artisan_name.strip())
+
+        if payload.artisan_phone is not None and payload.artisan_phone.strip():
+            update_fields.append("artisan_phone = ?")
+            update_values.append(payload.artisan_phone.strip())
+
+        if payload.artisan_location is not None and payload.artisan_location.strip():
+            update_fields.append("artisan_location = ?")
+            update_values.append(payload.artisan_location.strip())
+
+        if payload.description_en is not None:
+            update_fields.append("description_en = ?")
+            update_values.append(payload.description_en.strip())
+
+        if payload.description_hi is not None:
+            update_fields.append("description_hi = ?")
+            update_values.append(payload.description_hi.strip())
+
+        if payload.tags is not None:
+            update_fields.append("tags = ?")
+            update_values.append(json.dumps(payload.tags))
+
+        if payload.quantity is not None:
+            update_fields.append("quantity = ?")
+            update_values.append(max(0, int(payload.quantity)))
+
+        if payload.image_url is not None and payload.image_url.strip():
+            update_fields.append("image_url = ?")
+            update_values.append(payload.image_url.strip())
+
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="No fields provided for update")
+
+        if owner_id is None:
+            update_fields.append("owner_user_id = ?")
+            update_values.append(payload.user_id)
+
+        update_values.append(product_id)
+        update_query = f"UPDATE products SET {', '.join(update_fields)} WHERE id = ?"
+        cursor.execute(update_query, tuple(update_values))
+        conn.commit()
+
+        cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+        updated_row = cursor.fetchone()
+        updated_p = dict(updated_row) if updated_row else {}
+        try:
+            updated_p["tags"] = json.loads(updated_p.get("tags") or "[]")
+        except Exception:
+            pass
+
+        return {"status": "success", "product": updated_p, "message": "Product listing updated successfully."}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"[UPDATE PRODUCT ERROR] product_id={product_id}: {exc}")
+        traceback.print_exc()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Update failed: {exc}")
     finally:
         try:
             conn.close()
