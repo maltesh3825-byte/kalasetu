@@ -28,7 +28,8 @@ const state = {
   accountWishlist: [],
   accountAdminRequests: [],
   adminToken: localStorage.getItem('kalakriti_admin_token') || '',
-  userToken: localStorage.getItem('kalakriti_access_token') || ''
+  userToken: localStorage.getItem('kalakriti_access_token') || '',
+  activeDraftId: null
 };
 
 // Fullscreen Opening Animation Controller
@@ -1199,6 +1200,7 @@ async function initApp() {
   checkApiConfig();
   loadProducts();
   setupEventListeners();
+  renderStudioDraftsList();
   setLanguage(localStorage.getItem('kalakriti_language') || 'en');
   switchTab('home');
 
@@ -1505,6 +1507,16 @@ function setupEventListeners() {
     publishBtn.addEventListener('click', publishProductToMarketplace);
   }
 
+  // Save as Draft Buttons (Step 1 & Step 2)
+  const saveDraftBtnStep1 = document.getElementById('saveDraftBtnStep1');
+  if (saveDraftBtnStep1) {
+    saveDraftBtnStep1.addEventListener('click', saveStudioDraft);
+  }
+  const saveDraftBtnStep2 = document.getElementById('saveDraftBtnStep2');
+  if (saveDraftBtnStep2) {
+    saveDraftBtnStep2.addEventListener('click', saveStudioDraft);
+  }
+
   // Bulk and institutional RFQ form
   const institutionalForm = document.getElementById('institutionalRequestForm');
   if (institutionalForm) {
@@ -1601,6 +1613,7 @@ function switchTab(tab) {
     accountSection?.classList.add('hidden');
     syncStudioArtisanInfo();
     updateStudioAuthBanner();
+    renderStudioDraftsList();
   } else if (tab === 'institutional') {
     homeSection?.classList.add('hidden');
     studioSection?.classList.add('hidden');
@@ -3592,6 +3605,12 @@ async function publishProductToMarketplace() {
     // Show celebratory toast
     showToast(t('publish_success'));
 
+    // Remove active draft if this product was saved as a draft
+    if (state.activeDraftId) {
+      deleteStudioDraft(state.activeDraftId);
+      state.activeDraftId = null;
+    }
+
     // Reset upload form
     resetArtisanForm();
 
@@ -3632,7 +3651,319 @@ function resetArtisanForm() {
   state.selectedFile = null;
   state.uploadedImageUrl = null;
   state.aiResult = null;
+  state.activeDraftId = null;
+  renderStudioDraftsList();
 }
+
+// =====================================================================
+// AI STUDIO DRAFT MANAGEMENT SYSTEM (LOCAL STORAGE PERSISTENCE)
+// =====================================================================
+const STUDIO_DRAFTS_KEY = 'kalasetu_studio_drafts';
+
+function getStudioDrafts() {
+  try {
+    const raw = localStorage.getItem(STUDIO_DRAFTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.error('Error reading studio drafts from localStorage:', e);
+    return [];
+  }
+}
+
+function saveStudioDraft() {
+  const artisanName = document.getElementById('artisanName')?.value?.trim() || '';
+  const artisanLocation = document.getElementById('artisanLocation')?.value?.trim() || '';
+  const artisanPhone = document.getElementById('artisanPhone')?.value?.trim() || '';
+  const artisanEstimatedPrice = document.getElementById('artisanEstimatedPrice')?.value?.trim() || '';
+  const artisanNotes = document.getElementById('artisanNotes')?.value?.trim() || '';
+  const imageUrl = state.uploadedImageUrl || '';
+
+  const reviewSection = document.getElementById('reviewSection');
+  const isReviewVisible = reviewSection && !reviewSection.classList.contains('hidden');
+
+  const title = document.getElementById('editProductTitle')?.value?.trim() || '';
+  const category = document.getElementById('editProductCategory')?.value || 'Handloom & Textiles';
+  const price = document.getElementById('editProductPrice')?.value?.trim() || '';
+  const quantity = document.getElementById('editProductQuantity')?.value?.trim() || '1';
+  const descEn = document.getElementById('editDescEn')?.value?.trim() || '';
+  const descHi = document.getElementById('editDescHi')?.value?.trim() || '';
+  const fairMin = document.getElementById('fairPriceMin')?.textContent?.replace('₹', '')?.trim() || '';
+  const fairMax = document.getElementById('fairPriceMax')?.textContent?.replace('₹', '')?.trim() || '';
+  const priceJustification = document.getElementById('priceJustificationText')?.textContent?.trim() || '';
+
+  // Validation: user must have provided at least an image, title, notes, or price
+  if (!imageUrl && !artisanNotes && !title && !artisanEstimatedPrice && !price) {
+    showToast(t('no_saved') || 'Please upload a photo, notes, or product title first');
+    return;
+  }
+
+  // Derive human-readable draft title
+  let draftTitle = title;
+  if (!draftTitle && artisanNotes) {
+    draftTitle = artisanNotes.length > 35 ? artisanNotes.substring(0, 32) + '...' : artisanNotes;
+  }
+  if (!draftTitle && artisanName) {
+    draftTitle = `${artisanName}'s Craft`;
+  }
+  if (!draftTitle) {
+    draftTitle = category || 'Handmade Craft';
+  }
+
+  const draftId = state.activeDraftId || `draft_${Date.now()}`;
+  const now = new Date();
+  const savedAtFormatted = now.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  const draftObj = {
+    id: draftId,
+    title: draftTitle,
+    savedAt: now.toISOString(),
+    savedAtFormatted,
+    artisanName,
+    artisanLocation,
+    artisanPhone,
+    artisanEstimatedPrice,
+    artisanNotes,
+    imageUrl,
+    isEnhanced: !!state.isEnhanced,
+    hasAiReview: isReviewVisible,
+    reviewData: isReviewVisible ? {
+      title,
+      category,
+      price,
+      quantity,
+      descEn,
+      descHi,
+      tags: [...currentTags],
+      fairMin,
+      fairMax,
+      priceJustification
+    } : null,
+    aiResult: isReviewVisible ? (state.aiResult || null) : null
+  };
+
+  const drafts = getStudioDrafts();
+  const existingIdx = drafts.findIndex(d => d.id === draftId);
+  if (existingIdx >= 0) {
+    drafts[existingIdx] = draftObj;
+  } else {
+    drafts.unshift(draftObj);
+  }
+
+  // Keep max 15 drafts
+  if (drafts.length > 15) {
+    drafts.splice(15);
+  }
+
+  try {
+    localStorage.setItem(STUDIO_DRAFTS_KEY, JSON.stringify(drafts));
+    state.activeDraftId = draftId;
+    renderStudioDraftsList();
+    showToast(t('draft_saved_success') || 'Draft saved successfully! 💾');
+  } catch (err) {
+    console.error('Failed to save draft to localStorage:', err);
+    if (err.name === 'QuotaExceededError' || err.code === 22) {
+      // Clear data URLs from older drafts to free space
+      for (let i = 1; i < drafts.length; i++) {
+        if (drafts[i].imageUrl && drafts[i].imageUrl.startsWith('data:')) {
+          drafts[i].imageUrl = '';
+        }
+      }
+      try {
+        localStorage.setItem(STUDIO_DRAFTS_KEY, JSON.stringify(drafts));
+        renderStudioDraftsList();
+        showToast(t('draft_saved_success') || 'Draft saved successfully! 💾');
+      } catch (retryErr) {
+        alert('Browser storage is full. Please clear some older drafts.');
+      }
+    } else {
+      showToast('Could not save draft: ' + err.message);
+    }
+  }
+}
+
+function renderStudioDraftsList() {
+  const container = document.getElementById('studioDraftsContainer');
+  const listEl = document.getElementById('studioDraftsList');
+  const countBadge = document.getElementById('studioDraftsCountBadge');
+  if (!container || !listEl) return;
+
+  const drafts = getStudioDrafts();
+  if (countBadge) {
+    countBadge.textContent = drafts.length;
+  }
+
+  if (drafts.length === 0) {
+    container.classList.add('hidden');
+    listEl.innerHTML = '';
+    return;
+  }
+
+  container.classList.remove('hidden');
+  listEl.innerHTML = drafts.map(draft => {
+    const isCurrent = state.activeDraftId === draft.id;
+    const dateStr = draft.savedAtFormatted || (draft.savedAt ? new Date(draft.savedAt).toLocaleDateString() : 'Recently');
+    const priceDisplay = draft.reviewData?.price || draft.artisanEstimatedPrice;
+    const badgeText = draft.hasAiReview ? '✨ AI Analyzed' : '📝 Draft';
+    const badgeColor = draft.hasAiReview ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-amber-100 text-amber-800 border-amber-200';
+    const imageHtml = draft.imageUrl
+      ? `<img src="${draft.imageUrl}" alt="${escapeHtml(draft.title)}" class="w-12 h-12 rounded-xl object-cover border border-slate-200 shadow-xs flex-shrink-0">`
+      : `<div class="w-12 h-12 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-xl flex-shrink-0 border border-amber-200">🏺</div>`;
+
+    return `
+      <div class="p-3 bg-white rounded-2xl border ${isCurrent ? 'border-terracotta-500 ring-2 ring-terracotta-200' : 'border-slate-200/90'} shadow-xs hover:shadow-md transition-all flex flex-col justify-between gap-2.5 group">
+        <div class="flex items-start gap-2.5">
+          ${imageHtml}
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-1">
+              <h5 class="font-bold text-xs text-slate-900 truncate" title="${escapeHtml(draft.title)}">${escapeHtml(draft.title)}</h5>
+              ${priceDisplay ? `<span class="text-xs font-black text-slate-800">₹${priceDisplay}</span>` : ''}
+            </div>
+            <p class="text-[11px] text-slate-500 truncate mt-0.5">${escapeHtml(draft.artisanName || 'Artisan')}</p>
+            <div class="flex items-center gap-1.5 mt-1">
+              <span class="px-1.5 py-0.2 rounded-md text-[9px] font-black border ${badgeColor}">${badgeText}</span>
+              <span class="text-[10px] text-slate-400">🕒 ${dateStr}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 pt-1 border-t border-slate-100">
+          <button type="button" onclick="loadStudioDraft('${draft.id}')"
+                  class="flex-1 py-1.5 px-2.5 rounded-xl ${isCurrent ? 'bg-terracotta-600 text-white' : 'bg-slate-100 hover:bg-terracotta-50 text-slate-800 hover:text-terracotta-700'} text-xs font-bold transition-all text-center flex items-center justify-center gap-1 cursor-pointer">
+            <span>${isCurrent ? '✓ Active' : '📂 Resume'}</span>
+          </button>
+          <button type="button" onclick="deleteStudioDraft('${draft.id}')"
+                  class="p-1.5 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors text-xs font-bold cursor-pointer"
+                  title="Delete draft">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function loadStudioDraft(draftId) {
+  const drafts = getStudioDrafts();
+  const draft = drafts.find(d => d.id === draftId);
+  if (!draft) return;
+
+  state.activeDraftId = draft.id;
+
+  // 1. Populate Step 1 inputs
+  const nameInput = document.getElementById('artisanName');
+  const locInput = document.getElementById('artisanLocation');
+  const phoneInput = document.getElementById('artisanPhone');
+  const priceIdeaInput = document.getElementById('artisanEstimatedPrice');
+  const notesInput = document.getElementById('artisanNotes');
+
+  if (nameInput && draft.artisanName) nameInput.value = draft.artisanName;
+  if (locInput && draft.artisanLocation) locInput.value = draft.artisanLocation;
+  if (phoneInput && draft.artisanPhone) phoneInput.value = draft.artisanPhone;
+  if (priceIdeaInput) priceIdeaInput.value = draft.artisanEstimatedPrice || '';
+  if (notesInput) notesInput.value = draft.artisanNotes || '';
+
+  // 2. Restore Image
+  if (draft.imageUrl) {
+    state.uploadedImageUrl = draft.imageUrl;
+    displayImagePreview(draft.imageUrl);
+
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    if (analyzeBtn) {
+      analyzeBtn.disabled = false;
+      analyzeBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+  }
+
+  // 3. Restore Enhancement Toggle
+  state.isEnhanced = !!draft.isEnhanced;
+  const studioToggle = document.getElementById('studioEnhanceToggle');
+  if (studioToggle) {
+    studioToggle.checked = state.isEnhanced;
+  }
+  updatePreviewEnhancement();
+
+  // 4. Restore Step 2 if present
+  const reviewSection = document.getElementById('reviewSection');
+  if (draft.hasAiReview && draft.reviewData) {
+    const rd = draft.reviewData;
+    const titleInput = document.getElementById('editProductTitle');
+    const categorySelect = document.getElementById('editProductCategory');
+    const priceInput = document.getElementById('editProductPrice');
+    const quantityInput = document.getElementById('editProductQuantity');
+    const descEn = document.getElementById('editDescEn');
+    const descHi = document.getElementById('editDescHi');
+    const fairMin = document.getElementById('fairPriceMin');
+    const fairMax = document.getElementById('fairPriceMax');
+    const priceJustification = document.getElementById('priceJustificationText');
+    const reviewImg = document.getElementById('reviewCardImage');
+
+    if (titleInput) titleInput.value = rd.title || '';
+    if (categorySelect && rd.category) categorySelect.value = rd.category;
+    if (priceInput) priceInput.value = rd.price || '';
+    if (quantityInput) quantityInput.value = rd.quantity || '1';
+    if (descEn) descEn.value = rd.descEn || '';
+    if (descHi) descHi.value = rd.descHi || '';
+    if (fairMin && rd.fairMin) fairMin.textContent = `₹${rd.fairMin}`;
+    if (fairMax && rd.fairMax) fairMax.textContent = `₹${rd.fairMax}`;
+    if (priceJustification && rd.priceJustification) priceJustification.textContent = rd.priceJustification;
+
+    if (reviewImg && draft.imageUrl) {
+      reviewImg.src = resolveImageUrl(draft.imageUrl);
+    }
+
+    state.aiResult = draft.aiResult || null;
+    renderEditableTags(rd.tags || []);
+    setupAudioNarrationButtons(draft.aiResult || { description_en: rd.descEn, description_hi: rd.descHi });
+
+    if (reviewSection) {
+      reviewSection.classList.remove('hidden');
+      reviewSection.scrollIntoView({ behavior: 'smooth' });
+    }
+  } else {
+    if (reviewSection) {
+      reviewSection.classList.add('hidden');
+    }
+    const dropzone = document.getElementById('uploadDropzone');
+    if (dropzone) dropzone.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  renderStudioDraftsList();
+  showToast(`Resumed draft: "${draft.title}" 📂`);
+}
+
+function deleteStudioDraft(draftId) {
+  const drafts = getStudioDrafts().filter(d => d.id !== draftId);
+  try {
+    localStorage.setItem(STUDIO_DRAFTS_KEY, JSON.stringify(drafts));
+  } catch (e) {
+    console.error('Failed to update drafts:', e);
+  }
+  if (state.activeDraftId === draftId) {
+    state.activeDraftId = null;
+  }
+  renderStudioDraftsList();
+  showToast('Draft removed');
+}
+
+function clearAllStudioDrafts() {
+  if (!confirm('Are you sure you want to clear all saved studio drafts?')) return;
+  localStorage.removeItem(STUDIO_DRAFTS_KEY);
+  state.activeDraftId = null;
+  renderStudioDraftsList();
+  showToast('All drafts cleared');
+}
+
+// Attach draft helpers to window for template event handlers
+window.saveStudioDraft = saveStudioDraft;
+window.renderStudioDraftsList = renderStudioDraftsList;
+window.loadStudioDraft = loadStudioDraft;
+window.deleteStudioDraft = deleteStudioDraft;
+window.clearAllStudioDrafts = clearAllStudioDrafts;
 
 // Category localization helper
 function getCategoryLabel(category) {
