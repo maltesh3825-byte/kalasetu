@@ -1283,8 +1283,8 @@ export default function App() {
   };
 
   const handleAnalyzeBulkVision = async () => {
-    if (!bulkImageUri && !bulkImageBase64 && !bulkProductName && !bulkCategory) {
-      Alert.alert("Photo Required", "Please upload or select a craft photo for AI Vision analysis.");
+    if (!bulkImageUri && !bulkImageBase64) {
+      Alert.alert("Photo Required", "Please upload or photograph a craft photo for AI Vision analysis.");
       return;
     }
     setIsAnalyzingBulkVision(true);
@@ -2523,14 +2523,31 @@ export default function App() {
 
                 {/* AI Vision Action Button */}
                 <TouchableOpacity
-                  style={{ backgroundColor: '#EA580C', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 }}
+                  style={{
+                    backgroundColor: (!bulkImageUri || isAnalyzingBulkVision) ? '#E2E8F0' : '#EA580C',
+                    paddingVertical: 10,
+                    paddingHorizontal: 14,
+                    borderRadius: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    marginTop: 6,
+                    borderWidth: 1,
+                    borderColor: (!bulkImageUri || isAnalyzingBulkVision) ? '#CBD5E1' : '#EA580C'
+                  }}
                   onPress={handleAnalyzeBulkVision}
-                  disabled={isAnalyzingBulkVision}
+                  disabled={!bulkImageUri || isAnalyzingBulkVision}
+                  accessibilityState={{ disabled: !bulkImageUri || isAnalyzingBulkVision }}
                 >
                   {isAnalyzingBulkVision ? (
                     <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 12 }}>
+                    <Text style={{
+                      color: (!bulkImageUri || isAnalyzingBulkVision) ? '#94A3B8' : '#FFFFFF',
+                      fontWeight: '900',
+                      fontSize: 12
+                    }}>
                       {bulkImageUri ? tx('btnAnalyzePhotoVision') : tx('btnAnalyzeAiVision')}
                     </Text>
                   )}
