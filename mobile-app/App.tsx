@@ -5366,22 +5366,36 @@ export default function App() {
               </TouchableOpacity>
             </View>
             <ScrollView style={{ maxHeight: 380 }}>
-              {(publishedProducts.length > 0 ? publishedProducts : products).map(craft => (
-                <TouchableOpacity
-                  key={craft.id}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, backgroundColor: '#F8FAFC', marginBottom: 8, borderColor: '#E2E8F0', borderWidth: 1 }}
-                  onPress={() => loadCraftIntoBulk(craft)}
-                >
-                  <Image source={{ uri: craft.image_url || 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=200&q=80' }} style={{ width: 48, height: 48, borderRadius: 10 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>{craft.name}</Text>
-                    <Text style={{ fontSize: 11, color: '#64748B' }}>{craft.category} · ₹{craft.price}</Text>
-                  </View>
-                  <View style={{ backgroundColor: '#EA580C', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
-                    <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>{tx('selectCraft')}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+              {publishedProducts.length === 0 ? (
+                <View style={{ padding: 24, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 32, marginBottom: 8 }}>📦</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 4 }}>{tx('noProductsPublished')}</Text>
+                  <Text style={{ fontSize: 12, color: '#64748B', textAlign: 'center', marginBottom: 12 }}>{tx('goToStudio')}</Text>
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#EA580C', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 }}
+                    onPress={() => { setCraftPickerModalVisible(false); setActiveTab('studio'); }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>{tx('startCataloging')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                publishedProducts.map(craft => (
+                  <TouchableOpacity
+                    key={craft.id}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, backgroundColor: '#F8FAFC', marginBottom: 8, borderColor: '#E2E8F0', borderWidth: 1 }}
+                    onPress={() => loadCraftIntoBulk(craft)}
+                  >
+                    <Image source={{ uri: craft.image_url || 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=200&q=80' }} style={{ width: 48, height: 48, borderRadius: 10 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>{craft.name}</Text>
+                      <Text style={{ fontSize: 11, color: '#64748B' }}>{craft.category} · ₹{craft.price}</Text>
+                    </View>
+                    <View style={{ backgroundColor: '#EA580C', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>{tx('selectCraft')}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
             </ScrollView>
           </View>
         </View>

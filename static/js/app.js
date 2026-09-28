@@ -938,49 +938,126 @@ async function generateInstitutionalRfqWithAi() {
   }
 }
 
-function openInstitutionalCatalogModal() {
+async function openInstitutionalCatalogModal() {
   const modal = document.getElementById('institutionalCatalogModal');
   const list = document.getElementById('institutionalCatalogList');
   if (!modal || !list) return;
 
-  const catalog = state.products && state.products.length > 0 ? state.products : [];
-  if (catalog.length === 0) {
-    list.innerHTML = `<div class="p-8 text-center text-slate-500 text-sm">No digitized crafts found in catalog yet. Publish your first craft in Studio!</div>`;
-  } else {
-    list.innerHTML = catalog.map(p => {
-      const wholesale = Math.round(Number(p.price || 500) * 0.7);
-      return `
-        <div class="flex items-center justify-between gap-4 p-3.5 rounded-2xl border border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 transition-all bg-white shadow-sm">
-          <div class="flex items-center gap-3">
-            <img src="${p.image_url || '/static/images/placeholder.jpg'}" alt="${escapeHtml(p.name)}" class="w-14 h-14 rounded-xl object-cover bg-slate-100 border border-slate-200" onerror="this.src='/static/images/placeholder.jpg'">
-            <div>
-              <h5 class="text-sm font-black text-slate-900">${escapeHtml(p.name)}</h5>
-              <div class="flex items-center gap-2 mt-0.5">
-                <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 font-bold text-slate-700">${escapeHtml(p.category)}</span>
-                <span class="text-xs text-slate-400 line-through">₹${Number(p.price).toLocaleString('en-IN')}</span>
-                <span class="text-xs font-bold text-emerald-700">₹${wholesale.toLocaleString('en-IN')} bulk</span>
-              </div>
-            </div>
-          </div>
-          <button type="button" class="btn-select-bulk-craft px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-sm whitespace-nowrap cursor-pointer transition-transform hover:scale-105 active:scale-95" data-craft-id="${p.id}">
-            Select & Auto-fill
-          </button>
+  if (!state.currentUser) {
+    list.innerHTML = `
+      <div class="p-8 text-center flex flex-col items-center justify-center">
+        <div class="w-14 h-14 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center text-2xl mb-3 shadow-inner">
+          🔒
         </div>
-      `;
-    }).join('');
+        <h4 class="text-sm font-black text-slate-900 mb-1">Sign In Required</h4>
+        <p class="text-xs text-slate-500 max-w-sm mb-4">Please sign in to your artisan account to select from your published catalog listings.</p>
+        <button type="button" onclick="closeInstitutionalCatalogModal(); switchTab('account');" class="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer">
+          Go to Account & Sign In →
+        </button>
+      </div>
+    `;
+    modal.classList.remove('hidden');
+    return;
+  }
 
-    list.querySelectorAll('.btn-select-bulk-craft').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = Number(btn.dataset.craftId);
-        const craft = catalog.find(c => c.id === id);
-        if (craft) {
-          loadCraftIntoInstitutionalRfq(craft);
-        }
-      });
+  list.innerHTML = `
+    <div class="p-8 text-center flex flex-col items-center justify-center">
+      <div class="animate-spin w-7 h-7 border-2 border-amber-500 border-t-transparent rounded-full mb-3"></div>
+      <p class="text-xs text-slate-500">Loading your published crafts...</p>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+
+  try {
+    if (!state.accountPublishedProducts || state.accountPublishedProducts.length === 0) {
+      const res = await fetch(`/api/products/${state.currentUser.id}/published`);
+      if (res.ok) {
+        const data = await res.json();
+        state.accountPublishedProducts = data.products || [];
+      }
+    }
+  } catch (err) {
+    console.warn('Could not refresh published products:', err);
+  }
+
+  // Deduplicate and filter strictly to the current user's products
+  const userProductsMap = new Map();
+  if (Array.isArray(state.accountPublishedProducts)) {
+    state.accountPublishedProducts.forEach(p => {
+      if (p && p.id) userProductsMap.set(p.id, p);
     });
   }
 
-  modal.classList.remove('hidden');
+  if (Array.isArray(state.products)) {
+    const currentUserId = Number(state.currentUser.id);
+    const currentUserName = state.currentUser.name ? state.currentUser.name.trim().toLowerCase() : '';
+    const currentUserPhone = state.currentUser.phone ? state.currentUser.phone.replace(/\D/g, '').slice(-10) : '';
+
+    state.products.forEach(p => {
+      if (!p || !p.id) return;
+      const isOwnerId = p.owner_user_id && Number(p.owner_user_id) === currentUserId;
+      const isArtisanName = currentUserName && String(p.artisan_name || '').trim().toLowerCase() === currentUserName;
+      const isArtisanPhone = currentUserPhone && p.artisan_phone && p.artisan_phone.replace(/\D/g, '').slice(-10) === currentUserPhone;
+      if (isOwnerId || isArtisanName || isArtisanPhone) {
+        if (!userProductsMap.has(p.id)) {
+          userProductsMap.set(p.id, p);
+        }
+      }
+    });
+  }
+
+  const catalog = Array.from(userProductsMap.values());
+
+  if (catalog.length === 0) {
+    list.innerHTML = `
+      <div class="p-8 text-center flex flex-col items-center justify-center">
+        <div class="w-14 h-14 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center text-2xl mb-3 shadow-inner">
+          📦
+        </div>
+        <h4 class="text-sm font-black text-slate-900 mb-1">No Published Crafts Found</h4>
+        <p class="text-xs text-slate-500 max-w-sm mb-4">
+          You haven't published any crafts under your account (<strong>${escapeHtml(state.currentUser.name || state.currentUser.email)}</strong>) yet.
+          Publish a craft in Studio to auto-fill institutional quotes!
+        </p>
+        <button type="button" onclick="closeInstitutionalCatalogModal(); switchTab('studio');" class="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer">
+          ✨ Go to AI Studio to Publish →
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = catalog.map(p => {
+    const wholesale = Math.round(Number(p.price || 500) * 0.7);
+    return `
+      <div class="flex items-center justify-between gap-4 p-3.5 rounded-2xl border border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 transition-all bg-white shadow-sm">
+        <div class="flex items-center gap-3">
+          <img src="${p.image_url || '/static/images/placeholder.jpg'}" alt="${escapeHtml(p.name)}" class="w-14 h-14 rounded-xl object-cover bg-slate-100 border border-slate-200" onerror="this.src='/static/images/placeholder.jpg'">
+          <div>
+            <h5 class="text-sm font-black text-slate-900">${escapeHtml(p.name)}</h5>
+            <div class="flex items-center gap-2 mt-0.5">
+              <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 font-bold text-slate-700">${escapeHtml(p.category)}</span>
+              <span class="text-xs text-slate-400 line-through">₹${Number(p.price).toLocaleString('en-IN')}</span>
+              <span class="text-xs font-bold text-emerald-700">₹${wholesale.toLocaleString('en-IN')} bulk</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-select-bulk-craft px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-sm whitespace-nowrap cursor-pointer transition-transform hover:scale-105 active:scale-95" data-craft-id="${p.id}">
+          Select & Auto-fill
+        </button>
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('.btn-select-bulk-craft').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.dataset.craftId);
+      const craft = catalog.find(c => c.id === id);
+      if (craft) {
+        loadCraftIntoInstitutionalRfq(craft);
+      }
+    });
+  });
 }
 
 function closeInstitutionalCatalogModal() {
