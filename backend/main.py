@@ -55,6 +55,13 @@ app.add_middleware(
 )
 
 
+@app.get("/api/version")
+def get_version():
+    return {
+        "version": "1.1.0",
+        "features": ["ai_studio_save_as_draft", "edit_my_listing", "multilingual_drafts"],
+        "updated_at": "2026-09-29T00:30:00+05:30"
+    }
 
 
 class ProductCreate(BaseModel):
