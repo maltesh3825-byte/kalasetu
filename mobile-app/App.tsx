@@ -414,6 +414,8 @@ export default function App() {
   const [authErrorNotice, setAuthErrorNotice] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [editProfileName, setEditProfileName] = useState('');
+  const [editProfileCity, setEditProfileCity] = useState('');
+  const [editProfilePhone, setEditProfilePhone] = useState('');
   const [isSavingProfileName, setIsSavingProfileName] = useState(false);
   const [profileSuccessMsg, setProfileSuccessMsg] = useState('');
   const [bulkProductName, setBulkProductName] = useState('Pure Brass Dokra Lamp & Desk Stand');
@@ -509,6 +511,14 @@ export default function App() {
       }, 100);
     }
   }, [isKeyboardVisible, chatModalVisible]);
+
+  useEffect(() => {
+    if (currentUser) {
+      setEditProfileName(currentUser.name || '');
+      setEditProfileCity(currentUser.city || '');
+      setEditProfilePhone(currentUser.phone || '');
+    }
+  }, [currentUser]);
 
   const [priceIdea, setPriceIdea] = useState('');
   const [isEnhanced, setIsEnhanced] = useState(false);
@@ -1050,6 +1060,8 @@ export default function App() {
 
   const handleSaveProfileName = async () => {
     const trimmed = editProfileName.trim();
+    const trimmedCity = editProfileCity.trim();
+    const trimmedPhone = editProfilePhone.trim();
     if (!trimmed || trimmed.length < 2) {
       Alert.alert('Invalid Name', 'Name must be at least 2 characters long.');
       return;
@@ -1059,16 +1071,20 @@ export default function App() {
     try {
       const updatedUser: AppUser = {
         ...currentUser,
-        name: trimmed
+        name: trimmed,
+        city: trimmedCity || currentUser.city,
+        phone: trimmedPhone || currentUser.phone
       };
       setCurrentUser(updatedUser);
       await AsyncStorage.setItem('kalasetu_current_user', JSON.stringify(updatedUser));
       setArtisanName(trimmed);
-      setProfileSuccessMsg('✓ Name updated successfully!');
+      if (trimmedCity) setArtisanLocation(trimmedCity);
+      if (trimmedPhone) setArtisanPhone(trimmedPhone);
+      setProfileSuccessMsg('✓ Profile details saved successfully!');
       setTimeout(() => setProfileSuccessMsg(''), 3500);
-      Alert.alert('Profile Updated', `Your display name has been updated to "${trimmed}".`);
+      Alert.alert('Profile Updated', `Your profile details have been saved.`);
     } catch (err: any) {
-      Alert.alert('Update Failed', err?.message || 'Could not save profile name.');
+      Alert.alert('Update Failed', err?.message || 'Could not save profile details.');
     } finally {
       setIsSavingProfileName(false);
     }
@@ -2998,17 +3014,242 @@ export default function App() {
               </View>
             ) : (
               <View style={styles.profileCard}>
-                <Text style={styles.marketHeroTitle}>{tx('account')}</Text>
-                <Text style={styles.profileName}>{currentUser?.name}</Text>
-                <Text style={styles.profileMeta}>{currentUser?.email} · {currentUser?.city}</Text>
+                {/* ── My KalaSetu Workspace Banner (Interactive Navy Blue Box like Website) ── */}
+                <View style={{
+                  backgroundColor: '#0F172A',
+                  borderRadius: 22,
+                  padding: 18,
+                  marginBottom: 16,
+                  borderWidth: 1,
+                  borderColor: '#1E293B',
+                  shadowColor: '#0F172A',
+                  shadowOffset: { width: 0, height: 6 },
+                  shadowOpacity: 0.25,
+                  shadowRadius: 10,
+                  elevation: 5,
+                }}>
+                  {/* Top Kicker & Frosted Logout Button */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <Text style={{
+                      fontSize: 11,
+                      fontWeight: '900',
+                      color: '#FCD34D',
+                      textTransform: 'uppercase',
+                      letterSpacing: 1.2
+                    }}>
+                      MY KALASETU WORKSPACE
+                    </Text>
+                    <TouchableOpacity
+                      onPress={handleLogout}
+                      style={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                        borderColor: 'rgba(255, 255, 255, 0.22)',
+                        borderWidth: 1,
+                        borderRadius: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 5,
+                      }}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                        {tx('logout')}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Big Welcome Header */}
+                  <Text style={{
+                    fontSize: 22,
+                    fontWeight: '900',
+                    color: '#FFFFFF',
+                    marginTop: 2,
+                    marginBottom: 4,
+                    letterSpacing: -0.3
+                  }}>
+                    Welcome, {currentUser?.name || 'Artisan'}
+                  </Text>
+
+                  {/* Subtitle with Email · Role · Address */}
+                  <Text style={{
+                    fontSize: 12,
+                    color: '#94A3B8',
+                    lineHeight: 18,
+                    marginBottom: 14,
+                    fontWeight: '500'
+                  }}>
+                    {currentUser?.email || 'artisan@kalakriti.in'} · {roleLabel} · {currentUser?.city || 'India'}
+                  </Text>
+
+                  {/* Interactive Details & Quick Action Chips */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 12 }}>
+                    {/* Interactive Email Chip */}
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                        borderColor: 'rgba(255, 255, 255, 0.14)',
+                        borderWidth: 1,
+                        borderRadius: 9999,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4.5,
+                      }}
+                      onPress={() => Alert.alert('Account Email', `${currentUser?.email || 'artisan@kalakriti.in'}\n\nYour verified login & communications email address.`)}
+                    >
+                      <Text style={{ fontSize: 11 }}>✉️</Text>
+                      <Text style={{ fontSize: 11, color: '#E2E8F0', fontWeight: '600' }} numberOfLines={1}>
+                        {currentUser?.email || 'artisan@kalakriti.in'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Interactive Address / Location Chip */}
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                        borderColor: 'rgba(255, 255, 255, 0.14)',
+                        borderWidth: 1,
+                        borderRadius: 9999,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4.5,
+                      }}
+                      onPress={() => {
+                        setAccountView('profile');
+                        Alert.alert('Artisan Address / Location', `${currentUser?.city || 'India'}\n\nYou can update your location in the profile form below.`);
+                      }}
+                    >
+                      <Text style={{ fontSize: 11 }}>📍</Text>
+                      <Text style={{ fontSize: 11, color: '#FCD34D', fontWeight: '700' }} numberOfLines={1}>
+                        {currentUser?.city || 'India'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Interactive Phone Chip */}
+                    {currentUser?.phone ? (
+                      <TouchableOpacity
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 5,
+                          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                          borderColor: 'rgba(255, 255, 255, 0.14)',
+                          borderWidth: 1,
+                          borderRadius: 9999,
+                          paddingHorizontal: 10,
+                          paddingVertical: 4.5,
+                        }}
+                        onPress={() => Alert.alert('Registered Phone', `${currentUser.phone}\n\nYour verified phone number for SMS and OTP updates.`)}
+                      >
+                        <Text style={{ fontSize: 11 }}>📱</Text>
+                        <Text style={{ fontSize: 11, color: '#E2E8F0', fontWeight: '600' }}>
+                          {currentUser.phone}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {/* Interactive Role Chip */}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        backgroundColor: 'rgba(249, 115, 22, 0.2)',
+                        borderColor: 'rgba(249, 115, 22, 0.4)',
+                        borderWidth: 1,
+                        borderRadius: 9999,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4.5,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11 }}>👑</Text>
+                      <Text style={{ fontSize: 11, color: '#FED7AA', fontWeight: '800', textTransform: 'uppercase' }}>
+                        {roleLabel}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Interactive Quick Metrics Strip */}
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingTop: 10,
+                    borderTopWidth: 1,
+                    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+                  }}>
+                    <TouchableOpacity
+                      onPress={() => setAccountView('history')}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    >
+                      <Text style={{ fontSize: 12 }}>🏷️</Text>
+                      <Text style={{ fontSize: 11, color: '#CBD5E1', fontWeight: '700' }}>
+                        {publishedProducts.length} Listings
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => {
+                        setAccountView('orders');
+                        setOrderSubTab('mine');
+                      }}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    >
+                      <Text style={{ fontSize: 12 }}>📦</Text>
+                      <Text style={{ fontSize: 11, color: '#CBD5E1', fontWeight: '700' }}>
+                        {orders.length} Orders
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => setAccountView('wishlist')}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    >
+                      <Text style={{ fontSize: 12 }}>💖</Text>
+                      <Text style={{ fontSize: 11, color: '#CBD5E1', fontWeight: '700' }}>
+                        {wishlist.length} Saved
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => setAccountView('profile')}
+                      style={{
+                        backgroundColor: 'rgba(249, 115, 22, 0.25)',
+                        borderColor: '#F97316',
+                        borderWidth: 1,
+                        borderRadius: 8,
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                      }}
+                    >
+                      <Text style={{ fontSize: 10.5, color: '#FED7AA', fontWeight: '800' }}>
+                        ✏️ Edit Profile
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Subnav Tabs */}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.accountSubnav}>{([
                   ['profile', tx('profile')], ['history', tx('history')], ['orders', t.tabOrders], ['requests', tx('requests')], ['wishlist', t.tabWishlist], ['notifications', tx('notifications')], ['admin', tx('admin')]
                 ] as const).map(([key, label]) => (
                   <TouchableOpacity key={key} style={[styles.accountSubnavButton, accountView === key && styles.accountSubnavButtonActive]} onPress={() => setAccountView(key)}><Text style={[styles.accountSubnavText, accountView === key && styles.accountSubnavTextActive]}>{label}</Text></TouchableOpacity>
                 ))}</ScrollView>
+
                 {accountView === 'profile' && (
                   <View style={{ gap: 14 }}>
-                    {/* ── Edit Display Name Card ── */}
+                    {/* Header Row: Profile title + Role Badge (just like Website) */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                      <Text style={{ fontSize: 20, fontWeight: '900', color: '#0F172A' }}>{tx('profile')}</Text>
+                      <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 9999 }}>
+                        <Text style={{ color: '#B45309', fontWeight: '800', fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                          {roleLabel.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* ── Edit Profile Details Card (Name, Address & Phone) ── */}
                     <View style={{
                       backgroundColor: '#FFFFFF',
                       borderRadius: 16,
@@ -3024,12 +3265,12 @@ export default function App() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                         <Text style={{ fontSize: 18 }}>✏️</Text>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 14, fontWeight: '900', color: '#0F172A' }}>Edit User / Artisan Name</Text>
-                          <Text style={{ fontSize: 11, color: '#64748B' }}>This name appears on your marketplace listings & profile</Text>
+                          <Text style={{ fontSize: 14, fontWeight: '900', color: '#0F172A' }}>Edit Profile Details</Text>
+                          <Text style={{ fontSize: 11, color: '#64748B' }}>Update your display name and address across KalaSetu</Text>
                         </View>
                       </View>
 
-                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 6 }}>Full Name</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 5 }}>FULL NAME</Text>
                       <TextInput
                         style={{
                           backgroundColor: '#F8FAFC',
@@ -3047,6 +3288,46 @@ export default function App() {
                         placeholder={tx('namePlaceholder')}
                         placeholderTextColor={Colors.placeholder}
                         autoCapitalize="words"
+                      />
+
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 5 }}>LOCATION / ADDRESS</Text>
+                      <TextInput
+                        style={{
+                          backgroundColor: '#F8FAFC',
+                          borderColor: '#CBD5E1',
+                          borderWidth: 1.5,
+                          borderRadius: 12,
+                          paddingHorizontal: 14,
+                          paddingVertical: 10,
+                          fontSize: 14,
+                          color: '#0F172A',
+                          marginBottom: 10
+                        }}
+                        value={editProfileCity}
+                        onChangeText={setEditProfileCity}
+                        placeholder="e.g. Madhubani, Bihar"
+                        placeholderTextColor={Colors.placeholder}
+                        autoCapitalize="words"
+                      />
+
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 5 }}>MOBILE / PHONE</Text>
+                      <TextInput
+                        style={{
+                          backgroundColor: '#F8FAFC',
+                          borderColor: '#CBD5E1',
+                          borderWidth: 1.5,
+                          borderRadius: 12,
+                          paddingHorizontal: 14,
+                          paddingVertical: 10,
+                          fontSize: 14,
+                          color: '#0F172A',
+                          marginBottom: 12
+                        }}
+                        value={editProfilePhone}
+                        onChangeText={setEditProfilePhone}
+                        placeholder="e.g. 9876543210"
+                        placeholderTextColor={Colors.placeholder}
+                        keyboardType="phone-pad"
                       />
 
                       {profileSuccessMsg ? (
@@ -3078,7 +3359,7 @@ export default function App() {
                         ) : (
                           <>
                             <Text style={{ fontSize: 14, color: '#FFFFFF', fontWeight: 'bold' }}>✓</Text>
-                            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>Save Name</Text>
+                            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>Save Profile Details</Text>
                           </>
                         )}
                       </TouchableOpacity>
