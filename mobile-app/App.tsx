@@ -26,7 +26,9 @@ import {
   Dimensions,
   RefreshControl,
   Share,
-  KeyboardAvoidingView
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback
 } from 'react-native';
 import Svg, {
   Path,
@@ -471,6 +473,40 @@ export default function App() {
   const browserListeningRef = useRef(false);
   const browserTranscriptRef = useRef('');
   const nativeListeningRef = useRef(false);
+  const mainScrollRef = useRef<ScrollView>(null);
+  const chatScrollRef = useRef<ScrollView>(null);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setIsKeyboardVisible(true);
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setIsKeyboardVisible(false);
+        setKeyboardHeight(0);
+      }
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (chatModalVisible && isKeyboardVisible) {
+      setTimeout(() => {
+        chatScrollRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [isKeyboardVisible, chatModalVisible]);
+
   const [priceIdea, setPriceIdea] = useState('');
   const [isEnhanced, setIsEnhanced] = useState(false);
 
@@ -3271,112 +3307,127 @@ export default function App() {
       </Modal>
 
       {/* Main Body: Scrollable Screen with Pull-to-Refresh */}
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          activeTab === 'market' ? (
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={onRefreshMarketplace}
-              colors={['#EA580C']}
-              tintColor="#EA580C"
-              title="Pull to refresh marketplace..."
-              titleColor="#EA580C"
-            />
-          ) : undefined
-        }
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
       >
-        {renderMainContent()}
-      </ScrollView>
+        <ScrollView
+          ref={mainScrollRef}
+          contentContainerStyle={[
+            styles.scrollContent,
+            isKeyboardVisible && { paddingBottom: (keyboardHeight || 280) + 60 }
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          refreshControl={
+            activeTab === 'market' ? (
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={onRefreshMarketplace}
+                colors={['#EA580C']}
+                tintColor="#EA580C"
+                title="Pull to refresh marketplace..."
+                titleColor="#EA580C"
+              />
+            ) : undefined
+          }
+        >
+          {renderMainContent()}
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-      {/* Bottom Tab Navigation Bar */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bottomTabBar} contentContainerStyle={styles.bottomTabBarContent}>
+      {/* Bottom Tab Navigation Bar — hidden when keyboard is open to give maximum typing space */}
+      {!isKeyboardVisible && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bottomTabBar} contentContainerStyle={styles.bottomTabBarContent}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'home' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('home')}>
+            <Text style={styles.tabIcon}>🏠</Text>
+            <Text style={[styles.tabText, activeTab === 'home' && styles.tabTextActive]}>{tx('homeTab')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.tabButton, activeTab === 'studio' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('studio')}>
+            <Text style={styles.tabIcon}>✨</Text>
+            <Text style={[styles.tabText, activeTab === 'studio' && styles.tabTextActive]}>
+              {t.tabStudio}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.tabButton, activeTab === 'market' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('market')}>
+            <Text style={styles.tabIcon}>🛍️</Text>
+            <Text style={[styles.tabText, activeTab === 'market' && styles.tabTextActive]}>
+              {t.tabMarket}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.tabButton, activeTab === 'institutional' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('institutional')}>
+            <Text style={styles.tabIcon}>🏛️</Text>
+            <Text style={[styles.tabText, activeTab === 'institutional' && styles.tabTextActive]}>{tx('bulkTab')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.tabButton, chatModalVisible && styles.tabButtonActive]}
+            onPress={() => setChatModalVisible(true)}>
+            <View style={{ width: 22, height: 22, borderRadius: 11, overflow: 'hidden', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 2 }}>
+              <Image
+                source={require('./assets/assistant-avatar.png')}
+                style={{ width: 20, height: 20 }}
+                resizeMode="contain"
+              />
+            </View>
+            <Text style={[styles.tabText, chatModalVisible && styles.tabTextActive]}>{tx('aiChat')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'account' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('account')}>
+            <Text style={styles.tabIcon}>👤</Text>
+            <Text style={[styles.tabText, activeTab === 'account' && styles.tabTextActive]}>{tx('accountTab')}</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+
+      {/* Floating AI Assistant Pill — hidden when keyboard is open */}
+      {!isKeyboardVisible && (
         <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'home' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('home')}>
-          <Text style={styles.tabIcon}>🏠</Text>
-          <Text style={[styles.tabText, activeTab === 'home' && styles.tabTextActive]}>{tx('homeTab')}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.tabButton, activeTab === 'studio' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('studio')}>
-          <Text style={styles.tabIcon}>✨</Text>
-          <Text style={[styles.tabText, activeTab === 'studio' && styles.tabTextActive]}>
-            {t.tabStudio}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.tabButton, activeTab === 'market' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('market')}>
-          <Text style={styles.tabIcon}>🛍️</Text>
-          <Text style={[styles.tabText, activeTab === 'market' && styles.tabTextActive]}>
-            {t.tabMarket}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.tabButton, activeTab === 'institutional' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('institutional')}>
-          <Text style={styles.tabIcon}>🏛️</Text>
-          <Text style={[styles.tabText, activeTab === 'institutional' && styles.tabTextActive]}>{tx('bulkTab')}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.tabButton, chatModalVisible && styles.tabButtonActive]}
-          onPress={() => setChatModalVisible(true)}>
-          <View style={{ width: 22, height: 22, borderRadius: 11, overflow: 'hidden', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 2 }}>
+          style={{
+            position: 'absolute',
+            bottom: 78,
+            right: 16,
+            backgroundColor: '#0F172A',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            paddingVertical: 7,
+            paddingHorizontal: 14,
+            borderRadius: 28,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.35,
+            shadowRadius: 6,
+            elevation: 8,
+            borderWidth: 1.5,
+            borderColor: '#EA580C',
+            zIndex: 999
+          }}
+          onPress={() => setChatModalVisible(true)}
+        >
+          <View style={{ width: 26, height: 26, borderRadius: 13, overflow: 'hidden', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
             <Image
               source={require('./assets/assistant-avatar.png')}
-              style={{ width: 20, height: 20 }}
+              style={{ width: 24, height: 24 }}
               resizeMode="contain"
             />
           </View>
-          <Text style={[styles.tabText, chatModalVisible && styles.tabTextActive]}>{tx('aiChat')}</Text>
+          <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 13 }}>{tx('aiAssistant')}</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'account' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('account')}>
-          <Text style={styles.tabIcon}>👤</Text>
-          <Text style={[styles.tabText, activeTab === 'account' && styles.tabTextActive]}>{tx('accountTab')}</Text>
-        </TouchableOpacity>
-      </ScrollView>
-
-      {/* Floating AI Assistant Pill */}
-      <TouchableOpacity
-        style={{
-          position: 'absolute',
-          bottom: 78,
-          right: 16,
-          backgroundColor: '#0F172A',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 8,
-          paddingVertical: 7,
-          paddingHorizontal: 14,
-          borderRadius: 28,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.35,
-          shadowRadius: 6,
-          elevation: 8,
-          borderWidth: 1.5,
-          borderColor: '#EA580C',
-          zIndex: 999
-        }}
-        onPress={() => setChatModalVisible(true)}
-      >
-        <View style={{ width: 26, height: 26, borderRadius: 13, overflow: 'hidden', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
-          <Image
-            source={require('./assets/assistant-avatar.png')}
-            style={{ width: 24, height: 24 }}
-            resizeMode="contain"
-          />
-        </View>
-        <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 13 }}>{tx('aiAssistant')}</Text>
-      </TouchableOpacity>
+      )}
 
       {/* KalaSetu AI Assistant Chatbot Modal */}
       <Modal
@@ -3385,11 +3436,30 @@ export default function App() {
         transparent
         onRequestClose={() => setChatModalVisible(false)}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.7)', justifyContent: 'flex-end' }}
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15,23,42,0.7)',
+            justifyContent: 'flex-end',
+            paddingBottom: keyboardHeight > 0 ? keyboardHeight : 0
+          }}
         >
-          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '86%', padding: 18, display: 'flex', flexDirection: 'column' }}>
+          <View
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              height: keyboardHeight > 0
+                ? Math.max(260, Math.min(Dimensions.get('window').height * 0.86, Dimensions.get('window').height - keyboardHeight - 24))
+                : '86%',
+              maxHeight: keyboardHeight > 0
+                ? Math.max(260, Math.min(Dimensions.get('window').height * 0.86, Dimensions.get('window').height - keyboardHeight - 24))
+                : '86%',
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+          >
             {/* Header */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', zIndex: 100, elevation: 10 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -3538,8 +3608,11 @@ export default function App() {
 
             {/* Chat Messages */}
             <ScrollView
+              ref={chatScrollRef}
               style={{ flex: 1, marginVertical: 8 }}
               contentContainerStyle={{ gap: 10, paddingBottom: 10 }}
+              keyboardShouldPersistTaps="handled"
+              onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
             >
               {chatMessages.map(msg => (
                 <View
@@ -3629,7 +3702,7 @@ export default function App() {
               </TouchableOpacity>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* ─── Product Detail Modal ─────────────────────────── */}
@@ -3639,10 +3712,31 @@ export default function App() {
         transparent
         onRequestClose={() => setProductModalVisible(false)}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.65)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '93%' }}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(15,23,42,0.65)',
+            justifyContent: 'flex-end',
+            paddingBottom: keyboardHeight > 0 ? keyboardHeight : 0
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              maxHeight: keyboardHeight > 0
+                ? Math.max(280, Dimensions.get('window').height - keyboardHeight - 24)
+                : '93%'
+            }}
+          >
             {selectedProduct && (
-              <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+              >
                 {/* Product Image */}
                 <TouchableOpacity
                   activeOpacity={0.88}
