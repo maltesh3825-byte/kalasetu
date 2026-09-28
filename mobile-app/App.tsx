@@ -3336,61 +3336,50 @@ export default function App() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Bottom Tab Navigation Bar — hidden when keyboard is open to give maximum typing space */}
+      {/* Bottom Tab Navigation Bar — 5 clean core tabs, AI Chat accessed via floating pill */}
       {!isKeyboardVisible && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bottomTabBar} contentContainerStyle={styles.bottomTabBarContent}>
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'home' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('home')}>
-            <Text style={styles.tabIcon}>🏠</Text>
-            <Text style={[styles.tabText, activeTab === 'home' && styles.tabTextActive]}>{tx('homeTab')}</Text>
-          </TouchableOpacity>
+        <View style={styles.bottomTabBar}>
+          <View style={styles.bottomTabBarContent}>
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === 'home' && styles.tabButtonActive]}
+              onPress={() => setActiveTab('home')}>
+              <Text style={styles.tabIcon}>🏠</Text>
+              <Text style={[styles.tabText, activeTab === 'home' && styles.tabTextActive]}>{tx('homeTab')}</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.tabButton, activeTab === 'studio' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('studio')}>
-            <Text style={styles.tabIcon}>✨</Text>
-            <Text style={[styles.tabText, activeTab === 'studio' && styles.tabTextActive]}>
-              {t.tabStudio}
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.tabButton, activeTab === 'studio' && styles.tabButtonActive]}
+              onPress={() => setActiveTab('studio')}>
+              <Text style={styles.tabIcon}>✨</Text>
+              <Text style={[styles.tabText, activeTab === 'studio' && styles.tabTextActive]}>
+                {t.tabStudio}
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.tabButton, activeTab === 'market' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('market')}>
-            <Text style={styles.tabIcon}>🛍️</Text>
-            <Text style={[styles.tabText, activeTab === 'market' && styles.tabTextActive]}>
-              {t.tabMarket}
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.tabButton, activeTab === 'market' && styles.tabButtonActive]}
+              onPress={() => setActiveTab('market')}>
+              <Text style={styles.tabIcon}>🛍️</Text>
+              <Text style={[styles.tabText, activeTab === 'market' && styles.tabTextActive]}>
+                {t.tabMarket}
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.tabButton, activeTab === 'institutional' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('institutional')}>
-            <Text style={styles.tabIcon}>🏛️</Text>
-            <Text style={[styles.tabText, activeTab === 'institutional' && styles.tabTextActive]}>{tx('bulkTab')}</Text>
-          </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.tabButton, activeTab === 'institutional' && styles.tabButtonActive]}
+              onPress={() => setActiveTab('institutional')}>
+              <Text style={styles.tabIcon}>🏛️</Text>
+              <Text style={[styles.tabText, activeTab === 'institutional' && styles.tabTextActive]}>{tx('bulkTab')}</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.tabButton, chatModalVisible && styles.tabButtonActive]}
-            onPress={() => setChatModalVisible(true)}>
-            <View style={{ width: 22, height: 22, borderRadius: 11, overflow: 'hidden', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 2 }}>
-              <Image
-                source={require('./assets/assistant-avatar.png')}
-                style={{ width: 20, height: 20 }}
-                resizeMode="contain"
-              />
-            </View>
-            <Text style={[styles.tabText, chatModalVisible && styles.tabTextActive]}>{tx('aiChat')}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'account' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('account')}>
-            <Text style={styles.tabIcon}>👤</Text>
-            <Text style={[styles.tabText, activeTab === 'account' && styles.tabTextActive]}>{tx('accountTab')}</Text>
-          </TouchableOpacity>
-        </ScrollView>
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === 'account' && styles.tabButtonActive]}
+              onPress={() => setActiveTab('account')}>
+              <Text style={styles.tabIcon}>👤</Text>
+              <Text style={[styles.tabText, activeTab === 'account' && styles.tabTextActive]}>{tx('accountTab')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
 
       {/* Floating AI Assistant Pill — hidden when keyboard is open */}
@@ -5711,7 +5700,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 78,
+    height: 74,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: Colors.border,
@@ -5720,15 +5709,18 @@ const styles = StyleSheet.create({
   },
   bottomTabBarContent: {
     flexDirection: 'row',
-    minWidth: '100%',
-    height: 78,
-    paddingBottom: 8,
-    paddingHorizontal: 6,
+    width: '100%',
+    height: 74,
+    paddingBottom: 6,
+    paddingHorizontal: 4,
+    justifyContent: 'space-around',
+    alignItems: 'center',
   },
   tabButton: {
-    width: 76,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 6,
   },
   tabButtonActive: {
     borderTopWidth: 2,
