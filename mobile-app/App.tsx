@@ -413,6 +413,9 @@ export default function App() {
   const [demoOtpCode, setDemoOtpCode] = useState('');
   const [authErrorNotice, setAuthErrorNotice] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [editProfileName, setEditProfileName] = useState('');
+  const [isSavingProfileName, setIsSavingProfileName] = useState(false);
+  const [profileSuccessMsg, setProfileSuccessMsg] = useState('');
   const [bulkProductName, setBulkProductName] = useState('Pure Brass Dokra Lamp & Desk Stand');
   const [bulkNeed, setBulkNeed] = useState('');
   const [bulkBuyerType, setBulkBuyerType] = useState('Retail / Institutional Buyer');
@@ -684,7 +687,10 @@ export default function App() {
           const user: AppUser = JSON.parse(savedUser);
           setCurrentUser(user);
           if (user.phone) setArtisanPhone(user.phone);
-          if (user.name) setArtisanName(user.name);
+          if (user.name) {
+            setArtisanName(user.name);
+            setEditProfileName(user.name);
+          }
           if (user.city) setArtisanLocation(user.city);
           setIsLoggedIn(true);
           // Refresh account data in background
@@ -905,7 +911,10 @@ export default function App() {
 
       setCurrentUser(user);
       if (user.phone) setArtisanPhone(user.phone);
-      if (user.name) setArtisanName(user.name);
+      if (user.name) {
+        setArtisanName(user.name);
+        setEditProfileName(user.name);
+      }
       if (user.city) setArtisanLocation(user.city);
       setIsLoggedIn(true);
       setActiveTab('home');
@@ -1001,7 +1010,10 @@ export default function App() {
       setShowOtpSection(false);
       setCurrentUser(user);
       if (user.phone) setArtisanPhone(user.phone);
-      if (user.name) setArtisanName(user.name);
+      if (user.name) {
+        setArtisanName(user.name);
+        setEditProfileName(user.name);
+      }
       if (user.city) setArtisanLocation(user.city);
       setIsLoggedIn(true);
       setActiveTab('home');
@@ -1034,6 +1046,32 @@ export default function App() {
     setIncomingOrders([]);
     setPublishedProducts([]);
     setActiveTab('home');
+  };
+
+  const handleSaveProfileName = async () => {
+    const trimmed = editProfileName.trim();
+    if (!trimmed || trimmed.length < 2) {
+      Alert.alert('Invalid Name', 'Name must be at least 2 characters long.');
+      return;
+    }
+    if (!currentUser) return;
+    setIsSavingProfileName(true);
+    try {
+      const updatedUser: AppUser = {
+        ...currentUser,
+        name: trimmed
+      };
+      setCurrentUser(updatedUser);
+      await AsyncStorage.setItem('kalasetu_current_user', JSON.stringify(updatedUser));
+      setArtisanName(trimmed);
+      setProfileSuccessMsg('✓ Name updated successfully!');
+      setTimeout(() => setProfileSuccessMsg(''), 3500);
+      Alert.alert('Profile Updated', `Your display name has been updated to "${trimmed}".`);
+    } catch (err: any) {
+      Alert.alert('Update Failed', err?.message || 'Could not save profile name.');
+    } finally {
+      setIsSavingProfileName(false);
+    }
   };
 
   const openHomeMarket = () => {
@@ -1088,7 +1126,7 @@ export default function App() {
         productName: product.name,
         price: product.price,
         quantity,
-        customerName: currentUser.name,
+        customerName: deliveryDetails.recipientName?.trim() || currentUser.name,
         sellerId: product.owner_user_id,
         currentQuantity: availableQuantity,
         ...deliveryDetails
@@ -1912,9 +1950,9 @@ export default function App() {
     }
     const newProduct: Omit<CraftProduct, 'id'> = {
       name: editTitle,
-      artisan_name: currentUser?.name || artisanName || "Artisan Beneficiary",
+      artisan_name: artisanName?.trim() || currentUser?.name || "Artisan Beneficiary",
       artisan_location: artisanLocation || "Rural Cluster",
-      artisan_phone: currentUser?.phone || artisanPhone || "+919876543210",
+      artisan_phone: artisanPhone?.trim() || currentUser?.phone || "+919876543210",
       category: editCategory,
       price: Number(editPrice),
       quantity: listingQuantityValue,
@@ -1927,7 +1965,7 @@ export default function App() {
       image_url: imageUrl,
       image_gallery: [imageUrl],
       rating: 4.8,
-      reviews: [{ user_name: artisanName || "Verified Buyer", rating: 5, comment: "Fresh artisan listing with marketplace photo." }],
+      reviews: [{ user_name: artisanName?.trim() || currentUser?.name || "Verified Buyer", rating: 5, comment: "Fresh artisan listing with marketplace photo." }],
       is_enhanced: isEnhanced,
       mosje_verified: true,
       owner_user_id: currentUser?.id
@@ -2903,7 +2941,122 @@ export default function App() {
                 ] as const).map(([key, label]) => (
                   <TouchableOpacity key={key} style={[styles.accountSubnavButton, accountView === key && styles.accountSubnavButtonActive]} onPress={() => setAccountView(key)}><Text style={[styles.accountSubnavText, accountView === key && styles.accountSubnavTextActive]}>{label}</Text></TouchableOpacity>
                 ))}</ScrollView>
-                {accountView === 'profile' && (<View><Text style={styles.profileSectionTitle}>{tx('profile')}</Text><Text style={styles.notificationText}>{tx('role')}: {roleLabel}</Text><Text style={styles.notificationText}>{tx('publishedListings')}: {publishedProducts.length}</Text><Text style={styles.notificationText}>{tx('savedCrafts')}: {wishlist.length}</Text><TouchableOpacity style={styles.secondaryAction} onPress={handleLogout}><Text style={styles.secondaryActionText}>{tx('logout')}</Text></TouchableOpacity></View>)}
+                {accountView === 'profile' && (
+                  <View style={{ gap: 14 }}>
+                    {/* ── Edit Display Name Card ── */}
+                    <View style={{
+                      backgroundColor: '#FFFFFF',
+                      borderRadius: 16,
+                      padding: 16,
+                      borderWidth: 1,
+                      borderColor: '#E2E8F0',
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: 0.05,
+                      shadowRadius: 4,
+                      elevation: 2
+                    }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                        <Text style={{ fontSize: 18 }}>✏️</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '900', color: '#0F172A' }}>Edit User / Artisan Name</Text>
+                          <Text style={{ fontSize: 11, color: '#64748B' }}>This name appears on your marketplace listings & profile</Text>
+                        </View>
+                      </View>
+
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 6 }}>Full Name</Text>
+                      <TextInput
+                        style={{
+                          backgroundColor: '#F8FAFC',
+                          borderColor: '#CBD5E1',
+                          borderWidth: 1.5,
+                          borderRadius: 12,
+                          paddingHorizontal: 14,
+                          paddingVertical: 10,
+                          fontSize: 14,
+                          color: '#0F172A',
+                          marginBottom: 10
+                        }}
+                        value={editProfileName}
+                        onChangeText={setEditProfileName}
+                        placeholder={tx('namePlaceholder')}
+                        placeholderTextColor={Colors.placeholder}
+                        autoCapitalize="words"
+                      />
+
+                      {profileSuccessMsg ? (
+                        <View style={{ backgroundColor: '#DCFCE7', padding: 8, borderRadius: 8, marginBottom: 10, alignItems: 'center' }}>
+                          <Text style={{ color: '#166534', fontSize: 11, fontWeight: '800' }}>{profileSuccessMsg}</Text>
+                        </View>
+                      ) : null}
+
+                      <TouchableOpacity
+                        style={{
+                          backgroundColor: '#EA580C',
+                          borderRadius: 12,
+                          paddingVertical: 11,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexDirection: 'row',
+                          gap: 6,
+                          shadowColor: '#EA580C',
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.25,
+                          shadowRadius: 4,
+                          elevation: 3
+                        }}
+                        onPress={handleSaveProfileName}
+                        disabled={isSavingProfileName}
+                      >
+                        {isSavingProfileName ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <>
+                            <Text style={{ fontSize: 14, color: '#FFFFFF', fontWeight: 'bold' }}>✓</Text>
+                            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>Save Name</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* ── Profile Summary Card ── */}
+                    <View style={{
+                      backgroundColor: '#F8FAFC',
+                      borderRadius: 16,
+                      padding: 16,
+                      borderWidth: 1,
+                      borderColor: '#E2E8F0'
+                    }}>
+                      <Text style={{ fontSize: 13, fontWeight: '900', color: '#0F172A', marginBottom: 10 }}>Account Summary</Text>
+                      <View style={{ gap: 8 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ fontSize: 12, color: '#64748B' }}>{tx('role')}</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{roleLabel}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ fontSize: 12, color: '#64748B' }}>Email</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{currentUser?.email || 'N/A'}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ fontSize: 12, color: '#64748B' }}>Mobile</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#0F172A' }}>{currentUser?.phone || '+919876543210'}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ fontSize: 12, color: '#64748B' }}>{tx('publishedListings')}</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#EA580C' }}>{publishedProducts.length} items</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ fontSize: 12, color: '#64748B' }}>{tx('savedCrafts')}</Text>
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>{wishlist.length} items</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity style={[styles.secondaryAction, { marginTop: 4 }]} onPress={handleLogout}>
+                      <Text style={styles.secondaryActionText}>{tx('logout')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
                 {accountView === 'history' && (<View><Text style={styles.profileSectionTitle}>{tx('activityHistory')}</Text><Text style={styles.notificationText}>{orders.length} {tx('purchaseOrders')}</Text><Text style={styles.notificationText}>{publishedProducts.length} {tx('publishedListing')}</Text>{orders.slice(0, 5).map(order => <Text key={order.id} style={styles.notificationText}>• {order.productName} — {order.status}</Text>)}{publishedProducts.slice(0, 5).map(product => <Text key={`published-${product.id}`} style={styles.notificationText}>• {tx('publishedListings')}: {product.name} — ₹{product.price}</Text>)}</View>)}
                 {accountView === 'orders' && (
                   <View>
