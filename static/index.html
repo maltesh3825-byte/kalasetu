@@ -53,6 +53,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="KalaSetu">
   
+  <!-- Image Cropper Stylesheet -->
+  <link rel="stylesheet" href="/static/css/cropper.min.css">
+  
   <!-- Custom Stylesheet -->
   <link rel="stylesheet" href="/static/css/style.css?v=12">
 </head>
@@ -406,8 +409,17 @@
         
         <div id="imagePreviewContainer" class="flex flex-col items-center justify-center">
           
-          <img id="previewImage" src="" alt="Craft Preview" 
-               class="hidden max-h-72 w-auto rounded-2xl object-cover shadow-md mb-4 studio-raw">
+          <div id="previewImageWrapper" class="relative hidden mb-4">
+            <img id="previewImage" src="" alt="Craft Preview" 
+                 class="max-h-72 w-auto rounded-2xl object-cover shadow-md studio-raw">
+            <!-- Free Crop Action Button floating on preview -->
+            <button type="button" id="cropCraftPhotoBtn" 
+                    class="absolute bottom-3 right-3 px-3.5 py-1.5 rounded-xl bg-slate-900/85 hover:bg-slate-900 text-white text-xs font-bold shadow-lg backdrop-blur-xs flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 border border-white/20"
+                    title="Crop and adjust craft photo freely">
+              <span>✂️</span>
+              <span>Free Crop</span>
+            </button>
+          </div>
           
           <div id="previewPlaceholder" class="flex flex-col items-center">
             <div class="w-20 h-20 bg-terracotta-100 text-terracotta-600 rounded-full flex items-center justify-center text-3xl mb-4 shadow-inner">
@@ -438,6 +450,13 @@
                     class="touch-btn px-6 py-3 rounded-2xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-sm border border-slate-300 shadow-sm transition-all flex items-center gap-2">
               <svg class="w-5 h-5 text-terracotta-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
               <span data-i18n="btn_take_photo">Use Camera</span>
+            </button>
+
+            <!-- Dedicated Free Crop Button in Action Row -->
+            <button type="button" id="cropCraftBtnBottom" 
+                    class="hidden touch-btn px-5 py-3 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-sm border border-amber-300 shadow-sm transition-all flex items-center gap-2 cursor-pointer">
+              <span>✂️</span>
+              <span>Free Crop Photo</span>
             </button>
           </div>
         </div>
@@ -835,9 +854,14 @@
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Ready for Vision</span>
                   </div>
                   <p class="text-xs text-slate-500 mt-0.5" id="bulkPreviewSubtitle">Photo loaded. Tap "Analyze with AI Vision" to suggest description, price & tags.</p>
-                  <button type="button" id="bulkChangePhotoBtn" class="mt-1.5 text-xs text-terracotta-600 font-bold hover:underline flex items-center gap-1 cursor-pointer">
-                    <span>↺</span> Change Photo
-                  </button>
+                  <div class="flex items-center gap-3 mt-1.5">
+                    <button type="button" id="bulkCropPhotoBtn" class="text-xs text-amber-800 font-bold hover:underline flex items-center gap-1 cursor-pointer">
+                      <span>✂️</span> Free Crop Photo
+                    </button>
+                    <button type="button" id="bulkChangePhotoBtn" class="text-xs text-terracotta-600 font-bold hover:underline flex items-center gap-1 cursor-pointer">
+                      <span>↺</span> Change Photo
+                    </button>
+                  </div>
                 </div>
               </div>
               <button type="button" id="bulkAnalyzeVisionBtn" class="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-terracotta-600 to-amber-600 hover:from-terracotta-700 hover:to-amber-700 text-white font-black text-xs sm:text-sm shadow-md flex items-center justify-center gap-2 transition-all hover:scale-105 active:scale-95 cursor-pointer">
@@ -1951,7 +1975,83 @@
 
   </div>
 
+  <!-- ========================================== -->
+  <!-- Free Crop Modal (Web)                      -->
+  <!-- ========================================== -->
+  <div id="imageCropModal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 transition-opacity">
+    <div class="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-sand-200 flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200">
+      
+      <!-- Modal Header -->
+      <div class="px-5 py-4 bg-gradient-to-r from-terracotta-600 to-terracotta-700 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-lg">✂️</div>
+          <div>
+            <h3 class="font-extrabold text-base leading-tight">Adjust & Crop Craft Photo</h3>
+            <p class="text-[11px] text-terracotta-100">Free crop enabled — drag any corner or edge freely to frame your handicraft</p>
+          </div>
+        </div>
+        <button type="button" id="cropModalCloseBtn" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-bold text-lg transition-colors cursor-pointer">
+          ✕
+        </button>
+      </div>
+
+      <!-- Aspect Ratio & Transform Toolbar -->
+      <div class="px-5 py-2.5 bg-sand-50 border-b border-sand-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex items-center gap-1.5">
+          <span class="font-bold text-slate-600 mr-1">Aspect:</span>
+          <button type="button" class="crop-aspect-btn px-2.5 py-1 rounded-lg font-bold transition-all bg-terracotta-600 text-white shadow-xs" data-aspect="free">
+            Freeform
+          </button>
+          <button type="button" class="crop-aspect-btn px-2.5 py-1 rounded-lg font-bold transition-all bg-white text-slate-700 hover:bg-slate-100 border border-slate-200" data-aspect="1">
+            1:1 Square
+          </button>
+          <button type="button" class="crop-aspect-btn px-2.5 py-1 rounded-lg font-bold transition-all bg-white text-slate-700 hover:bg-slate-100 border border-slate-200" data-aspect="1.333333">
+            4:3 Classic
+          </button>
+          <button type="button" class="crop-aspect-btn px-2.5 py-1 rounded-lg font-bold transition-all bg-white text-slate-700 hover:bg-slate-100 border border-slate-200" data-aspect="1.777777">
+            16:9 Wide
+          </button>
+        </div>
+
+        <div class="flex items-center gap-1">
+          <button type="button" id="cropRotateLeftBtn" class="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 font-bold border border-slate-200 rounded-lg flex items-center gap-1 shadow-2xs transition-colors cursor-pointer" title="Rotate 90° Left">
+            <span>↶</span> 90°
+          </button>
+          <button type="button" id="cropRotateRightBtn" class="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 font-bold border border-slate-200 rounded-lg flex items-center gap-1 shadow-2xs transition-colors cursor-pointer" title="Rotate 90° Right">
+            <span>↷</span> 90°
+          </button>
+          <button type="button" id="cropFlipHBtn" class="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 font-bold border border-slate-200 rounded-lg shadow-2xs transition-colors cursor-pointer" title="Flip Horizontal">
+            ⇄ Flip
+          </button>
+          <button type="button" id="cropResetBtn" class="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 font-bold border border-slate-200 rounded-lg shadow-2xs transition-colors cursor-pointer" title="Reset crop">
+            ↺ Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Cropper Viewport -->
+      <div class="relative bg-slate-950 flex-1 min-h-[300px] max-h-[58vh] flex items-center justify-center overflow-hidden p-2">
+        <img id="imageToCrop" src="" alt="Photo to Crop" class="max-w-full max-h-[54vh] block">
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-5 py-3.5 bg-white border-t border-slate-200 flex items-center justify-between gap-3">
+        <p class="text-xs text-slate-500 hidden sm:block">💡 Tip: Use your mouse or fingers to drag crop box corners freely.</p>
+        <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+          <button type="button" id="cropModalCancelBtn" class="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs sm:text-sm font-bold transition-colors cursor-pointer">
+            Cancel
+          </button>
+          <button type="button" id="cropModalApplyBtn" class="px-6 py-2.5 rounded-xl bg-terracotta-600 hover:bg-terracotta-700 text-white text-xs sm:text-sm font-black shadow-md transition-all flex items-center gap-1.5 cursor-pointer">
+            <span>✓</span> Apply Free Crop
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- Scripts -->
+  <script src="/static/js/cropper.min.js"></script>
   <script src="/static/js/i18n.js"></script>
   <script src="/static/js/voice.js"></script>
   <script src="/static/js/app.js"></script>

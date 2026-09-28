@@ -746,6 +746,20 @@ function initBulkProductImageDropzone() {
     });
   }
 
+  // Free Crop button for Bulk RFQ
+  const bulkCropBtn = document.getElementById('bulkCropPhotoBtn');
+  if (bulkCropBtn) {
+    bulkCropBtn.addEventListener('click', () => {
+      const previewImg = document.getElementById('bulkPreviewImg');
+      const src = bulkVisionState.imageUrl || (previewImg ? previewImg.src : null);
+      if (src) {
+        openImageCropper(src, 'bulk');
+      } else {
+        alert('Please choose or upload a bulk product photo first.');
+      }
+    });
+  }
+
   if (analyzeBtn) {
     analyzeBtn.addEventListener('click', () => {
       generateInstitutionalRfqWithAi();
@@ -1360,6 +1374,25 @@ function setupEventListeners() {
       fileInput.click();
     });
   }
+
+  // Free Crop Photo Buttons (Studio AI Cataloging)
+  const cropCraftBtn = document.getElementById('cropCraftPhotoBtn');
+  const cropCraftBtnBottom = document.getElementById('cropCraftBtnBottom');
+  [cropCraftBtn, cropCraftBtnBottom].forEach(btn => {
+    if (btn) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (state.uploadedImageUrl) {
+          openImageCropper(state.uploadedImageUrl, 'craft');
+        } else {
+          alert('Please select or capture a craft photo first.');
+        }
+      });
+    }
+  });
+
+  // Initialize Free Crop Modal controls
+  initImageCropperModal();
 
   // AI Analysis Button
   const analyzeBtn = document.getElementById('analyzeBtn');
@@ -2656,16 +2689,213 @@ function loadDemoPreset(index) {
 
 function displayImagePreview(url) {
   const previewImg = document.getElementById('previewImage');
+  const previewWrapper = document.getElementById('previewImageWrapper');
   const placeholder = document.getElementById('previewPlaceholder');
   const previewContainer = document.getElementById('imagePreviewContainer');
+  const cropBtnBottom = document.getElementById('cropCraftBtnBottom');
 
   if (previewImg && placeholder && previewContainer) {
     previewImg.src = url;
-    previewImg.classList.remove('hidden');
+    if (previewWrapper) {
+      previewWrapper.classList.remove('hidden');
+    } else {
+      previewImg.classList.remove('hidden');
+    }
+    if (cropBtnBottom) {
+      cropBtnBottom.classList.remove('hidden');
+    }
     placeholder.classList.add('hidden');
     previewContainer.classList.remove('border-dashed');
     updatePreviewEnhancement();
   }
+}
+
+// ========================================================
+// Free Crop Modal & Cropper Engine
+// ========================================================
+let currentCropper = null;
+let currentCropTarget = 'craft'; // 'craft' | 'bulk'
+
+function initImageCropperModal() {
+  const modal = document.getElementById('imageCropModal');
+  const closeBtn = document.getElementById('cropModalCloseBtn');
+  const cancelBtn = document.getElementById('cropModalCancelBtn');
+  const applyBtn = document.getElementById('cropModalApplyBtn');
+
+  if (closeBtn) closeBtn.addEventListener('click', closeImageCropper);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeImageCropper);
+  if (applyBtn) applyBtn.addEventListener('click', applyCroppedImage);
+
+  // Close when clicking modal backdrop
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeImageCropper();
+    });
+  }
+
+  // Aspect Ratio Preset buttons (Defaults to Freeform Crop)
+  document.querySelectorAll('.crop-aspect-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!currentCropper) return;
+      const aspectVal = btn.dataset.aspect;
+      if (aspectVal === 'free') {
+        currentCropper.setAspectRatio(NaN); // Freeform crop!
+      } else {
+        currentCropper.setAspectRatio(parseFloat(aspectVal));
+      }
+
+      // Update button styling
+      document.querySelectorAll('.crop-aspect-btn').forEach(b => {
+        b.classList.remove('bg-terracotta-600', 'text-white', 'shadow-xs');
+        b.classList.add('bg-white', 'text-slate-700', 'border', 'border-slate-200');
+      });
+      btn.classList.add('bg-terracotta-600', 'text-white', 'shadow-xs');
+      btn.classList.remove('bg-white', 'text-slate-700');
+    });
+  });
+
+  // Rotate Left (-90 deg)
+  const rotLeftBtn = document.getElementById('cropRotateLeftBtn');
+  if (rotLeftBtn) {
+    rotLeftBtn.addEventListener('click', () => {
+      if (currentCropper) currentCropper.rotate(-90);
+    });
+  }
+
+  // Rotate Right (+90 deg)
+  const rotRightBtn = document.getElementById('cropRotateRightBtn');
+  if (rotRightBtn) {
+    rotRightBtn.addEventListener('click', () => {
+      if (currentCropper) currentCropper.rotate(90);
+    });
+  }
+
+  // Flip Horizontal
+  const flipHBtn = document.getElementById('cropFlipHBtn');
+  if (flipHBtn) {
+    let scaleX = 1;
+    flipHBtn.addEventListener('click', () => {
+      if (!currentCropper) return;
+      scaleX = -scaleX;
+      currentCropper.scaleX(scaleX);
+    });
+  }
+
+  // Reset Crop Box & Orientation
+  const resetBtn = document.getElementById('cropResetBtn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      if (currentCropper) {
+        currentCropper.reset();
+        currentCropper.setAspectRatio(NaN);
+        document.querySelectorAll('.crop-aspect-btn').forEach(b => {
+          if (b.dataset.aspect === 'free') {
+            b.classList.add('bg-terracotta-600', 'text-white', 'shadow-xs');
+            b.classList.remove('bg-white', 'text-slate-700');
+          } else {
+            b.classList.remove('bg-terracotta-600', 'text-white');
+            b.classList.add('bg-white', 'text-slate-700');
+          }
+        });
+      }
+    });
+  }
+}
+
+function openImageCropper(imageSrc, target = 'craft') {
+  if (!imageSrc) return;
+  currentCropTarget = target;
+
+  const modal = document.getElementById('imageCropModal');
+  const imageToCrop = document.getElementById('imageToCrop');
+  if (!modal || !imageToCrop) return;
+
+  if (currentCropper) {
+    currentCropper.destroy();
+    currentCropper = null;
+  }
+
+  imageToCrop.src = imageSrc;
+  modal.classList.remove('hidden');
+
+  // Let browser render modal layout before initializing Cropper
+  setTimeout(() => {
+    if (typeof Cropper !== 'function') {
+      console.warn("Cropper.js library not available");
+      return;
+    }
+    currentCropper = new Cropper(imageToCrop, {
+      aspectRatio: NaN, // Freeform crop: allows user to freely adjust corners & edges
+      viewMode: 1,
+      dragMode: 'move',
+      autoCropArea: 0.95,
+      restore: false,
+      guides: true,
+      center: true,
+      highlight: false,
+      cropBoxMovable: true,
+      cropBoxResizable: true,
+      toggleDragModeOnDblclick: false,
+      responsive: true
+    });
+  }, 120);
+}
+
+function closeImageCropper() {
+  const modal = document.getElementById('imageCropModal');
+  if (modal) modal.classList.add('hidden');
+  if (currentCropper) {
+    currentCropper.destroy();
+    currentCropper = null;
+  }
+}
+
+function applyCroppedImage() {
+  if (!currentCropper) {
+    closeImageCropper();
+    return;
+  }
+
+  const canvas = currentCropper.getCroppedCanvas({
+    maxWidth: 2400,
+    maxHeight: 2400,
+    imageSmoothingEnabled: true,
+    imageSmoothingQuality: 'high'
+  });
+
+  if (!canvas) {
+    closeImageCropper();
+    return;
+  }
+
+  const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+
+    if (currentCropTarget === 'craft') {
+      const originalName = state.selectedFile ? state.selectedFile.name : 'craft_photo.jpg';
+      const croppedFile = new File([blob], originalName, { type: 'image/jpeg' });
+      state.selectedFile = croppedFile;
+      state.uploadedImageUrl = croppedDataUrl;
+      displayImagePreview(croppedDataUrl);
+      if (typeof showToast === 'function') {
+        showToast('Craft photo cropped successfully! ✂️');
+      }
+    } else if (currentCropTarget === 'bulk') {
+      const originalName = bulkVisionState.selectedFile ? bulkVisionState.selectedFile.name : 'bulk_product.jpg';
+      const croppedFile = new File([blob], originalName, { type: 'image/jpeg' });
+      bulkVisionState.selectedFile = croppedFile;
+      bulkVisionState.imageUrl = croppedDataUrl;
+      const previewImg = document.getElementById('bulkPreviewImg');
+      if (previewImg) previewImg.src = croppedDataUrl;
+      if (typeof showToast === 'function') {
+        showToast('Bulk product photo cropped successfully! ✂️');
+      }
+    }
+
+    closeImageCropper();
+  }, 'image/jpeg', 0.92);
 }
 
 function updatePreviewEnhancement() {
@@ -3307,7 +3537,11 @@ async function publishProductToMarketplace() {
 function resetArtisanForm() {
   document.getElementById('craftImageInput').value = '';
   document.getElementById('previewImage').src = '';
-  document.getElementById('previewImage').classList.add('hidden');
+  const previewWrapper = document.getElementById('previewImageWrapper');
+  if (previewWrapper) previewWrapper.classList.add('hidden');
+  else document.getElementById('previewImage').classList.add('hidden');
+  const cropBtnBottom = document.getElementById('cropCraftBtnBottom');
+  if (cropBtnBottom) cropBtnBottom.classList.add('hidden');
   document.getElementById('previewPlaceholder').classList.remove('hidden');
   document.getElementById('reviewSection').classList.add('hidden');
   document.getElementById('artisanNotes').value = '';
