@@ -3786,11 +3786,18 @@ function saveStudioDraft() {
   }
 }
 
+function toggleStudioDraftsTray() {
+  const container = document.getElementById('studioDraftsContainer');
+  if (container) {
+    container.classList.toggle('hidden');
+  }
+}
+
 function renderStudioDraftsList() {
   const container = document.getElementById('studioDraftsContainer');
   const listEl = document.getElementById('studioDraftsList');
   const countBadge = document.getElementById('studioDraftsCountBadge');
-  if (!container || !listEl) return;
+  if (!listEl) return;
 
   const drafts = getStudioDrafts();
   if (countBadge) {
@@ -3798,8 +3805,12 @@ function renderStudioDraftsList() {
   }
 
   if (drafts.length === 0) {
-    container.classList.add('hidden');
-    listEl.innerHTML = '';
+    listEl.innerHTML = `
+      <div class="col-span-full p-4 bg-amber-50/80 border border-dashed border-amber-300 rounded-2xl text-center text-xs text-amber-900 flex items-center justify-center gap-2">
+        <span>💡</span>
+        <span>No saved drafts yet. Click <strong>"💾 Save as Draft"</strong> anytime to save your craft progress and resume later!</span>
+      </div>
+    `;
     return;
   }
 
@@ -3964,6 +3975,7 @@ window.renderStudioDraftsList = renderStudioDraftsList;
 window.loadStudioDraft = loadStudioDraft;
 window.deleteStudioDraft = deleteStudioDraft;
 window.clearAllStudioDrafts = clearAllStudioDrafts;
+window.toggleStudioDraftsTray = toggleStudioDraftsTray;
 
 // Category localization helper
 function getCategoryLabel(category) {

@@ -381,29 +381,44 @@
         Take a clear picture of your handmade product in good natural light. AI will handle the cataloging, pricing, and tags.
       </p>
 
-      <!-- Quick Sample Buttons for Instant Jury Demo -->
-      <div class="mt-4 pt-4 border-t border-terracotta-200/60">
-        <p class="text-xs font-bold text-slate-600 mb-2">⚡ Quick 1-Click Demo Samples (For Jury Testing):</p>
-        <div class="flex flex-wrap gap-2">
-          <button type="button" onclick="loadDemoPreset(0)" class="text-xs bg-white hover:bg-terracotta-50 text-slate-800 font-semibold px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all flex items-center gap-1.5">
-            🏺 Terracotta Pitcher
+      <!-- Quick Sample Buttons & Save Draft Quick Actions -->
+      <div class="mt-4 pt-4 border-t border-terracotta-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-bold text-slate-600 mb-2">⚡ Quick 1-Click Demo Samples (For Jury Testing):</p>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" onclick="loadDemoPreset(0)" class="text-xs bg-white hover:bg-terracotta-50 text-slate-800 font-semibold px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all flex items-center gap-1.5 cursor-pointer">
+              🏺 Terracotta Pitcher
+            </button>
+            <button type="button" onclick="loadDemoPreset(1)" class="text-xs bg-white hover:bg-terracotta-50 text-slate-800 font-semibold px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all flex items-center gap-1.5 cursor-pointer">
+              🐘 Dhokra Brass Elephant
+            </button>
+            <button type="button" onclick="loadDemoPreset(2)" class="text-xs bg-white hover:bg-terracotta-50 text-slate-800 font-semibold px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all flex items-center gap-1.5 cursor-pointer">
+              🧵 Kutch Mirror Textile
+            </button>
+          </div>
+        </div>
+
+        <!-- Saved Drafts Bar Trigger & Top Save Draft Button -->
+        <div class="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button type="button" id="topSaveDraftBtn" onclick="saveStudioDraft()" class="text-xs bg-gradient-to-r from-amber-500 to-terracotta-600 hover:from-amber-600 hover:to-terracotta-700 text-white font-extrabold px-3.5 py-2 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer hover:scale-105 active:scale-95">
+            <span>💾</span>
+            <span data-i18n="btn_save_draft">Save as Draft</span>
           </button>
-          <button type="button" onclick="loadDemoPreset(1)" class="text-xs bg-white hover:bg-terracotta-50 text-slate-800 font-semibold px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all flex items-center gap-1.5">
-            🐘 Dhokra Brass Elephant
-          </button>
-          <button type="button" onclick="loadDemoPreset(2)" class="text-xs bg-white hover:bg-terracotta-50 text-slate-800 font-semibold px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm transition-all flex items-center gap-1.5">
-            🧵 Kutch Mirror Textile
+          <button type="button" onclick="toggleStudioDraftsTray()" class="text-xs bg-white hover:bg-amber-50 text-slate-800 font-bold px-3.5 py-2 rounded-xl border border-amber-300 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer hover:scale-105 active:scale-95">
+            <span>📁</span>
+            <span data-i18n="saved_drafts_title">Saved Drafts</span>
+            <span id="studioDraftsCountBadge" class="bg-terracotta-600 text-white rounded-full px-2 py-0.5 text-[10px] font-black">0</span>
           </button>
         </div>
       </div>
 
       <!-- Studio Saved Drafts Tray -->
-      <div id="studioDraftsContainer" class="hidden mt-4 pt-4 border-t border-terracotta-200/60">
+      <div id="studioDraftsContainer" class="mt-4 pt-4 border-t border-terracotta-200/60">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
             <span class="text-base">📁</span>
             <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider" data-i18n="saved_drafts_title">Saved Studio Drafts</h4>
-            <span id="studioDraftsCountBadge" class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200 text-amber-900 shadow-xs">0</span>
+            <span class="text-[11px] text-slate-500">(Restore any saved work anytime)</span>
           </div>
           <button type="button" onclick="clearAllStudioDrafts()" class="text-xs text-slate-500 hover:text-red-600 transition-colors font-semibold flex items-center gap-1 cursor-pointer">
             <span>🗑️</span>
@@ -470,9 +485,16 @@
               <span data-i18n="btn_take_photo">Use Camera</span>
             </button>
 
+            <!-- Save as Draft Button inside Upload Box -->
+            <button type="button" id="saveDraftBtnUploadBox" onclick="saveStudioDraft()" 
+                    class="touch-btn px-5 py-3 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-extrabold text-sm border border-amber-300 shadow-sm transition-all flex items-center gap-2 cursor-pointer active:scale-95">
+              <span>💾</span>
+              <span data-i18n="btn_save_draft">Save as Draft</span>
+            </button>
+
             <!-- Dedicated Free Crop Button in Action Row -->
             <button type="button" id="cropCraftBtnBottom" 
-                    class="hidden touch-btn px-5 py-3 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-sm border border-amber-300 shadow-sm transition-all flex items-center gap-2 cursor-pointer">
+                    class="hidden touch-btn px-5 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-sm border border-slate-300 shadow-sm transition-all flex items-center gap-2 cursor-pointer">
               <span>✂️</span>
               <span>Free Crop Photo</span>
             </button>
