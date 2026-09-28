@@ -4,7 +4,7 @@
  * Ministry of Social Justice and Empowerment (MoSJE)
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -438,6 +438,7 @@ export default function App() {
 
   // Compliance & Multi-Channel Syndication Preview State
   const [complianceModalVisible, setComplianceModalVisible] = useState(false);
+  const [scopePickerModalVisible, setScopePickerModalVisible] = useState(false);
   const [complianceTab, setComplianceTab] = useState<'gem' | 'ondc'>('gem');
   const [complianceCsvData, setComplianceCsvData] = useState<string>('');
   const [complianceJsonData, setComplianceJsonData] = useState<any>(null);
@@ -645,6 +646,26 @@ export default function App() {
     { volume: '11-50 units', price: bulkUnitPriceNumber * 0.87, minimum: 11, margin: '13% savings' },
     { volume: '50+ units', price: bulkUnitPriceNumber * 0.74, minimum: 51, margin: '26% savings' }
   ];
+
+  const currentArtisanIdentity = (currentUser?.name && currentUser.name.trim()) || (artisanName && artisanName.trim()) || 'Sharvari';
+
+  const combinedComplianceCatalog = useMemo(() => [
+    ...publishedProducts,
+    ...products.filter(p => !publishedProducts.some(pub => pub.id === p.id))
+  ], [publishedProducts, products]);
+
+  const clusterArtisansList = useMemo(() => {
+    const names = new Set<string>();
+    combinedComplianceCatalog.forEach(p => {
+      if (p.artisan_name && p.artisan_name.trim()) {
+        names.add(p.artisan_name.trim());
+      }
+    });
+    if (currentArtisanIdentity) {
+      names.add(currentArtisanIdentity);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [combinedComplianceCatalog, currentArtisanIdentity]);
 
   useSpeechRecognitionEvent('start', () => {
     setIsListening(true);
@@ -2288,10 +2309,11 @@ export default function App() {
   // Open Compliance Modal for GeM CSV or ONDC Beckn JSON preview
   const openComplianceModal = async (tab: 'gem' | 'ondc', filters?: { productId?: number; artisanName?: string }) => {
     setComplianceTab(tab);
-    const activeFilters = filters !== undefined ? filters : complianceFilter;
-    if (filters !== undefined) {
-      setComplianceFilter(filters);
+    let activeFilters = filters !== undefined ? filters : complianceFilter;
+    if (filters === undefined && !activeFilters.productId && !activeFilters.artisanName && currentArtisanIdentity) {
+      activeFilters = { artisanName: currentArtisanIdentity };
     }
+    setComplianceFilter(activeFilters);
     setComplianceModalVisible(true);
     setIsComplianceLoading(true);
 
@@ -3023,7 +3045,7 @@ export default function App() {
               <TouchableOpacity style={styles.secondaryButton} onPress={saveBulkDraft}><Text style={styles.secondaryButtonText}>{tx('saveDraft')}</Text></TouchableOpacity>
               {bulkDrafts.length > 0 && (<View><Text style={styles.helperText}>{bulkDrafts.length} {tx('bulkDraftsSaved')}</Text><TouchableOpacity onPress={() => restoreBulkDraft(bulkDrafts[0])}><Text style={styles.offlineDraftRestore}>{tx('restoreDraft')}</Text></TouchableOpacity></View>)}
             </View>
-            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 2</Text><Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text><Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text><View style={styles.bulkPricingCard}><View style={styles.bulkPricingHeader}><Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text><Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text></View><Text style={styles.bulkPricingHint}>{tx('basedOn')} {bulkQuantityNumber || 0} {tx('unitsAt')} ₹{bulkUnitPriceNumber.toLocaleString('en-IN')}</Text>{bulkPricingTiers.map(tier => (<View key={tier.volume} style={styles.bulkPricingRow}><Text style={styles.bulkPricingVolume}>{tier.volume}</Text><Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text><Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>{bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}</Text></View>))}</View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => { if (!bulkQuantityNumber || !bulkUnitPriceNumber) { Alert.alert(tx('bulkPricingCalculatorTitle'), 'Enter both quantity and unit price to calculate your live bulk total.'); return; } const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0; const tier = bulkPricingTiers[tierIndex]; const total = Math.round(tier.price) * bulkQuantityNumber; const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber)); Alert.alert(tx('bulkPricingCalculatorTitle'), `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`); }}><Text style={styles.bulkToolText}>{tx('bulkPricingCalculator')}</Text></TouchableOpacity><TouchableOpacity style={[styles.bulkToolButton, { backgroundColor: '#10B981' }]} onPress={shareRfqPitchToWhatsApp}><Text style={[styles.bulkToolText, { color: '#FFFFFF', fontWeight: '800' }]}>{tx('shareRfqWhatsApp')}</Text></TouchableOpacity></View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('gem', { artisanName: artisanName || undefined })}><Text style={styles.bulkToolText}>{tx('gemReadyExport')}</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('ondc', { artisanName: artisanName || undefined })}><Text style={styles.bulkToolText}>{tx('ondcJson')}</Text></TouchableOpacity></View></View>
+            <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 2</Text><Text style={styles.profileSectionTitle}>{tx('buyerReady')}</Text><Text style={styles.bulkHelpText}>{tx('buyerReadyHelp')}</Text><View style={styles.bulkPricingCard}><View style={styles.bulkPricingHeader}><Text style={styles.bulkPricingTitle}>{tx('pricingTiers')}</Text><Text style={styles.bulkPricingBadge}>{tx('wholesaleReady')}</Text></View><Text style={styles.bulkPricingHint}>{tx('basedOn')} {bulkQuantityNumber || 0} {tx('unitsAt')} ₹{bulkUnitPriceNumber.toLocaleString('en-IN')}</Text>{bulkPricingTiers.map(tier => (<View key={tier.volume} style={styles.bulkPricingRow}><Text style={styles.bulkPricingVolume}>{tier.volume}</Text><Text style={styles.bulkPricingPrice}>₹{Math.round(tier.price).toLocaleString('en-IN')}</Text><Text style={[styles.bulkPricingMargin, bulkQuantityNumber < tier.minimum && styles.bulkPricingUnavailable]}>{bulkQuantityNumber >= tier.minimum ? tier.margin : `Needs ${tier.minimum}+`}</Text></View>))}</View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => { if (!bulkQuantityNumber || !bulkUnitPriceNumber) { Alert.alert(tx('bulkPricingCalculatorTitle'), 'Enter both quantity and unit price to calculate your live bulk total.'); return; } const tierIndex = bulkQuantityNumber >= 51 ? 2 : bulkQuantityNumber >= 11 ? 1 : 0; const tier = bulkPricingTiers[tierIndex]; const total = Math.round(tier.price) * bulkQuantityNumber; const savings = Math.max(0, Math.round((bulkUnitPriceNumber - tier.price) * bulkQuantityNumber)); Alert.alert(tx('bulkPricingCalculatorTitle'), `${bulkQuantityNumber} units × ₹${Math.round(tier.price).toLocaleString('en-IN')} = ₹${total.toLocaleString('en-IN')}\nSavings: ₹${savings.toLocaleString('en-IN')} (${tier.margin})`); }}><Text style={styles.bulkToolText}>{tx('bulkPricingCalculator')}</Text></TouchableOpacity><TouchableOpacity style={[styles.bulkToolButton, { backgroundColor: '#10B981' }]} onPress={shareRfqPitchToWhatsApp}><Text style={[styles.bulkToolText, { color: '#FFFFFF', fontWeight: '800' }]}>{tx('shareRfqWhatsApp')}</Text></TouchableOpacity></View><View style={styles.bulkToolRow}><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('gem', { artisanName: currentArtisanIdentity })}><Text style={styles.bulkToolText}>{tx('gemReadyExport')}</Text></TouchableOpacity><TouchableOpacity style={styles.bulkToolButton} onPress={() => openComplianceModal('ondc', { artisanName: currentArtisanIdentity })}><Text style={styles.bulkToolText}>{tx('ondcJson')}</Text></TouchableOpacity></View></View>
             <View style={styles.card}><Text style={styles.stepLabel}>{tx('step')} 3</Text><Text style={styles.profileSectionTitle}>{tx('connectChannels')}</Text><Text style={styles.bulkHelpText}>{tx('connectHelp')}</Text><View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 12 }}><Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E', marginBottom: 3 }}>{tx('clusterModeTitle')}</Text><Text style={{ fontSize: 11, color: '#78350F', lineHeight: 15 }}>{tx('clusterModeDesc')}</Text></View><View style={styles.bulkChannelRow}><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://gem.gov.in/')}><Text style={styles.bulkToolText}>GeM ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://ondc.org/')}><Text style={styles.bulkToolText}>ONDC ↗</Text></TouchableOpacity><TouchableOpacity style={styles.bulkChannelButton} onPress={() => openBulkChannel('https://trifed.tribal.gov.in/')}><Text style={styles.bulkToolText}>TRIFED ↗</Text></TouchableOpacity></View><TouchableOpacity style={styles.secondaryAction} onPress={() => openBulkChannel('mailto:kalasetu24824.9@gmail.com?subject=KalaSetu%20Bulk%20Buyer%20Support')}><Text style={styles.secondaryActionText}>{tx('emailSupport')}</Text></TouchableOpacity></View>
           </View>
         );
@@ -3842,12 +3864,29 @@ export default function App() {
                       <View>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                           <Text style={styles.profileSectionTitle}>{tx('ordersPublishedByMe')}</Text>
-                          <TouchableOpacity
-                            onPress={() => currentUser && refreshAccountData(currentUser)}
-                            style={{ padding: 6 }}
-                          >
-                            <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: '600' }}>{tx('refreshBtn')}</Text>
-                          </TouchableOpacity>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <TouchableOpacity
+                              onPress={() => openComplianceModal('gem', { artisanName: currentArtisanIdentity })}
+                              style={{
+                                backgroundColor: '#0F172A',
+                                paddingHorizontal: 10,
+                                paddingVertical: 5,
+                                borderRadius: 8,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 4
+                              }}
+                            >
+                              <Text style={{ fontSize: 11 }}>📜</Text>
+                              <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>GeM Export</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => currentUser && refreshAccountData(currentUser)}
+                              style={{ padding: 6 }}
+                            >
+                              <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: '600' }}>{tx('refreshBtn')}</Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
                         {publishedProducts.length === 0 ? (
                           <View style={styles.emptyStateCard}>
@@ -4795,34 +4834,96 @@ export default function App() {
               </TouchableOpacity>
             </View>
 
-            {/* Facilitator Notice */}
-            <View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 12, padding: 10, marginBottom: 10 }}>
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400E', marginBottom: 2 }}>{tx('clusterModeHandoff')}</Text>
-              <Text style={{ fontSize: 10, color: '#78350F', lineHeight: 14 }}>
-                {tx('clusterModeHandoffDesc')}
-              </Text>
-            </View>
-
-            {/* Scope Filter Indicator */}
-            {complianceFilter.productId ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E40AF' }}>🎯 {tx('filtered')}: {tx('product')} #{complianceFilter.productId}</Text>
-                <TouchableOpacity onPress={() => openComplianceModal(complianceTab, {})}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>{tx('viewAllProducts')}</Text>
-                </TouchableOpacity>
+            {/* Adaptive Facilitator / Scope Notice */}
+            {complianceFilter.artisanName?.toLowerCase() === currentArtisanIdentity.toLowerCase() ? (
+              <View style={{ backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', borderWidth: 1, borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#065F46', marginBottom: 2 }}>🌟 Certified Artisan Scope Active</Text>
+                <Text style={{ fontSize: 10, color: '#047857', lineHeight: 14 }}>
+                  Exporting exclusively your verified crafts. Your proprietary pricing, inventory, and lead times remain protected.
+                </Text>
               </View>
-            ) : complianceFilter.artisanName ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 12 }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E40AF' }}>👤 {tx('filtered')}: {complianceFilter.artisanName}</Text>
-                <TouchableOpacity onPress={() => openComplianceModal(complianceTab, {})}>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#2563EB' }}>{tx('viewAllProducts')}</Text>
-                </TouchableOpacity>
+            ) : !complianceFilter.artisanName && !complianceFilter.productId ? (
+              <View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400E', marginBottom: 2 }}>{tx('clusterModeHandoff')}</Text>
+                <Text style={{ fontSize: 10, color: '#78350F', lineHeight: 14 }}>
+                  {tx('clusterModeHandoffDesc')}
+                </Text>
               </View>
             ) : (
-              <View style={{ backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 12 }}>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: '#64748B' }}>{tx('scopeAllProducts')}</Text>
+              <View style={{ backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderWidth: 1, borderRadius: 12, padding: 10, marginBottom: 10 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#1E40AF', marginBottom: 2 }}>🎯 Filtered Cluster Inspection</Text>
+                <Text style={{ fontSize: 10, color: '#1E3A8A', lineHeight: 14 }}>
+                  Scoped to {complianceFilter.artisanName ? `Artisan "${complianceFilter.artisanName}"` : `Product #${complianceFilter.productId}`} for targeted GeM BoQ tenders and procurement verification.
+                </Text>
               </View>
             )}
+
+            {/* Interactive Export Scope Selector */}
+            <View style={{ marginBottom: 12, backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', borderWidth: 1, borderRadius: 12, padding: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569', letterSpacing: 0.3 }}>
+                  🎯 EXPORT SCOPE
+                </Text>
+                {complianceFilter.productId ? (
+                  <View style={{ backgroundColor: '#DBEAFE', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#1E40AF' }}>🎯 Product #{complianceFilter.productId}</Text>
+                  </View>
+                ) : complianceFilter.artisanName ? (
+                  <View style={{ backgroundColor: complianceFilter.artisanName.toLowerCase() === currentArtisanIdentity.toLowerCase() ? '#DCFCE7' : '#FEF3C7', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: complianceFilter.artisanName.toLowerCase() === currentArtisanIdentity.toLowerCase() ? '#15803D' : '#92400E' }}>
+                      {complianceFilter.artisanName.toLowerCase() === currentArtisanIdentity.toLowerCase() ? '🌟 My Products' : `👤 Filtered: ${complianceFilter.artisanName}`}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#92400E' }}>🌐 Coordinator Mode</Text>
+                  </View>
+                )}
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setScopePickerModalVisible(true)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  backgroundColor: '#FFFFFF',
+                  borderColor: '#CBD5E1',
+                  borderWidth: 1.5,
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 9,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.05,
+                  shadowRadius: 2,
+                  elevation: 1,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
+                  <Text style={{ fontSize: 14 }}>
+                    {complianceFilter.productId
+                      ? '🎯'
+                      : complianceFilter.artisanName
+                        ? (complianceFilter.artisanName.toLowerCase() === currentArtisanIdentity.toLowerCase() ? '🌟' : '👤')
+                        : '🌐'}
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }} numberOfLines={1}>
+                    {complianceFilter.productId
+                      ? `Product #${complianceFilter.productId}`
+                      : complianceFilter.artisanName
+                        ? (complianceFilter.artisanName.toLowerCase() === currentArtisanIdentity.toLowerCase()
+                            ? `My Products (${currentArtisanIdentity})`
+                            : `Artisan: ${complianceFilter.artisanName}`)
+                        : 'Entire Marketplace Catalog (All Artisans)'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF7ED', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderColor: '#FFEDD5', borderWidth: 1 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#EA580C' }}>Change</Text>
+                  <Text style={{ fontSize: 10, color: '#EA580C', fontWeight: 'bold' }}>▾</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
 
             {/* Tabs */}
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
@@ -4928,6 +5029,170 @@ export default function App() {
                 </TouchableOpacity>
               </View>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Scope Picker Bottom Sheet Modal */}
+      <Modal visible={scopePickerModalVisible} animationType="slide" transparent onRequestClose={() => setScopePickerModalVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.7)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%', padding: 20 }}>
+            {/* Modal Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <View>
+                <Text style={{ fontSize: 16, fontWeight: '900', color: '#0F172A' }}>🎯 Select Export Scope</Text>
+                <Text style={{ fontSize: 11, color: '#64748B' }}>Choose catalog boundaries for GeM CSV & ONDC Beckn payloads</Text>
+              </View>
+              <TouchableOpacity onPress={() => setScopePickerModalVisible(false)} style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#475569' }}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
+              {/* Scope Group 1: Individual Artisan Scope (Recommended) */}
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                Artisan Certified Scope (Private & Recommended)
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setScopePickerModalVisible(false);
+                  openComplianceModal(complianceTab, { artisanName: currentArtisanIdentity });
+                }}
+                style={{
+                  backgroundColor: complianceFilter.artisanName?.toLowerCase() === currentArtisanIdentity.toLowerCase() ? '#F0FDF4' : '#FFFFFF',
+                  borderColor: complianceFilter.artisanName?.toLowerCase() === currentArtisanIdentity.toLowerCase() ? '#22C55E' : '#E2E8F0',
+                  borderWidth: 1.5,
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 14,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>🌟 My Products ({currentArtisanIdentity})</Text>
+                  <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#15803D' }}>Artisan Protected</Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 11, color: '#475569', lineHeight: 15 }}>
+                  Generates compliance export exclusively for your verified crafts. Protects your pricing, lead times, and workshop confidentiality from competitors.
+                </Text>
+              </TouchableOpacity>
+
+              {/* Scope Group 2: Cluster Coordinator Mode (Aggregated) */}
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                Cluster Coordinator Handoff (Aggregated Tender Mode)
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setScopePickerModalVisible(false);
+                  openComplianceModal(complianceTab, {});
+                }}
+                style={{
+                  backgroundColor: !complianceFilter.artisanName && !complianceFilter.productId ? '#FFFBEB' : '#FFFFFF',
+                  borderColor: !complianceFilter.artisanName && !complianceFilter.productId ? '#F59E0B' : '#E2E8F0',
+                  borderWidth: 1.5,
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 14,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>🌐 Entire Marketplace Catalog (All Artisans)</Text>
+                  <View style={{ backgroundColor: '#FEF3C7', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#B45309' }}>Coordinator Mode</Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 11, color: '#78350F', lineHeight: 15 }}>
+                  Master cluster catalog for authorized DIC, TRIFED, or cooperative heads submitting bulk district tenders to government departments.
+                </Text>
+              </TouchableOpacity>
+
+              {/* Scope Group 3: Filter by Artisan in Cluster */}
+              {clusterArtisansList.length > 0 && (
+                <>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                    Filter by Single Artisan ({clusterArtisansList.length} in cluster)
+                  </Text>
+                  <View style={{ backgroundColor: '#F8FAFC', borderRadius: 12, padding: 8, marginBottom: 14, borderColor: '#E2E8F0', borderWidth: 1, gap: 6 }}>
+                    {clusterArtisansList.map(name => {
+                      const isSelected = complianceFilter.artisanName?.toLowerCase() === name.toLowerCase();
+                      return (
+                        <TouchableOpacity
+                          key={name}
+                          onPress={() => {
+                            setScopePickerModalVisible(false);
+                            openComplianceModal(complianceTab, { artisanName: name });
+                          }}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            backgroundColor: isSelected ? '#EFF6FF' : '#FFFFFF',
+                            borderColor: isSelected ? '#3B82F6' : '#E2E8F0',
+                            borderWidth: 1,
+                            borderRadius: 8,
+                            paddingHorizontal: 10,
+                            paddingVertical: 8,
+                          }}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Text style={{ fontSize: 13 }}>👤</Text>
+                            <Text style={{ fontSize: 12, fontWeight: isSelected ? '800' : '600', color: isSelected ? '#1D4ED8' : '#1E293B' }}>
+                              Artisan: {name}
+                            </Text>
+                          </View>
+                          {isSelected && (
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#2563EB' }}>✓ Active</Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+
+              {/* Scope Group 4: Filter by Single Product */}
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                Filter by Single Product ({combinedComplianceCatalog.length} available)
+              </Text>
+              <View style={{ backgroundColor: '#F8FAFC', borderRadius: 12, padding: 8, marginBottom: 20, borderColor: '#E2E8F0', borderWidth: 1, gap: 6 }}>
+                {combinedComplianceCatalog.slice(0, 15).map(prod => {
+                  const isSelected = complianceFilter.productId === Number(prod.id);
+                  return (
+                    <TouchableOpacity
+                      key={prod.id}
+                      onPress={() => {
+                        setScopePickerModalVisible(false);
+                        openComplianceModal(complianceTab, { productId: Number(prod.id) });
+                      }}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        backgroundColor: isSelected ? '#EFF6FF' : '#FFFFFF',
+                        borderColor: isSelected ? '#3B82F6' : '#E2E8F0',
+                        borderWidth: 1,
+                        borderRadius: 8,
+                        paddingHorizontal: 10,
+                        paddingVertical: 8,
+                      }}
+                    >
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <Text style={{ fontSize: 12, fontWeight: isSelected ? '800' : '600', color: isSelected ? '#1D4ED8' : '#1E293B' }} numberOfLines={1}>
+                          #{prod.id}: {prod.name}
+                        </Text>
+                        <Text style={{ fontSize: 10, color: '#64748B' }}>
+                          ₹{prod.price} · {prod.artisan_name}
+                        </Text>
+                      </View>
+                      {isSelected && (
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#2563EB' }}>✓ Active</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
