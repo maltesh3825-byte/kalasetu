@@ -162,6 +162,67 @@
     }
   }
 
+  // Voice STT Icons
+  const MIC_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+    <line x1="12" y1="19" x2="12" y2="23"></line>
+    <line x1="8" y1="23" x2="16" y2="23"></line>
+  </svg>`;
+
+  const STOP_ICON_SVG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="5" y="5" width="14" height="14" rx="2" ry="2"></rect>
+  </svg>`;
+
+  // 20-Second Recording State
+  let recordingSecondsLeft = 20;
+  let recordingCountdownInterval = null;
+  let userExplicitlyStopped = false;
+
+  function startRecordingTimers() {
+    cleanupRecordingTimers();
+    recordingSecondsLeft = 20;
+    updateListeningTimerUI(recordingSecondsLeft);
+
+    recordingCountdownInterval = setInterval(() => {
+      recordingSecondsLeft--;
+      if (recordingSecondsLeft <= 0) {
+        cleanupRecordingTimers();
+        stopVoiceInput();
+        showChatToast('Listening completed (20s limit reached). Press Enter or click Send.', 'info');
+      } else {
+        updateListeningTimerUI(recordingSecondsLeft);
+      }
+    }, 1000);
+  }
+
+  function cleanupRecordingTimers() {
+    if (recordingCountdownInterval) {
+      clearInterval(recordingCountdownInterval);
+      recordingCountdownInterval = null;
+    }
+  }
+
+  function updateListeningTimerUI(seconds) {
+    const timerEl = document.getElementById('chatListeningTimer');
+    if (timerEl) {
+      timerEl.textContent = `${seconds}s`;
+    }
+  }
+
+  // Explicit Stop function
+  function stopVoiceInput() {
+    userExplicitlyStopped = true;
+    isRecording = false;
+    cleanupRecordingTimers();
+    if (speechRecognizer) {
+      try {
+        speechRecognizer.stop();
+      } catch (e) {}
+    }
+    updateMicUI(false);
+  }
+
   // Initialize Speech Recognition
   function setupSpeechRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -172,23 +233,25 @@
 
     try {
       const recognizer = new SpeechRecognition();
-      recognizer.continuous = false;
+      recognizer.continuous = true; // Allow speaking continuously beyond 3-5s pause
       recognizer.interimResults = true;
       recognizer.maxAlternatives = 1;
 
       recognizer.onstart = function () {
         isRecording = true;
+        userExplicitlyStopped = false;
+        startRecordingTimers();
         updateMicUI(true);
       };
 
       recognizer.onresult = function (event) {
-        const transcript = Array.from(event.results)
-          .map(r => r[0])
-          .map(r => r.transcript)
-          .join('');
+        let transcript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
 
         const input = document.getElementById('chatInput');
-        if (input) {
+        if (input && transcript) {
           input.value = transcript;
           input.focus();
         }
@@ -196,15 +259,26 @@
 
       recognizer.onerror = function (event) {
         console.warn('[Chatbot] Speech recognition error:', event.error);
-        isRecording = false;
-        updateMicUI(false);
         if (event.error === 'not-allowed') {
           showChatToast('Microphone access was denied. Please allow mic permissions in your browser.', 'warning');
+          stopVoiceInput();
+        } else if (event.error === 'no-speech') {
+          // Keep listening within the 20-second window
+        } else {
+          stopVoiceInput();
         }
       };
 
       recognizer.onend = function () {
+        // If not explicitly stopped and 20s not elapsed, keep listening
+        if (isRecording && !userExplicitlyStopped && recordingSecondsLeft > 1) {
+          try {
+            recognizer.start();
+            return;
+          } catch (e) {}
+        }
         isRecording = false;
+        cleanupRecordingTimers();
         updateMicUI(false);
       };
 
@@ -217,6 +291,11 @@
 
   // Toggle voice recognition
   function toggleVoiceInput() {
+    if (isRecording) {
+      stopVoiceInput();
+      return;
+    }
+
     if (!speechRecognizer) {
       speechRecognizer = setupSpeechRecognition();
       if (!speechRecognizer) {
@@ -225,26 +304,26 @@
       }
     }
 
-    if (isRecording) {
+    userExplicitlyStopped = false;
+    // BCP-47 locale from language map
+    speechRecognizer.lang = LANG_LOCALE_MAP[chatLanguage] || 'en-IN';
+    try {
+      speechRecognizer.start();
+    } catch (err) {
+      console.warn('[Chatbot] Failed to start speech recognizer:', err);
       try {
         speechRecognizer.stop();
-      } catch (e) {}
-      isRecording = false;
-      updateMicUI(false);
-    } else {
-      // BCP-47 locale from language map
-      speechRecognizer.lang = LANG_LOCALE_MAP[chatLanguage] || 'en-IN';
-      try {
-        speechRecognizer.start();
-      } catch (err) {
-        console.warn('[Chatbot] Failed to start speech recognizer:', err);
+        setTimeout(() => {
+          try { speechRecognizer.start(); } catch (e) {}
+        }, 120);
+      } catch (e) {
         isRecording = false;
         updateMicUI(false);
       }
     }
   }
 
-  // Update UI when mic is recording
+  // Update UI when mic is recording vs stopped
   function updateMicUI(active) {
     const micBtn = document.getElementById('chatMicBtn');
     const listeningBadge = document.getElementById('chatListeningBanner');
@@ -252,7 +331,8 @@
 
     if (active) {
       micBtn.classList.add('mic-recording-pulse');
-      micBtn.title = 'Listening... Click to stop';
+      micBtn.innerHTML = STOP_ICON_SVG;
+      micBtn.title = 'Stop recording (Click to stop)';
       if (listeningBadge) {
         listeningBadge.classList.remove('hidden');
         listeningBadge.classList.add('active');
@@ -260,7 +340,8 @@
       }
     } else {
       micBtn.classList.remove('mic-recording-pulse');
-      micBtn.title = 'Speak using microphone';
+      micBtn.innerHTML = MIC_ICON_SVG;
+      micBtn.title = 'Speak using microphone (20s recording)';
       if (listeningBadge) {
         listeningBadge.classList.add('hidden');
         listeningBadge.classList.remove('active');
@@ -899,7 +980,7 @@
     // Stop listening button in banner
     const stopListenBtn = document.getElementById('chatListeningStopBtn');
     if (stopListenBtn) {
-      stopListenBtn.addEventListener('click', toggleVoiceInput);
+      stopListenBtn.addEventListener('click', stopVoiceInput);
     }
 
     // Send Button
@@ -919,9 +1000,10 @@
       });
     }
 
-    // Expose toggleChatbot globally
+    // Expose toggleChatbot & voice controls globally
     window.toggleKalaSetuChatbot = toggleChatbot;
     window.toggleVoiceInput = toggleVoiceInput;
+    window.stopVoiceInput = stopVoiceInput;
 
     console.log('[KalaSetu] AI Chatbot v8 — Multi-language voice, enhanced UI, 21-product catalog initialized.');
   }

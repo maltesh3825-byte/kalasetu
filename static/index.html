@@ -1920,10 +1920,14 @@
     <!-- Active Voice STT Listening Banner -->
     <div id="chatListeningBanner" class="hidden nykaa-listening-banner" style="display: none !important;">
       <div class="flex items-center gap-2">
-        <span class="w-2.5 h-2.5 rounded-full bg-[#ea580c] animate-ping"></span>
-        <span>🎙️ Listening... Speak your craft question now</span>
+        <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+        <span class="text-xs font-bold text-slate-800">🎙️ Listening... Speak your craft query</span>
+        <span id="chatListeningTimer" class="font-mono text-[11px] font-black text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">20s</span>
       </div>
-      <span id="chatListeningStopBtn" class="text-[11px] text-orange-600 hover:text-orange-800 font-semibold cursor-pointer">Stop</span>
+      <button id="chatListeningStopBtn" type="button" class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600 hover:bg-red-700 text-white text-xs font-black shadow-sm transition-all cursor-pointer">
+        <span class="w-2 h-2 bg-white rounded-xs inline-block"></span>
+        <span>Stop</span>
+      </button>
     </div>
 
     <!-- Typing Indicator -->

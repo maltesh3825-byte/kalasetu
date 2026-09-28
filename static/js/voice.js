@@ -37,7 +37,7 @@ function initSpeechRecognition() {
   }
 
   const recognizer = new SpeechRecognition();
-  recognizer.continuous = false;
+  recognizer.continuous = true;
   recognizer.interimResults = true;
   recognizer.maxAlternatives = 1;
 
@@ -47,13 +47,13 @@ function initSpeechRecognition() {
   };
 
   recognizer.onresult = (event) => {
-    const transcript = Array.from(event.results)
-      .map(result => result[0])
-      .map(result => result.transcript)
-      .join('');
+    let transcript = '';
+    for (let i = 0; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript;
+    }
 
     const notesInput = document.getElementById('artisanNotes');
-    if (notesInput) {
+    if (notesInput && transcript) {
       notesInput.value = transcript;
     }
   };
