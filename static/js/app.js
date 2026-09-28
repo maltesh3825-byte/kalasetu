@@ -2705,12 +2705,12 @@ async function _fetchWebGeminiConfig() {
     if (r.ok) {
       const cfg = await r.json();
       _webGeminiKey = cfg.gemini_api_key || '';
-      _webGeminiModel = cfg.gemini_model || 'gemini-3.6-flash';
+      _webGeminiModel = cfg.gemini_model || 'gemini-3.1-flash-lite';
     }
   } catch (e) {
     console.warn('[KalaSetu] Could not fetch Gemini config:', e);
   }
-  return { key: _webGeminiKey || '', model: _webGeminiModel || 'gemini-3.6-flash' };
+  return { key: _webGeminiKey || '', model: _webGeminiModel || 'gemini-3.1-flash-lite' };
 }
 
 async function _imageToBase64(source) {

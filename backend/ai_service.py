@@ -175,7 +175,7 @@ Return ONLY a valid JSON object matching this exact schema:
         }
     }
 
-    candidate_models = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash", "gemini-2.5-flash"]
+    candidate_models = ["gemini-3.1-flash-lite", "gemini-3.1-flash-lite-preview", "gemini-3.6-flash", "gemini-2.5-flash"]
     last_error = ""
 
     for model_name in candidate_models:
@@ -185,7 +185,7 @@ Return ONLY a valid JSON object matching this exact schema:
                 model_url,
                 headers=headers,
                 json=payload,
-                timeout=25
+                timeout=12
             )
 
             if response.status_code == 200:
@@ -474,7 +474,7 @@ Return ONLY a valid JSON object matching this schema:
             "responseMimeType": "application/json",
         }
 
-        candidate_rfq_models = ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash", "gemini-2.5-flash"]
+        candidate_rfq_models = ["gemini-3.1-flash-lite", "gemini-3.1-flash-lite-preview", "gemini-3.6-flash", "gemini-2.5-flash"]
         for model_name in candidate_rfq_models:
             try:
                 model_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
@@ -485,7 +485,7 @@ Return ONLY a valid JSON object matching this schema:
                         "contents": [{"parts": parts}],
                         "generationConfig": gen_config
                     },
-                    timeout=22
+                    timeout=12
                 )
                 if resp.status_code == 200:
                     raw_json = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -784,8 +784,8 @@ def chat_with_gemini(
         }
     }
 
-    # Candidate models in priority order for high quota reliability
-    candidate_models = ["gemini-flash-lite-latest", "gemini-3-flash-preview", "gemini-3.1-flash-lite-preview", GEMINI_MODEL]
+    # Candidate models in priority order for high speed and availability
+    candidate_models = ["gemini-3.1-flash-lite", "gemini-3.1-flash-lite-preview", "gemini-3.6-flash", "gemini-2.5-flash", GEMINI_MODEL]
     # Deduplicate while preserving order
     seen_models = set()
     ordered_models = []
@@ -801,7 +801,7 @@ def chat_with_gemini(
                 api_url,
                 headers=headers,
                 json=payload,
-                timeout=18
+                timeout=10
             )
 
             if response.status_code == 200:

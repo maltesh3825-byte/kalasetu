@@ -779,17 +779,18 @@ Return ONLY a valid JSON object matching this exact schema:
     }
   };
 
-  // High-availability models priority order: fast flash-lite models first
+  // High-availability models priority order: fast, active models first
   const modelsToTry = [
-    "gemini-flash-lite-latest",
-    "gemini-3.5-flash-lite",
-    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite-preview",
     "gemini-3.6-flash",
     "gemini-2.5-flash"
   ];
   let lastErrText = "";
 
   for (const model of modelsToTry) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
     try {
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -798,9 +799,11 @@ Return ONLY a valid JSON object matching this exact schema:
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: controller.signal
         }
       );
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
@@ -816,8 +819,10 @@ Return ONLY a valid JSON object matching this exact schema:
         console.warn(`Gemini Vision (${model}) HTTP ${response.status}:`, lastErrText.slice(0, 150));
       }
     } catch (e: any) {
-      console.warn(`Gemini Vision (${model}) fetch error:`, e?.message || e);
-      lastErrText = e?.message || String(e);
+      clearTimeout(timeoutId);
+      const isAbort = e?.name === 'AbortError' || String(e).includes('abort');
+      console.warn(`Gemini Vision (${model}) ${isAbort ? 'timed out after 12s' : 'fetch error'}:`, e?.message || e);
+      lastErrText = isAbort ? `Model ${model} timed out` : (e?.message || String(e));
     }
   }
 
@@ -917,14 +922,15 @@ User Question: "${query}"`;
 
   if (apiKey && apiKey !== "YOUR_GEMINI_API_KEY_HERE") {
     const modelsToTry = [
-      "gemini-flash-lite-latest",
-      "gemini-3.5-flash-lite",
-      "gemini-2.5-flash",
-      "gemini-3.5-flash",
-      "gemini-3.6-flash"
+      "gemini-3.1-flash-lite",
+      "gemini-3.1-flash-lite-preview",
+      "gemini-3.6-flash",
+      "gemini-2.5-flash"
     ];
 
     for (const model of modelsToTry) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
       try {
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -934,17 +940,20 @@ User Question: "${query}"`;
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
               generationConfig: { temperature: 0.3, maxOutputTokens: 512 }
-            })
+            }),
+            signal: controller.signal
           }
         );
+        clearTimeout(timeoutId);
 
         if (response.ok) {
           const data = await response.json();
           const answer = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
           if (answer) return answer;
         }
-      } catch (e) {
-        console.warn(`Chatbot model ${model} fetch failed:`, e);
+      } catch (e: any) {
+        clearTimeout(timeoutId);
+        console.warn(`Chatbot model ${model} fetch failed:`, e?.message || e);
       }
     }
   }
@@ -1203,13 +1212,23 @@ export async function analyzeProductPhoto(
     if (notes) formData.append('notes', notes);
     if (priceHint) formData.append('price_hint', String(priceHint));
 
-    const res = await fetch(`${getBackendUrl()}/api/analyze-product`, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'Accept': 'application/json',
-      }
-    });
+    const backendController = new AbortController();
+    const backendTimeout = setTimeout(() => backendController.abort(), 15000);
+    let res: Response;
+    try {
+      res = await fetch(`${getBackendUrl()}/api/analyze-product`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json',
+        },
+        signal: backendController.signal
+      });
+      clearTimeout(backendTimeout);
+    } catch (fetchErr) {
+      clearTimeout(backendTimeout);
+      throw fetchErr;
+    }
 
     if (res.ok) {
       const result: AiAnalysisResult = await res.json();
@@ -2792,13 +2811,15 @@ Return ONLY a valid JSON object matching this schema:
         }
 
         const modelsToTry = [
-          "gemini-flash-lite-latest",
-          "gemini-3.5-flash-lite",
-          "gemini-3.5-flash",
-          "gemini-3.6-flash"
+          "gemini-3.1-flash-lite",
+          "gemini-3.1-flash-lite-preview",
+          "gemini-3.6-flash",
+          "gemini-2.5-flash"
         ];
 
         for (const model of modelsToTry) {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 12000);
           try {
             const response = await fetch(
               `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -2812,9 +2833,11 @@ Return ONLY a valid JSON object matching this schema:
                     maxOutputTokens: 2048,
                     responseMimeType: "application/json"
                   }
-                })
+                }),
+                signal: controller.signal
               }
             );
+            clearTimeout(timeoutId);
 
             if (response.ok) {
               const data = await response.json();
@@ -2842,6 +2865,7 @@ Return ONLY a valid JSON object matching this schema:
               }
             }
           } catch (mErr) {
+            clearTimeout(timeoutId);
             console.warn(`Bulk RFQ model ${model} fetch failed:`, mErr);
           }
         }
