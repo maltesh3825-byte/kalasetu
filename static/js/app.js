@@ -2311,7 +2311,7 @@ function renderOrdersView(content) {
   const rows = isMine ? state.accountOrders : state.accountIncomingOrders;
   const emptyMessage = isMine ? 'No orders requested by you yet.' : 'No buyer requests for your products yet.';
   const publishedMarkup = state.accountPublishedProducts.length
-    ? state.accountPublishedProducts.map(product => `<div class="account-row"><div class="flex flex-wrap items-center justify-between gap-3"><div><strong>${escapeHtml(product.name)}</strong><span class="block text-xs mt-1 text-slate-500">₹${escapeHtml(product.price)} · Qty ${escapeHtml(product.quantity || 0)} · ${escapeHtml(product.category)}</span></div><button type="button" class="account-small-action text-red-700" data-remove-published="${product.id}">Remove published order</button></div></div>`).join('')
+    ? state.accountPublishedProducts.map(product => `<div class="account-row"><div class="flex flex-wrap items-center justify-between gap-3"><div><strong>${escapeHtml(product.name)}</strong><span class="block text-xs mt-1 text-slate-500">₹${escapeHtml(product.price)} · Qty ${escapeHtml(product.quantity || 0)} · ${escapeHtml(product.category)}</span></div><div class="flex items-center gap-2"><button type="button" class="account-small-action text-amber-800 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg font-bold border border-amber-200" onclick="openEditProductModal(${product.id})">✏️ Edit listing</button><button type="button" class="account-small-action text-red-700" data-remove-published="${product.id}">Remove published order</button></div></div></div>`).join('')
     : '<p class="account-muted">No products published by you yet.</p>';
   const rowsMarkup = rows.length
     ? rows.map(order => isMine
@@ -4131,16 +4131,17 @@ function renderProducts(products) {
             <button onclick="toggleWishlist(${p.id})"
                     class="p-2 rounded-xl ${state.accountWishlist.includes(p.id) ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'} hover:bg-rose-100 hover:text-rose-600 transition-colors"
                     title="Save to wishlist">♥</button>
-            ${state.currentUser && (
-              (p.owner_user_id && Number(p.owner_user_id) === Number(state.currentUser.id))
-              || state.currentUser.name?.trim().toLowerCase() === String(p.artisan_name || '').trim().toLowerCase()
-              || (state.currentUser.phone && p.artisan_phone && state.currentUser.phone.replace(/\D/g,'').slice(-10) === p.artisan_phone.replace(/\D/g,'').slice(-10))
-              || state.accountPublishedProducts.some(pub => pub.id === p.id)
-            )
-                    ? `<button onclick="deleteMarketplaceProduct(${p.id})"
-                             class="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-                             title="Delete your listing">🗑</button>`
-                    : ''}
+            ${isCurrentUserProductOwner(p) ? `
+              <button onclick="openEditProductModal(${p.id})"
+                      class="px-2.5 py-1.5 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1 font-bold text-xs border border-amber-200"
+                      title="Edit your listing">
+                <span>✏️</span>
+                <span>${typeof t === 'function' ? t('edit_my_listing') : 'Edit'}</span>
+              </button>
+              <button onclick="deleteMarketplaceProduct(${p.id})"
+                      class="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                      title="Delete your listing">🗑</button>
+            ` : ''}
 
             <a href="https://wa.me/${(p.artisan_phone || '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hello ${p.artisan_name}, I am interested in buying your handcrafted '${p.name}' listed on KalaSetu marketplace for ₹${p.price}.`)}"
                target="_blank" rel="noopener noreferrer"
@@ -4193,6 +4194,270 @@ async function deleteMarketplaceProduct(productId) {
   } catch (error) {
     console.error('Product deletion error:', error);
     showToast(error.message || 'Product could not be deleted');
+  }
+}
+
+// Ownership check helper for products
+function isCurrentUserProductOwner(p) {
+  if (!p) return false;
+  if (!state.currentUser) return false;
+  const currentUserId = Number(state.currentUser.id);
+  if (p.owner_user_id && Number(p.owner_user_id) === currentUserId) return true;
+
+  const currentName = (state.currentUser.name || '').trim().toLowerCase();
+  const artisanName = (p.artisan_name || '').trim().toLowerCase();
+  if (currentName && artisanName && (currentName === artisanName || currentName.includes(artisanName) || artisanName.includes(currentName))) {
+    return true;
+  }
+
+  const currentPhone = (state.currentUser.phone || '').replace(/\D/g, '').slice(-10);
+  const artisanPhone = (p.artisan_phone || '').replace(/\D/g, '').slice(-10);
+  if (currentPhone && artisanPhone && currentPhone === artisanPhone) {
+    return true;
+  }
+
+  if (Array.isArray(state.accountPublishedProducts) && state.accountPublishedProducts.some(pub => pub.id === p.id)) {
+    return true;
+  }
+  return false;
+}
+
+let currentEditModalTags = [];
+
+function renderEditModalTags() {
+  const container = document.getElementById('editModalTagsContainer');
+  if (!container) return;
+  if (!currentEditModalTags.length) {
+    container.innerHTML = '<span class="text-xs text-slate-400 italic">No tags added yet.</span>';
+    return;
+  }
+  container.innerHTML = currentEditModalTags.map((tag, idx) => `
+    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-terracotta-50 text-terracotta-800 border border-terracotta-200">
+      <span>#${escapeHtml(tag)}</span>
+      <button type="button" onclick="removeEditModalTag(${idx})" class="w-3.5 h-3.5 rounded-full hover:bg-terracotta-200 text-terracotta-600 font-bold flex items-center justify-center text-[10px]">&times;</button>
+    </span>
+  `).join('');
+}
+
+function addEditModalTag() {
+  const input = document.getElementById('editModalNewTagInput');
+  if (!input) return;
+  const val = input.value.trim().replace(/^#/, '');
+  if (val && !currentEditModalTags.includes(val)) {
+    currentEditModalTags.push(val);
+    renderEditModalTags();
+  }
+  input.value = '';
+}
+
+function removeEditModalTag(idx) {
+  if (idx >= 0 && idx < currentEditModalTags.length) {
+    currentEditModalTags.splice(idx, 1);
+    renderEditModalTags();
+  }
+}
+
+function openEditProductModal(productId) {
+  if (!state.currentUser) {
+    showToast('Please sign in to edit your product listing');
+    switchTab('account');
+    return;
+  }
+
+  let product = (state.products || []).find(p => p.id === productId);
+  if (!product && Array.isArray(state.accountPublishedProducts)) {
+    product = state.accountPublishedProducts.find(p => p.id === productId);
+  }
+  if (!product) {
+    showToast('Product listing not found');
+    return;
+  }
+
+  if (!isCurrentUserProductOwner(product)) {
+    showToast('You can only edit products that you have published');
+    return;
+  }
+
+  const modal = document.getElementById('editProductModal');
+  if (!modal) return;
+
+  const idEl = document.getElementById('editModalProductId');
+  const titleEl = document.getElementById('editModalTitle');
+  const catEl = document.getElementById('editModalCategory');
+  const priceEl = document.getElementById('editModalPrice');
+  const qtyEl = document.getElementById('editModalQuantity');
+  const phoneEl = document.getElementById('editModalPhone');
+  const locEl = document.getElementById('editModalLocation');
+  const descEnEl = document.getElementById('editModalDescEn');
+  const descHiEl = document.getElementById('editModalDescHi');
+  const imgInput = document.getElementById('editModalImageUrl');
+  const previewImg = document.getElementById('editModalImagePreview');
+
+  if (idEl) idEl.value = product.id;
+  if (titleEl) titleEl.value = product.name || '';
+  if (catEl) catEl.value = product.category || 'Handloom & Textiles';
+  if (priceEl) priceEl.value = product.price || '';
+  if (qtyEl) qtyEl.value = product.quantity !== undefined ? product.quantity : 1;
+  if (phoneEl) phoneEl.value = product.artisan_phone || state.currentUser.phone || '';
+  if (locEl) locEl.value = product.artisan_location || state.currentUser.city || '';
+  if (descEnEl) descEnEl.value = product.description_en || product.description || '';
+  if (descHiEl) descHiEl.value = product.description_hi || '';
+
+  const imgUrl = product.image_url || '';
+  if (imgInput) {
+    imgInput.value = imgUrl;
+    imgInput.oninput = () => {
+      if (previewImg) previewImg.src = resolveImageUrl(imgInput.value.trim());
+    };
+  }
+
+  if (previewImg) {
+    previewImg.src = resolveImageUrl(imgUrl);
+    previewImg.onerror = function() {
+      this.src = 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=800&q=80';
+    };
+  }
+
+  if (Array.isArray(product.tags)) {
+    currentEditModalTags = [...product.tags];
+  } else if (typeof product.tags === 'string') {
+    try {
+      const parsed = JSON.parse(product.tags);
+      currentEditModalTags = Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      currentEditModalTags = product.tags.split(',').map(s => s.trim()).filter(Boolean);
+    }
+  } else {
+    currentEditModalTags = [];
+  }
+  renderEditModalTags();
+
+  const newTagInput = document.getElementById('editModalNewTagInput');
+  if (newTagInput) {
+    newTagInput.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addEditModalTag();
+      }
+    };
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closeEditProductModal() {
+  const modal = document.getElementById('editProductModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function handleSaveProductEdit(event) {
+  if (event) event.preventDefault();
+
+  if (!state.currentUser) {
+    showToast('Please sign in to update your product');
+    return;
+  }
+
+  const productId = Number(document.getElementById('editModalProductId')?.value);
+  if (!productId) return;
+
+  const title = document.getElementById('editModalTitle')?.value.trim();
+  const category = document.getElementById('editModalCategory')?.value;
+  const price = Number(document.getElementById('editModalPrice')?.value);
+  const quantity = Number(document.getElementById('editModalQuantity')?.value);
+  const phone = document.getElementById('editModalPhone')?.value.trim();
+  const location = document.getElementById('editModalLocation')?.value.trim();
+  const descEn = document.getElementById('editModalDescEn')?.value.trim();
+  const descHi = document.getElementById('editModalDescHi')?.value.trim();
+  const imageUrl = document.getElementById('editModalImageUrl')?.value.trim();
+
+  if (!title) {
+    showToast('Product title is required');
+    return;
+  }
+  if (!price || price <= 0) {
+    showToast('Please enter a valid price');
+    return;
+  }
+
+  const saveBtn = document.getElementById('saveEditProductBtn');
+  const spinner = document.getElementById('saveEditProductSpinner');
+  if (saveBtn) saveBtn.disabled = true;
+  if (spinner) spinner.classList.remove('hidden');
+
+  const payload = {
+    user_id: state.currentUser.id,
+    name: title,
+    category: category,
+    price: price,
+    quantity: quantity >= 0 ? quantity : 0,
+    artisan_phone: phone,
+    artisan_location: location,
+    description_en: descEn,
+    description_hi: descHi,
+    tags: currentEditModalTags,
+    image_url: imageUrl || undefined
+  };
+
+  try {
+    // 1. Backend API (FastAPI / SQLite / PostgreSQL)
+    const response = await fetch(`/api/products/${productId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to update product');
+    }
+
+    // 2. Dual-Sync directly with Supabase REST (best-effort)
+    try {
+      const SUPABASE_URL = "https://fcabjzylxzdcqzrloaqr.supabase.co";
+      const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjYWJqenlseHpkY3F6cmxvYXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyMDA4NTAsImV4cCI6MjEwNDc3Njg1MH0.z7-C5sww2E6GRqip6HBJmLdoTHJAWZl70TYXqCJaiBg";
+      const sbPayload = {
+        name: title,
+        category: category,
+        price: price,
+        quantity: quantity >= 0 ? quantity : 0,
+        artisan_phone: phone,
+        artisan_location: location,
+        description_en: descEn,
+        description_hi: descHi,
+        tags: JSON.stringify(currentEditModalTags)
+      };
+      if (imageUrl) sbPayload.image_url = imageUrl;
+
+      fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${productId}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(sbPayload)
+      }).catch(err => console.warn('Supabase product patch warning:', err));
+    } catch (sbErr) {
+      console.warn('Supabase sync skipped:', sbErr);
+    }
+
+    showToast('Listing updated successfully! ✨');
+    closeEditProductModal();
+
+    // Reload products & account state
+    await loadProducts();
+    await loadAccountData();
+    if (state.currentUser && state.accountView === 'orders') {
+      renderAccountView('orders');
+    }
+  } catch (err) {
+    console.error('Error saving product edits:', err);
+    showToast(err.message || 'Could not save changes');
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+    if (spinner) spinner.classList.add('hidden');
   }
 }
 
@@ -4342,6 +4607,20 @@ function openProductModal(productId) {
       `✅ *Verified by KalaSetu AI & MoSJE*\n\n` +
       `Order directly from the artisan on KalaSetu: ${window.location.origin}/#marketplace`;
     shareWaBtn.href = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareMsg)}`;
+  }
+
+  // Edit My Listing Button inside Product Modal
+  const editListingBtn = document.getElementById('modalEditMyListingBtn');
+  if (editListingBtn) {
+    if (isCurrentUserProductOwner(product)) {
+      editListingBtn.classList.remove('hidden');
+      editListingBtn.onclick = () => {
+        closeProductModal();
+        openEditProductModal(product.id);
+      };
+    } else {
+      editListingBtn.classList.add('hidden');
+    }
   }
 
 
@@ -4659,3 +4938,13 @@ function switchModalProductImage(newUrl, thumbBtn) {
     thumbBtn.className = 'w-12 h-12 rounded-xl overflow-hidden border-2 border-terracotta-500 shadow-sm transition-all flex-shrink-0';
   }
 }
+
+// Global exports for inline HTML handlers
+window.openEditProductModal = openEditProductModal;
+window.closeEditProductModal = closeEditProductModal;
+window.renderEditModalTags = renderEditModalTags;
+window.addEditModalTag = addEditModalTag;
+window.removeEditModalTag = removeEditModalTag;
+window.handleSaveProductEdit = handleSaveProductEdit;
+window.isCurrentUserProductOwner = isCurrentUserProductOwner;
+

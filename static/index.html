@@ -1646,6 +1646,11 @@
             <span>📦</span>
             <span data-i18n="btn_place_order">Place order request</span>
           </button>
+          <button id="modalEditMyListingBtn" type="button" onclick="openEditProductModal(state.selectedProductForModal?.id)"
+                  class="hidden flex-1 py-3.5 px-6 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer">
+            <span>✏️</span>
+            <span data-i18n="edit_my_listing">Edit My Listing</span>
+          </button>
           <button id="modalCancelBtn" type="button"
                   class="flex-1 py-3.5 px-6 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-sm flex items-center justify-center gap-2 border border-slate-300">
             <span>✕</span>
@@ -1684,6 +1689,129 @@
 
       </div>
 
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- EDIT PRODUCT MODAL (Artisan Self-Serve Listing Editor)                 -->
+  <!-- ===================================================================== -->
+  <div id="editProductModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white rounded-3xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200 flex flex-col relative">
+      
+      <!-- Modal Header -->
+      <div class="sticky top-0 bg-white/95 backdrop-blur-md px-6 py-4 border-b border-slate-200 flex items-center justify-between z-10">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-lg font-black">
+            ✏️
+          </div>
+          <div>
+            <h3 class="font-extrabold text-slate-900 text-lg" data-i18n="edit_product_title">Edit Product Listing</h3>
+            <p class="text-xs text-slate-500">Update your price, title, descriptions, or stock</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeEditProductModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-lg transition-colors cursor-pointer">
+          &times;
+        </button>
+      </div>
+
+      <!-- Modal Form -->
+      <form id="editProductForm" class="p-6 space-y-4" onsubmit="handleSaveProductEdit(event)">
+        <input type="hidden" id="editModalProductId">
+
+        <!-- Product Image Preview & URL -->
+        <div class="flex items-center gap-4 p-3 bg-sand-50 rounded-2xl border border-sand-200">
+          <img id="editModalImagePreview" src="" alt="Craft preview" class="w-16 h-16 rounded-xl object-cover border border-slate-200 bg-white">
+          <div class="flex-1 min-w-0">
+            <label class="block text-[11px] font-bold text-slate-700 uppercase mb-1">Image URL</label>
+            <input type="text" id="editModalImageUrl" class="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:ring-1 focus:ring-terracotta-500 font-medium">
+          </div>
+        </div>
+
+        <!-- Product Title -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Product Title</label>
+          <input type="text" id="editModalTitle" required class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-terracotta-500 font-bold text-sm text-slate-900">
+        </div>
+
+        <!-- Category & Price & Quantity -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Category</label>
+            <select id="editModalCategory" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-terracotta-500 font-semibold text-xs">
+              <option value="Handloom & Textiles">Handloom & Textiles</option>
+              <option value="Pottery & Terracotta">Pottery & Terracotta</option>
+              <option value="Brass & Metalcraft">Brass & Metalcraft</option>
+              <option value="Cane & Bamboo">Cane & Bamboo</option>
+              <option value="Woodcraft">Woodcraft</option>
+              <option value="Tribal Jewelry">Tribal Jewelry</option>
+              <option value="Leather Craft">Leather Craft</option>
+              <option value="Folk Art & Painting">Folk Art & Painting</option>
+              <option value="Stone Carving">Stone Carving</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Price (₹)</label>
+            <div class="relative">
+              <input type="number" id="editModalPrice" min="1" required class="w-full pl-7 pr-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-terracotta-500 font-extrabold text-sm text-slate-900">
+              <span class="absolute left-2.5 top-2.5 text-slate-400 font-bold text-xs">₹</span>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Stock / Qty</label>
+            <input type="number" id="editModalQuantity" min="0" required class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-terracotta-500 font-extrabold text-sm text-slate-900">
+          </div>
+        </div>
+
+        <!-- Artisan Phone & Location -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">WhatsApp / Phone</label>
+            <input type="tel" id="editModalPhone" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-terracotta-500 text-xs font-semibold">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Location / Cluster</label>
+            <input type="text" id="editModalLocation" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-terracotta-500 text-xs font-semibold">
+          </div>
+        </div>
+
+        <!-- Description (English) -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Description (English)</label>
+          <textarea id="editModalDescEn" rows="2" class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-terracotta-500 text-xs"></textarea>
+        </div>
+
+        <!-- Description (Hindi) -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Description (हिंदी)</label>
+          <textarea id="editModalDescHi" rows="2" class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-terracotta-500 text-xs font-hindi"></textarea>
+        </div>
+
+        <!-- Tags -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">SEO & Discoverability Tags</label>
+          <div id="editModalTagsContainer" class="flex flex-wrap gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200 min-h-[38px]">
+            <!-- Tags pills -->
+          </div>
+          <div class="flex gap-2 mt-1.5">
+            <input type="text" id="editModalNewTagInput" placeholder="Add tag (e.g. Handmade)..." class="flex-1 px-3 py-1 text-xs rounded-lg border border-slate-300 focus:ring-1 focus:ring-terracotta-500">
+            <button type="button" onclick="addEditModalTag()" class="px-3 py-1 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold cursor-pointer">+ Add</button>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
+          <button type="button" onclick="closeEditProductModal()" class="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-50 transition-colors cursor-pointer">
+            Cancel
+          </button>
+          <button type="submit" id="saveEditProductBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-terracotta-600 to-amber-600 hover:from-terracotta-700 hover:to-amber-700 text-white font-extrabold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95">
+            <span id="saveEditProductSpinner" class="hidden w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+            <span data-i18n="save_changes">💾 Save Changes</span>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -2110,9 +2238,9 @@
 
   <!-- Scripts -->
   <script src="/static/js/cropper.min.js"></script>
-  <script src="/static/js/i18n.js?v=13"></script>
+  <script src="/static/js/i18n.js?v=14"></script>
   <script src="/static/js/voice.js"></script>
-  <script src="/static/js/app.js?v=13"></script>
+  <script src="/static/js/app.js?v=14"></script>
   <script src="/static/js/chatbot.js?v=10"></script>
 </body>
 </html>
